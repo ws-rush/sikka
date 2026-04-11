@@ -73,5 +73,63 @@ describe('Coverage tests', () => {
         'is:raw is not supported on Fragments'
       );
     });
+
+    it('hits unclosed slot error', async () => {
+      await expect(engine.renderString('<slot>')).rejects.toThrow('Unclosed <slot> tag');
+    });
+
+    it('hits expected /> or > after slot attributes', async () => {
+      await expect(engine.renderString('<slot name="foo"')).rejects.toThrow(
+        'Expected `/>` or `>` after <slot> attributes'
+      );
+    });
+
+    it('hits unclosed frontmatter fence at end of file', async () => {
+      await expect(engine.renderString('---\nfoo')).rejects.toThrow(
+        'Unclosed frontmatter fence: missing closing `---`'
+      );
+    });
+
+    it('hits script self-closing error', async () => {
+      await expect(engine.renderString('<script /')).rejects.toThrow("Expected '>' after '/'");
+    });
+
+    it('hits script unclosed opening tag error', async () => {
+      await expect(engine.renderString('<script ')).rejects.toThrow(
+        "Expected '>' to close <script> opening tag"
+      );
+    });
+
+    it('hits is:raw with complex nesting and characters', async () => {
+      const template = '<div is:raw><div >INNER</div></div>';
+      const result = await engine.renderString(template);
+      expect(result).toBe('<div><div >INNER</div></div>');
+
+      const template2 = '<div is:raw><div/ >INNER</div></div>';
+      const result2 = await engine.renderString(template2);
+      expect(result2).toBe('<div><div/ >INNER</div></div>');
+
+      const template3 = '<div is:raw><div\n>INNER</div></div>';
+      const result3 = await engine.renderString(template3);
+      expect(result3).toBe('<div><div\n>INNER</div></div>');
+
+      const template4 = '<div is:raw><divx>NOT A DIV</divx></div>';
+      const result4 = await engine.renderString(template4);
+      expect(result4).toBe('<div><divx>NOT A DIV</divx></div>');
+    });
+
+    it('hits nested braces in expression', async () => {
+      const res = await engine.renderString('<div>{ { a: { b: 1 } }.a.b }</div>');
+      expect(res).toBe('<div>1</div>');
+    });
+
+    it('hits comment in slot loop', async () => {
+      const res = await engine.renderString('<slot><!-- comment --></slot>');
+      expect(res).toBe('<!-- comment -->');
+    });
+
+    it('hits unclosed script tag error', async () => {
+      await expect(engine.renderString('<script>')).rejects.toThrow('Unclosed <script> tag');
+    });
   });
 });

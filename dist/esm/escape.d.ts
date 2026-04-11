@@ -9,6 +9,7 @@
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
 export declare class RawHtml {
     readonly value: string;
+    __isRawHtml: boolean;
     constructor(value: string);
 }
 /**

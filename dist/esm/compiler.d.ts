@@ -27,6 +27,10 @@ interface CompileOptions {
     filterFunction?: (val: unknown) => unknown;
     /** Whether to enable debug mode. */
     debug?: boolean;
+    /** Custom path resolution function. */
+    resolvePath?: (base: string, specifier: string) => string | Promise<string>;
+    /** Whether to aggregate <script> and <style> tags. */
+    aggregateAssets?: boolean;
 }
 /**
  * Higher-level compile entry point: resolves component imports then compiles the AST.
@@ -39,5 +43,9 @@ export declare function compile(ast: TemplateAST, options?: CompileOptions & {
  * Compile a TemplateAST into a RenderFunction.
  */
 export declare function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult;
+/**
+ * Compile a TemplateAST into a standalone ESM module string.
+ */
+export declare function compileToModule(ast: TemplateAST, options?: CompileOptions): string;
 export {};
 //# sourceMappingURL=compiler.d.ts.map

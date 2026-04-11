@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { compile, compileAST } from './compiler.js';
+import { compile, compileAST, compileToModule } from './compiler.js';
 import { parse } from './parser.js';
 import type { TemplateAST, RenderFunction, TemplateNode } from './types.js';
 
@@ -170,7 +170,7 @@ describe('Compiler — node emission', () => {
   });
 
   it('emits dynamic attributes', async () => {
-    const ast = ok('<div id={id}></div>');
+    const ast = ok('---\nconst { id } = Astro.props;\n---\n<div id={id}></div>');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
     expect(await fn({ id: 'bar' })).toBe('<div id="bar"></div>');
   });
@@ -348,7 +348,7 @@ describe('Compiler — components', () => {
   });
 
   it('covers autoFilter default branch (line 286)', async () => {
-    const ast = ok('{val}');
+    const ast = ok('---\nconst { val } = Astro.props;\n---\n{val}');
     const { fn } = (await compile(ast, { autoFilter: true })) as { fn: RenderFunction };
     expect(await fn({ val: 'foo' })).toBe('foo');
   });
@@ -366,7 +366,7 @@ describe('Compiler — components', () => {
   });
 
   it('covers autoEscape: false branch (line 390)', async () => {
-    const ast = ok('{val}');
+    const ast = ok('---\nconst { val } = Astro.props;\n---\n{val}');
     const { fn } = (await compile(ast, { autoEscape: false })) as { fn: RenderFunction };
     // Should NOT be escaped
     expect(await fn({ val: '<br>' })).toBe('<br>');
@@ -379,7 +379,7 @@ describe('Compiler — components', () => {
   });
 
   it('covers manual filterFunction branch (line 286)', async () => {
-    const ast = ok('{val}');
+    const ast = ok('---\nconst { val } = Astro.props;\n---\n{val}');
     const filterFunction = (v: unknown) => String(v).toUpperCase();
     const { fn } = (await compile(ast, { autoFilter: true, filterFunction })) as {
       fn: RenderFunction;
@@ -397,5 +397,16 @@ describe('Compiler — components', () => {
     const ast = ok('<slot />');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
     expect(await fn({}, { '': 'custom default' })).toBe('custom default');
+  });
+
+  it('compileToModule generates standalone code', async () => {
+    const ast = ok(
+      '---\nimport Foo from "./Foo.astro";\nconst { name } = Astro.props;\n---\n<h1>Hello {name}</h1>'
+    );
+    const source = compileToModule(ast);
+    expect(source).toContain('import Foo from "./Foo.astro"');
+    expect(source).toContain('export default async function render');
+    expect(source).toContain('Hello');
+    expect(source).toContain('h1');
   });
 });

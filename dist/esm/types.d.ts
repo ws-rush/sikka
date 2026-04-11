@@ -1,5 +1,19 @@
+export interface RenderResult {
+    html: string;
+    scripts: string[];
+    styles: string[];
+}
+export interface Asset {
+    type: 'script' | 'style';
+    content: string;
+    attrs: (AttrNode | SpreadAttrNode)[];
+}
 /** A compiled render function produced by the compiler. */
-export type RenderFunction = (props: Record<string, unknown>, slots?: Record<string, string>) => string;
+export interface RenderFunction {
+    (props: Record<string, unknown>, slots?: Record<string, string>): Promise<string>;
+    render(props: Record<string, unknown>, slots?: Record<string, string | AsyncIterable<string>>): Promise<string>;
+    stream(props: Record<string, unknown>, slots?: Record<string, string | AsyncIterable<string>>): AsyncIterable<string | Asset>;
+}
 /** Injectable file-reader for runtime-agnostic file loading. */
 export type FileReader = (path: string) => Promise<string>;
 /** Options accepted by `new Engine()`. */
@@ -15,7 +29,7 @@ export interface EngineOptions {
     /** Enables pretty-printing of runtime errors. */
     debug?: boolean;
     /** Whether to cache templates. */
-    cache?: boolean;
+    cache?: boolean | Cache;
     /** Maximum number of cache entries; LRU eviction when exceeded. Default: unlimited. */
     cacheSize?: number;
     /** Whether to automatically escape HTML. Default: true. */
@@ -24,13 +38,20 @@ export interface EngineOptions {
     autoFilter?: boolean;
     /** Custom filter function. */
     filterFunction?: (val: unknown) => unknown;
+    /** Whether to aggregate <script> and <style> tags. */
+    aggregateAssets?: boolean;
 }
 export interface EngineInstance {
     render(template: string, props?: Record<string, unknown>): Promise<string>;
+    renderFull(template: string, props?: Record<string, unknown>): Promise<RenderResult>;
     renderAsync(template: string, props?: Record<string, unknown>): Promise<string>;
     renderString(template: string, props?: Record<string, unknown>): Promise<string>;
+    renderStringFull(template: string, props?: Record<string, unknown>): Promise<RenderResult>;
     renderStringAsync(template: string, props?: Record<string, unknown>): Promise<string>;
+    renderStream(template: string, props?: Record<string, unknown>): AsyncIterable<string | Asset>;
+    renderStringStream(template: string, props?: Record<string, unknown>): AsyncIterable<string | Asset>;
     loadComponent(name: string, template: string): void;
+    registerComponent(name: string, fn: RenderFunction): void;
     invalidate(key?: string): void;
 }
 /** The root AST node produced by the parser. */
@@ -121,6 +142,7 @@ export interface CompileError {
 export type CompileResult = {
     ok: true;
     fn: RenderFunction;
+    source: string;
 } | {
     ok: false;
     error: CompileError;

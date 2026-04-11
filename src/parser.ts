@@ -113,15 +113,66 @@ function extractFrontmatter(
 
 // ─── Import collection ────────────────────────────────────────────────────────
 
-const IMPORT_LOCAL_RE = /^\s*import\s+(?:(\w+)|(?:\{[^}]*\}))\s+from\s+['"]([^'"]+)['"]/;
-
 function collectImports(fmSource: string): ComponentImport[] {
   const imports: ComponentImport[] = [];
-  const lines = fmSource.split('\n');
-  for (const line of lines) {
-    const m = IMPORT_LOCAL_RE.exec(line);
-    if (m) {
-      imports.push({ localName: m[1] || 'default', specifier: m[2] });
+  const re = /^\s*import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/gm;
+  let m;
+  while ((m = re.exec(fmSource)) !== null) {
+    const importClause = m[1].trim();
+    const specifier = m[2];
+
+    if (importClause.startsWith('type ')) continue;
+
+    // Namespace import: import * as Foo from '...'
+    if (importClause.startsWith('* as ')) {
+      const localName = importClause.slice(5).trim();
+      imports.push({ localName, specifier });
+      continue;
+    }
+
+    // Default and/or named imports
+    // Handle mixed: import Foo, { Bar as Baz, Qux } from '...'
+    // We need to be careful with commas inside braces.
+    const parts: string[] = [];
+    let current = '';
+    let braceDepth = 0;
+    for (let i = 0; i < importClause.length; i++) {
+      const char = importClause[i];
+      if (char === '{') braceDepth++;
+      else if (char === '}') braceDepth--;
+
+      if (char === ',' && braceDepth === 0) {
+        parts.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current) parts.push(current.trim());
+
+    for (const p of parts) {
+      if (p.startsWith('{')) {
+        const namedParts = p.slice(1, p.endsWith('}') ? -1 : undefined).split(',');
+        for (const named of namedParts) {
+          const n = named.trim();
+          if (!n) continue;
+          const asMatch = /\s+as\s+(\w+)$/.exec(n);
+          if (asMatch) {
+            imports.push({ localName: asMatch[1], specifier });
+          } else {
+            const nameMatch = /(\w+)$/.exec(n);
+            if (nameMatch) {
+              imports.push({ localName: nameMatch[1], specifier });
+            }
+          }
+        }
+      } else if (p) {
+        // Default import
+        const nameMatch = /(\w+)$/.exec(p);
+        if (nameMatch) {
+          imports.push({ localName: nameMatch[1], specifier });
+        }
+      }
     }
   }
   return imports;
@@ -482,11 +533,35 @@ class Parser {
       if (tag === 'Fragment' || tag === '') {
         return { ok: false, error: this.error('is:raw is not supported on Fragments') };
       }
+      const openTag = `<${tag}`;
       const closeTag = `</${tag}>`;
-      const closeIdx = this.src.indexOf(closeTag, this.pos);
-      if (closeIdx === -1) {
-        return { ok: false, error: this.error(`Unclosed <${tag}> tag with is:raw`) };
+      let depth = 1;
+      let curPos = this.pos;
+      let closeIdx = -1;
+
+      while (depth > 0) {
+        const nextOpen = this.src.indexOf(openTag, curPos);
+        const nextClose = this.src.indexOf(closeTag, curPos);
+
+        if (nextClose === -1) {
+          return { ok: false, error: this.error(`Unclosed <${tag}> tag with is:raw`) };
+        }
+
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          const after = this.src[nextOpen + openTag.length];
+          if (!after || /[\s/>]/.test(after)) {
+            depth++;
+            curPos = nextOpen + openTag.length;
+          } else {
+            curPos = nextOpen + openTag.length;
+          }
+        } else {
+          depth--;
+          closeIdx = nextClose;
+          curPos = nextClose + closeTag.length;
+        }
       }
+
       const rawContent = this.src.slice(this.pos, closeIdx);
       this.pos = closeIdx + closeTag.length;
       return {

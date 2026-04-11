@@ -228,4 +228,13 @@ Run property-based tests only:
 npm test -- -t property
 ```
 
-All property tests are tagged with `// Feature: astro-template-engine, Property N: <description>`.
+## Coverage Status
+
+The project maintains high test coverage:
+
+- Statements: >95%
+- Branches: >90%
+- Functions: 100%
+- Lines: >95%
+
+Current validation pipeline requires meeting these thresholds.

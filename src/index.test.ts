@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Engine } from './index.js';
 import { parse } from './parser.js';
-import { TemplateAST, TemplateNode } from './types.js';
+import { compileAST } from './compiler.js';
+import { TemplateNode, RenderFunction } from './types.js';
 
 // ─── 1. renderString() with inline string template ──────────────────────────────────
 
@@ -88,9 +89,31 @@ const { title } = Astro.props;
     const engine = new Engine({ readFile });
     await expect(engine.render('/test.astro')).rejects.toThrow('ParseError');
   });
-});
+  it('throws when readFile is missing in render()', async () => {
+    const engine = new Engine();
+    await expect(engine.render('/test.astro')).rejects.toThrow(
+      'Engine.render() requires options.readFile to be configured'
+    );
+  });
 
-// ─── 3. create isolated instances ───────────────────────────────────────────
+  it('throws when readFile returns undefined', async () => {
+    const engine = new Engine({ readFile: () => Promise.resolve(undefined as unknown as string) });
+    await expect(engine.render('/test.astro')).rejects.toThrow('Could not read file');
+  });
+
+  it('handles component resolution when fileReader returns undefined', async () => {
+    const engine = new Engine({
+      readFile: (p) =>
+        p === '/main.astro'
+          ? Promise.resolve('---\nimport Child from "./Child.astro"\n---\n')
+          : Promise.resolve(undefined as unknown as string),
+      resolvePath: (_b, _s) => '/Child.astro',
+    });
+    await expect(engine.render('/main.astro')).rejects.toThrow(
+      'Cannot resolve component: ./Child.astro'
+    );
+  });
+});
 
 describe('Engine — isolated instances', () => {
   it('returns an object with render, renderString, and invalidate methods', () => {
@@ -186,6 +209,30 @@ describe('Engine — advanced features', () => {
     expect(result).toBe('<p>My Component</p>');
   });
 
+  it('registerComponent registers a pre-compiled component', async () => {
+    const engine = new Engine();
+    const myComp: RenderFunction = (async (props: Record<string, unknown>) =>
+      `<div>${props.name}</div>`) as RenderFunction;
+    myComp.stream = async function* (props: Record<string, unknown>) {
+      yield `<div>${props.name}</div>`;
+    };
+    engine.registerComponent('MyComp', myComp);
+
+    const result = await engine.renderString('<MyComp name="World" />');
+    expect(result).toBe('<div>World</div>');
+  });
+
+  it('renderStringStream returns an async iterator', async () => {
+    const engine = new Engine({ autoEscape: false });
+    const template = '<ul>{ [1, 2].map(i => "<li>" + i + "</li>").join("") }</ul>';
+    const stream = engine.renderStringStream(template);
+    let result = '';
+    for await (const chunk of stream) {
+      result += chunk;
+    }
+    expect(result).toBe('<ul><li>1</li><li>2</li></ul>');
+  });
+
   it('resolves component imports recursively', async () => {
     const files: Record<string, string> = {
       '/main.astro': `---
@@ -218,7 +265,9 @@ import Child from './Child.astro';
     });
 
     const engine = new Engine({ readFile, resolvePath });
-    await expect(engine.render('/A.astro')).rejects.toThrow('Circular dependency');
+    await expect(engine.render('/A.astro')).rejects.toThrow(
+      'Circular component dependency detected'
+    );
   });
 
   it('uses global components inside imported components', async () => {
@@ -245,7 +294,9 @@ import Child from './Child.astro';
     };
     const resolvePath = (_basePath: string, _specifier: string) => Promise.resolve('/Child.astro');
     const engine = new Engine({ readFile: (p) => Promise.resolve(files[p]), resolvePath });
-    await expect(engine.render('/main.astro')).rejects.toThrow('ParseError in ./Child.astro');
+    await expect(engine.render('/main.astro')).rejects.toThrow(
+      'Parse error in component ./Child.astro'
+    );
   });
 
   it('uses global components during resolution (coverage line 160)', async () => {
@@ -267,17 +318,23 @@ import Child from './Child.astro';
     await expect(engine.render('/main.astro')).rejects.toThrow('CompileError');
   });
 
-  it('fails to compile when template has unknown node type (engine test)', async () => {
-    const engine = new Engine();
+  it('fails to compile when template has unknown node type', async () => {
     const result = parse('<p>hi</p>');
     if (!result.ok) throw new Error('Parse failed');
     const ast = result.ast;
     ast.body.push({ type: 'invalid' } as unknown as TemplateNode);
-    await expect(
-      (
-        engine as unknown as { _compileAST: (ast: TemplateAST, path: string) => Promise<unknown> }
-      )._compileAST(ast, '')
-    ).rejects.toThrow('Unknown node type');
+    // We can't easily trigger this through public API without mocking parse,
+    // so we just check that compileAST handles it.
+    const cResult = compileAST(ast);
+    if (cResult.ok) throw new Error('Expected compile to fail');
+    expect(cResult.error.message).toContain('Unknown node type');
+  });
+
+  it('uses global components when rendering a file', async () => {
+    const engine = new Engine({ readFile: () => Promise.resolve('<GlobalComp />') });
+    engine.loadComponent('GlobalComp', '<span>Global</span>');
+    const result = await engine.render('/file.astro');
+    expect(result).toBe('<span>Global</span>');
   });
 
   it('invalidate() does nothing when no cache is present (coverage line 73)', () => {
@@ -285,5 +342,68 @@ import Child from './Child.astro';
     // Should not throw
     expect(() => engine.invalidate()).not.toThrow();
     expect(() => engine.invalidate('key')).not.toThrow();
+  });
+
+  it('provides helpful error message for syntax errors in frontmatter', async () => {
+    const engine = new Engine();
+    const template = '---\nconst x = ;\n---\n';
+    try {
+      await engine.renderString(template);
+      expect.fail('Should have thrown');
+    } catch (e: unknown) {
+      expect((e as Error).message).toContain('CompileError');
+    }
+  });
+
+  it('aggregates scripts and styles', async () => {
+    const engine = new Engine({ aggregateAssets: true });
+    engine.loadComponent(
+      'Comp',
+      '<style>.a{color:red}</style><script>console.log(1)</script><div>Comp</div>'
+    );
+    const template = '<Comp /><style>.b{color:blue}</style><div>Main</div>';
+    const result = await engine.renderStringFull(template);
+
+    expect(result.html).not.toContain('<style>');
+    expect(result.html).not.toContain('<script>');
+    expect(result.html).toContain('<div>Comp</div>');
+    expect(result.html).toContain('<div>Main</div>');
+
+    expect(result.styles).toHaveLength(2);
+    expect(result.styles).toContain('<style>.a{color:red}</style>');
+    expect(result.styles).toContain('<style>.b{color:blue}</style>');
+    expect(result.scripts).toHaveLength(1);
+    expect(result.scripts).toContain('<script>console.log(1)</script>');
+  });
+
+  it('renderFull and renderStream work with files', async () => {
+    const files: Record<string, string> = {
+      '/page.astro': '<style>h1{color:red}</style><h1>Title</h1>',
+    };
+    const engine = new Engine({
+      readFile: (path) => Promise.resolve(files[path]),
+      aggregateAssets: true,
+    });
+
+    const full = await engine.renderFull('/page.astro');
+    expect(full.html).toBe('<h1>Title</h1>');
+    expect(full.styles).toContain('<style>h1{color:red}</style>');
+
+    const chunks: string[] = [];
+    for await (const chunk of engine.renderStream('/page.astro')) {
+      if (typeof chunk === 'string') chunks.push(chunk);
+    }
+    expect(chunks.join('')).toBe('<h1>Title</h1>');
+  });
+
+  it('formatAsset handles boolean attributes', async () => {
+    const engine = new Engine({ aggregateAssets: true });
+    // @ts-expect-error - accessing private method for test
+    const result = engine.formatAsset({
+      type: 'script',
+      content: 'console.log(1)',
+      attrs: [{ name: 'async', value: true }],
+    });
+    expect(result).toBe('<script async>console.log(1)</script>');
   });
 });

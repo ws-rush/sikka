@@ -1,5 +1,5 @@
 import { parse } from './parser.js';
-import { compileAST } from './compiler.js';
+import { compile } from './compiler.js';
 import { createCache, hashTemplate } from './cache.js';
 export class Engine {
     options;
@@ -7,26 +7,117 @@ export class Engine {
     globalComponents = {};
     constructor(options = {}) {
         this.options = options;
-        this.cache = options.cache ? createCache(options.cacheSize) : null;
+        if (options.cache === true || (options.cache === undefined && options.cacheSize)) {
+            this.cache = createCache(options.cacheSize);
+        }
+        else if (typeof options.cache === 'object') {
+            this.cache = options.cache;
+        }
+        else {
+            this.cache = null;
+        }
     }
     async renderString(template, props = {}) {
         const fn = await this.compileString(template);
-        return await fn(props, {});
+        return await fn.render(props, {});
+    }
+    async renderStringFull(template, props = {}) {
+        const fn = await this.compileString(template);
+        const scripts = [];
+        const styles = [];
+        let html = '';
+        for await (const chunk of fn.stream(props, {})) {
+            if (typeof chunk === 'string') {
+                html += chunk;
+            }
+            else if (chunk.type === 'script') {
+                scripts.push(this.formatAsset(chunk));
+            }
+            else if (chunk.type === 'style') {
+                styles.push(this.formatAsset(chunk));
+            }
+        }
+        return { html, scripts, styles };
     }
     async renderStringAsync(template, props = {}) {
         return this.renderString(template, props);
     }
+    async *renderStringStream(template, props = {}) {
+        const fn = await this.compileString(template);
+        yield* fn.stream(props, {});
+    }
     async render(name, props = {}) {
         const fn = await this.compileFile(name);
-        return await fn(props, {});
+        return await fn.render(props, {});
+    }
+    async renderFull(name, props = {}) {
+        const fn = await this.compileFile(name);
+        const scripts = [];
+        const styles = [];
+        let html = '';
+        for await (const chunk of fn.stream(props, {})) {
+            if (typeof chunk === 'string') {
+                html += chunk;
+            }
+            else if (chunk.type === 'script') {
+                scripts.push(this.formatAsset(chunk));
+            }
+            else if (chunk.type === 'style') {
+                styles.push(this.formatAsset(chunk));
+            }
+        }
+        return { html, scripts, styles };
     }
     async renderAsync(name, props = {}) {
         return this.render(name, props);
     }
+    async *renderStream(name, props = {}) {
+        const fn = await this.compileFile(name);
+        yield* fn.stream(props, {});
+    }
+    formatAsset(asset) {
+        const tag = asset.type;
+        let attrs = '';
+        for (const attr of asset.attrs) {
+            if ('type' in attr) {
+                // Spread not supported here yet or handled during compile?
+                // Actually asset aggregation usually happens after attributes are evaluated.
+            }
+            else {
+                if (attr.value === true)
+                    attrs += ` ${attr.name}`;
+                else
+                    attrs += ` ${attr.name}="${attr.value}"`;
+            }
+        }
+        return `<${tag}${attrs}>${asset.content}</${tag}>`;
+    }
     loadComponent(name, template) {
-        // Compile it and store it. Since it's async, it will be added to globalComponents once done.
-        // If it's used before it's finished, the resolution will wait for it if we use a promise registry.
         this.globalComponents[name] = this.compileString(template);
+    }
+    registerComponent(name, fn) {
+        if (typeof fn === 'function') {
+            const wrapped = fn;
+            if (!wrapped.render) {
+                wrapped.render = async (props, slots) => {
+                    let out = '';
+                    for await (const chunk of wrapped.stream(props, slots)) {
+                        if (typeof chunk === 'string')
+                            out += chunk;
+                    }
+                    return out;
+                };
+            }
+            if (!wrapped.stream) {
+                wrapped.stream = async function* (props, slots) {
+                    yield await wrapped.render(props, slots);
+                };
+            }
+            this.globalComponents[name] = wrapped;
+        }
+        else {
+            this.globalComponents[name] = fn;
+        }
     }
     invalidate(key) {
         if (this.cache) {
@@ -49,87 +140,61 @@ export class Engine {
         if (!parseResult.ok) {
             throw new Error(`ParseError: ${parseResult.error.message}`);
         }
-        const fn = await this._compileAST(parseResult.ast, basePath);
-        if (this.cache && cacheKey) {
-            this.cache.set(cacheKey, fn);
+        const resolvedComponents = {};
+        for (const [name, fnOrPromise] of Object.entries(this.globalComponents)) {
+            resolvedComponents[name] = await fnOrPromise;
         }
-        return fn;
-    }
-    async compileFile(name) {
-        if (this.cache) {
-            const cached = this.cache.get(name);
-            if (cached)
-                return cached;
-        }
-        const content = await this.options.readFile(name);
-        const parseResult = parse(content);
-        if (!parseResult.ok) {
-            throw new Error(`ParseError in ${name}: ${parseResult.error.message}`);
-        }
-        const fn = await this._compileAST(parseResult.ast, name);
-        if (this.cache) {
-            this.cache.set(name, fn);
-        }
-        return fn;
-    }
-    async _compileAST(ast, basePath) {
-        const components = {};
-        for (const [name, fn] of Object.entries(this.globalComponents)) {
-            components[name] = await fn;
-        }
-        if (ast.imports.length > 0) {
-            const resolved = await this._resolveComponents(ast.imports, basePath);
-            Object.assign(components, resolved);
-        }
-        const result = compileAST(ast, {
-            components,
-            varName: this.options.varName,
-            autoEscape: this.options.autoEscape,
-            autoFilter: this.options.autoFilter,
-            filterFunction: this.options.filterFunction,
-            debug: this.options.debug,
+        const result = await compile(parseResult.ast, {
+            ...this.options,
+            components: resolvedComponents,
+            basePath,
+            fileReader: this.options.readFile,
         });
         if (!result.ok) {
             throw new Error(`CompileError: ${result.error.message}`);
         }
+        if (this.cache && cacheKey) {
+            this.cache.set(cacheKey, result.fn);
+        }
         return result.fn;
     }
-    async _resolveComponents(imports, basePath, inProgress = new Set()) {
-        const components = {};
-        for (const imp of imports) {
-            if (this.globalComponents[imp.localName]) {
-                components[imp.localName] = await this.globalComponents[imp.localName];
-                continue;
-            }
-            const resolvedPath = await this.options.resolvePath(basePath, imp.specifier);
-            if (inProgress.has(resolvedPath)) {
-                throw new Error(`Circular dependency: ${[...inProgress, resolvedPath].join(' -> ')}`);
-            }
-            const source = await this.options.readFile(resolvedPath);
-            const parseResult = parse(source);
-            if (!parseResult.ok) {
-                throw new Error(`ParseError in ${imp.specifier}: ${parseResult.error.message}`);
-            }
-            const childInProgress = new Set([...inProgress, resolvedPath]);
-            const childComponents = await this._resolveComponents(parseResult.ast.imports, resolvedPath, childInProgress);
-            const resolvedChildComponents = {};
-            for (const [name, fn] of Object.entries(this.globalComponents)) {
-                resolvedChildComponents[name] = await fn;
-            }
-            const compileResult = compileAST(parseResult.ast, {
-                components: { ...resolvedChildComponents, ...childComponents },
-                varName: this.options.varName,
-                autoEscape: this.options.autoEscape,
-                autoFilter: this.options.autoFilter,
-                filterFunction: this.options.filterFunction,
-                debug: this.options.debug,
-            });
-            if (!compileResult.ok) {
-                throw new Error(`CompileError in ${imp.specifier}: ${compileResult.error.message}`);
-            }
-            components[imp.localName] = compileResult.fn;
+    async compileFile(name) {
+        const fullPath = this.options.views && !name.startsWith('/') && !name.includes(':')
+            ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
+            : name;
+        if (this.cache) {
+            const cached = this.cache.get(fullPath);
+            if (cached)
+                return cached;
         }
-        return components;
+        if (!this.options.readFile) {
+            throw new Error('Engine.render() requires options.readFile to be configured');
+        }
+        const content = await this.options.readFile(fullPath);
+        if (content === undefined || content === null) {
+            throw new Error(`Could not read file: ${fullPath}`);
+        }
+        const parseResult = parse(content);
+        if (!parseResult.ok) {
+            throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
+        }
+        const resolvedComponents = {};
+        for (const [name, fnOrPromise] of Object.entries(this.globalComponents)) {
+            resolvedComponents[name] = await fnOrPromise;
+        }
+        const result = await compile(parseResult.ast, {
+            ...this.options,
+            components: resolvedComponents,
+            basePath: fullPath,
+            fileReader: this.options.readFile,
+        });
+        if (!result.ok) {
+            throw new Error(`CompileError in ${fullPath}: ${result.error.message}`);
+        }
+        if (this.cache) {
+            this.cache.set(fullPath, result.fn);
+        }
+        return result.fn;
     }
 }
 //# sourceMappingURL=index.js.map

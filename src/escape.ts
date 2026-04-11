@@ -9,6 +9,7 @@
 
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
 export class RawHtml {
+  __isRawHtml = true;
   constructor(public readonly value: string) {}
 }
 
@@ -33,7 +34,8 @@ const ESCAPE_RE = /[&<>"']/g;
  */
 export function escapeHtml(value: unknown): string {
   if (value == null || value === true || value === false) return '';
-  if (value instanceof RawHtml) return value.value;
+  if (value && typeof value === 'object' && (value as { __isRawHtml?: boolean }).__isRawHtml)
+    return (value as { value: string }).value;
   if (Array.isArray(value)) {
     return value.map(escapeHtml).join('');
   }

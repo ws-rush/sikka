@@ -49,7 +49,10 @@ const { name } = data.props;
       autoFilter: true,
       filterFunction: (v) => (typeof v === 'string' ? v.toUpperCase() : v),
     });
-    const result = await engine.renderString('<h1>{name}</h1>', { name: 'world' });
+    const result = await engine.renderString(
+      '---\nconst { name } = Astro.props;\n---\n<h1>{name}</h1>',
+      { name: 'world' }
+    );
     expect(result).toBe('<h1>WORLD</h1>');
   });
 
