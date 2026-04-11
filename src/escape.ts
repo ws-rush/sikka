@@ -1,0 +1,63 @@
+/**
+ * HTML Escaper — Requirements 3.1, 3.2, 3.3, 3.4
+ *
+ * Provides:
+ *   - `RawHtml`  — a wrapper that marks content as trusted/pre-escaped
+ *   - `escapeHtml` — escapes untrusted values before HTML insertion
+ *   - `html`     — tagged template literal that produces a `RawHtml` instance
+ */
+
+/** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
+export class RawHtml {
+  constructor(public readonly value: string) {}
+}
+
+const ESCAPE_MAP: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+const ESCAPE_RE = /[&<>"']/g;
+
+/**
+ * Escape an untrusted value for safe HTML insertion.
+ *
+ * - `null` / `undefined`  → `""`          (Requirement 3.4)
+ * - `RawHtml` instance    → `.value` verbatim (Requirement 3.2)
+ * - Array                 → recursively escape and join elements without commas
+ * - number / boolean      → coerce to string, then escape (Requirement 3.3)
+ * - string                → escape `& < > " '` (Requirement 3.1)
+ */
+export function escapeHtml(value: unknown): string {
+  if (value == null) return '';
+  if (value instanceof RawHtml) return value.value;
+  if (Array.isArray(value)) {
+    return value.map(escapeHtml).join('');
+  }
+  return String(value).replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+}
+
+/**
+ * Tagged template literal that assembles a trusted HTML string.
+ * Each interpolated value is passed through `escapeHtml` so that
+ * dynamic parts are escaped while the static template strings are
+ * treated as trusted markup.
+ *
+ * Returns a `RawHtml` instance so the result is never double-escaped
+ * when used inside another `html` tag or passed to `escapeHtml`.
+ *
+ * Requirement 3.2
+ */
+export function html(strings: TemplateStringsArray, ...values: unknown[]): RawHtml {
+  let result = '';
+  for (let i = 0; i < strings.length; i++) {
+    result += strings[i];
+    if (i < values.length) {
+      result += escapeHtml(values[i]);
+    }
+  }
+  return new RawHtml(result);
+}
