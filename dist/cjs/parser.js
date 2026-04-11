@@ -1,5 +1,5 @@
 /**
- * Parser — Requirements 1.1–1.7
+ * Parser
  *
  * Parses Astro-like template source into a TemplateAST.
  *
@@ -68,15 +68,14 @@ function extractFrontmatter(source) {
     };
 }
 // ─── Import collection ────────────────────────────────────────────────────────
-// Simpler pattern to capture the default/named local identifier
-const IMPORT_LOCAL_RE = /^\s*import\s+(\w+)(?:\s*,\s*(?:\{[^}]*\})?)?\s+from\s+['"]([^'"]+)['"]/;
+const IMPORT_LOCAL_RE = /^\s*import\s+(?:(\w+)|(?:\{[^}]*\}))\s+from\s+['"]([^'"]+)['"]/;
 function collectImports(fmSource) {
     const imports = [];
     const lines = fmSource.split('\n');
     for (const line of lines) {
         const m = IMPORT_LOCAL_RE.exec(line);
         if (m) {
-            imports.push({ localName: m[1], specifier: m[2] });
+            imports.push({ localName: m[1] || 'default', specifier: m[2] });
         }
     }
     return imports;
@@ -155,7 +154,10 @@ class Parser {
             if (this.at('</')) {
                 return { ok: true, node: null };
             }
-            return this.parseElement();
+            // Check if it's followed by a valid tag name start char or > for fragment
+            if (/[\w!/>]/.test(this.peek(1))) {
+                return this.parseElement();
+            }
         }
         // Text node
         return this.parseText();
@@ -163,7 +165,16 @@ class Parser {
     // ── Text node ──────────────────────────────────────────────────────────────
     parseText() {
         let value = '';
-        while (!this.eof() && this.peek() !== '<' && this.peek() !== '{') {
+        while (!this.eof()) {
+            const ch = this.peek();
+            if (ch === '{')
+                break;
+            if (ch === '<') {
+                // If it's a comment, expression, closing tag, or valid tag start, break
+                if (this.at('<!--') || this.at('</') || /[\w!/>]/.test(this.peek(1))) {
+                    break;
+                }
+            }
             value += this.advance();
         }
         return { ok: true, node: { type: 'text', value } };
@@ -174,9 +185,9 @@ class Parser {
         if (end === -1) {
             return { ok: false, error: this.error('Unclosed HTML comment') };
         }
+        const html = this.src.slice(this.pos, end + 3);
         this.pos = end + 3;
-        // Comments are dropped (return null — caller skips nulls)
-        return { ok: true, node: null };
+        return { ok: true, node: { type: 'raw', html } };
     }
     // ── Expression node ────────────────────────────────────────────────────────
     parseExpression() {
@@ -262,7 +273,7 @@ class Parser {
         const start = this.pos;
         this.advance(); // consume '<'
         const tag = this.readTagName();
-        if (!tag) {
+        if (!tag && this.peek() !== '>' && !this.at('/>')) {
             return {
                 ok: false,
                 error: makeError('Expected tag name after `<`', this.full, this.bodyOffset + start),
@@ -270,16 +281,18 @@ class Parser {
         }
         // ── <script> ──────────────────────────────────────────────────────────
         if (tag === 'script') {
-            return this.parseRawTag('script', (content) => ({
+            return this.parseRawTag('script', (content, attrs) => ({
                 type: 'script',
                 content,
+                attrs,
             }));
         }
         // ── <style> ───────────────────────────────────────────────────────────
         if (tag === 'style') {
-            return this.parseRawTag('style', (content) => ({
+            return this.parseRawTag('style', (content, attrs) => ({
                 type: 'style',
                 content,
+                attrs,
             }));
         }
         // ── <slot> ────────────────────────────────────────────────────────────
@@ -291,6 +304,9 @@ class Parser {
     }
     readTagName() {
         let name = '';
+        if (this.peek() === '!') {
+            name += this.advance();
+        }
         while (!this.eof() && /[\w\-.:]/.test(this.peek())) {
             name += this.advance();
         }
@@ -299,7 +315,7 @@ class Parser {
     // ── <script> / <style> verbatim content ───────────────────────────────────
     parseRawTag(tagName, build) {
         // Parse (and discard) attributes then consume '>'
-        const attrsResult = this.parseAttributes();
+        const attrsResult = this.parseAttributes(tagName);
         if (!attrsResult.ok)
             return attrsResult;
         if (this.peek() === '/') {
@@ -326,13 +342,13 @@ class Parser {
     }
     // ── <slot> ────────────────────────────────────────────────────────────────
     parseSlot() {
-        const attrsResult = this.parseAttributes();
+        const attrsResult = this.parseAttributes('slot');
         if (!attrsResult.ok)
             return attrsResult;
         // Determine slot name from `name="..."` attribute
         let name = '';
         for (const attr of attrsResult.attrs) {
-            if (attr.name === 'name' && typeof attr.value === 'string') {
+            if (!('type' in attr) && attr.name === 'name' && typeof attr.value === 'string') {
                 name = attr.value;
             }
         }
@@ -349,11 +365,16 @@ class Parser {
                     this.pos += 7;
                     return { ok: true, node: { type: 'slot', name, children } };
                 }
+                const childStartPos = this.pos;
                 const childResult = this.parseNode();
                 if (!childResult.ok)
                     return childResult;
-                if (childResult.node !== null)
-                    children.push(childResult.node);
+                if (childResult.node === null) {
+                    if (this.pos === childStartPos)
+                        break;
+                    continue;
+                }
+                children.push(childResult.node);
             }
             return { ok: false, error: this.error('Unclosed <slot> tag') };
         }
@@ -363,15 +384,23 @@ class Parser {
     }
     // ── Generic element ───────────────────────────────────────────────────────
     parseGenericElement(tag, start) {
-        const attrsResult = this.parseAttributes();
+        const attrsResult = this.parseAttributes(tag);
         if (!attrsResult.ok)
             return attrsResult;
+        // Determine if this is a raw tag (is:raw)
+        const isRaw = attrsResult.attrs.some((a) => !('type' in a) && a.name === 'is:raw');
         // Self-closing
         if (this.at('/>')) {
             this.advance(2);
             return {
                 ok: true,
-                node: { type: 'element', tag, attrs: attrsResult.attrs, children: [], selfClosing: true },
+                node: {
+                    type: 'element',
+                    tag,
+                    attrs: attrsResult.attrs.filter((a) => 'type' in a || a.name !== 'is:raw'),
+                    children: [],
+                    selfClosing: true,
+                },
             };
         }
         if (this.peek() !== '>') {
@@ -381,6 +410,28 @@ class Parser {
             };
         }
         this.advance(); // >
+        if (isRaw) {
+            if (tag === 'Fragment' || tag === '') {
+                return { ok: false, error: this.error('is:raw is not supported on Fragments') };
+            }
+            const closeTag = `</${tag}>`;
+            const closeIdx = this.src.indexOf(closeTag, this.pos);
+            if (closeIdx === -1) {
+                return { ok: false, error: this.error(`Unclosed <${tag}> tag with is:raw`) };
+            }
+            const rawContent = this.src.slice(this.pos, closeIdx);
+            this.pos = closeIdx + closeTag.length;
+            return {
+                ok: true,
+                node: {
+                    type: 'element',
+                    tag,
+                    attrs: attrsResult.attrs.filter((a) => 'type' in a || a.name !== 'is:raw'),
+                    children: [{ type: 'raw', html: rawContent }],
+                    selfClosing: false,
+                },
+            };
+        }
         // Void elements — no children, no closing tag
         if (VOID_ELEMENTS.has(tag)) {
             return {
@@ -391,31 +442,53 @@ class Parser {
         // Parse children until </tag>
         const children = [];
         while (!this.eof()) {
-            if (this.at(`</${tag}`)) {
-                // Consume closing tag
-                this.pos += 2 + tag.length; // </tag
-                this.skipWhitespace();
-                if (this.peek() !== '>') {
-                    return {
-                        ok: false,
-                        error: this.error(`Expected '>' to close </${tag}>`),
-                    };
+            let isClosingTag = false;
+            if (tag === '') {
+                if (this.at('</>')) {
+                    isClosingTag = true;
+                    this.pos += 3;
                 }
-                this.advance(); // >
+            }
+            else {
+                if (this.at(`</${tag}`) &&
+                    /[\s>]/.test(this.full[this.bodyOffset + this.pos + 2 + tag.length] || '')) {
+                    isClosingTag = true;
+                    this.pos += 2 + tag.length; // </tag
+                    this.skipWhitespace();
+                    if (this.peek() !== '>') {
+                        return {
+                            ok: false,
+                            error: this.error(`Expected '>' to close </${tag}>`),
+                        };
+                    }
+                    this.advance(); // >
+                }
+            }
+            if (isClosingTag) {
                 return {
                     ok: true,
                     node: { type: 'element', tag, attrs: attrsResult.attrs, children, selfClosing: false },
                 };
             }
-            // Closing tag for an ancestor — stop parsing children
+            // Closing tag for an ancestor or mismatched — stop parsing children
             if (this.at('</')) {
-                break;
+                return {
+                    ok: true,
+                    node: { type: 'element', tag, attrs: attrsResult.attrs, children, selfClosing: false },
+                };
             }
+            const childStartPos = this.pos;
             const childResult = this.parseNode();
             if (!childResult.ok)
                 return childResult;
-            if (childResult.node !== null)
-                children.push(childResult.node);
+            if (childResult.node === null) {
+                // We hit a closing tag that didn't match, or a comment.
+                // If pos didn't advance, we must break to avoid infinite loop.
+                if (this.pos === childStartPos)
+                    break;
+                continue;
+            }
+            children.push(childResult.node);
         }
         return {
             ok: false,
@@ -423,17 +496,34 @@ class Parser {
         };
     }
     // ── Attribute parsing ─────────────────────────────────────────────────────
-    parseAttributes() {
+    parseAttributes(tagName) {
         const attrs = [];
         while (!this.eof()) {
             this.skipWhitespace();
             // End of opening tag
-            if (this.peek() === '>' || this.at('/>'))
+            if (this.peek() === '>' ||
+                this.at('/>') ||
+                (tagName === 'script' || tagName === 'style' ? this.peek() === '/' : false))
                 break;
+            if (this.at('{...')) {
+                const exprResult = this.parseExpression();
+                if (!exprResult.ok)
+                    return exprResult;
+                let expr = exprResult.node.source.trim();
+                if (expr.startsWith('...')) {
+                    expr = expr.slice(3).trim();
+                }
+                attrs.push({ type: 'spread', expression: expr });
+                continue;
+            }
             // Attribute name
             const name = this.readAttrName();
-            if (!name)
-                break;
+            if (!name) {
+                // If we are at EOF or hit unexpected char and not at tag end, it's an error
+                if (this.eof())
+                    break;
+                return { ok: false, error: this.error('Expected attribute name') };
+            }
             this.skipWhitespace();
             // Boolean attribute (no value)
             if (this.peek() !== '=') {
@@ -488,7 +578,8 @@ class Parser {
     }
 }
 // ─── Void elements (HTML5) ────────────────────────────────────────────────────
-const VOID_ELEMENTS = new Set([
+export const VOID_ELEMENTS = new Set([
+    '!DOCTYPE',
     'area',
     'base',
     'br',
@@ -510,8 +601,6 @@ const VOID_ELEMENTS = new Set([
  *
  * Returns `{ ok: true, ast }` on success or `{ ok: false, error }` on failure.
  * All errors include a `line` and `column` pointing to the fault location.
- *
- * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7
  */
 export function parse(source) {
     // 1. Extract frontmatter

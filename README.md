@@ -72,13 +72,27 @@ const template = `
 const html = await engine.renderString(template);
 ```
 
+## Core Principles
+
+- **Runtime-agnostic core**: No dependency on Node.js built-ins. File I/O and path resolution are injected via interfaces.
+- **Security by default**: Every interpolated value is HTML-escaped automatically.
+- **Compile-then-cache**: Templates are compiled once to a JavaScript closure and cached for subsequent renders.
+
 ## Syntax Features
 
-- **class:list**: `<div class:list={['a', { b: true }]} />` → `<div class="a b" />`
-- **style object**: `<div style={{ color: 'red' }} />` → `<div style="color:red" />`
-- **Slots fallback**: `<slot>Default content</slot>`
-- **Custom varName**: `new Engine({ varName: 'data' })` allows using `data.props` instead of `Astro.props`.
-- **Auto Escaping & Filtering**: Control how values are processed via `autoEscape`, `autoFilter`, and `filterFunction`.
+- **Frontmatter**: Use `---` fences at the top of the file for component logic and imports. Supports `await` and types.
+- **JSX-like Body**: Standard HTML tags mixed with JavaScript expressions in curly braces `{...}`.
+- **Component Composition**: Import `.astro` files in the frontmatter and use them as tags (e.g., `<MyComponent />`).
+- **Slots**:
+  - Default: `<slot />`
+  - Named: `<slot name="header" />`
+  - Fallback content: `<slot>Default content</slot>`
+- **Conditional Rendering**: `{condition && <p>Visible</p>}` or `{condition ? <A /> : <B />}`.
+- **Loops**: `{items.map(item => <li>{item}</li>)}`.
+- **Special Tags**: `<script>` and `<style>` tags are preserved verbatim in the output.
+- **`class:list`**: `<div class:list={['a', { b: true }]} />` → `<div class="a b" />`
+- **`style` objects**: `<div style={{ color: 'red' }} />` → `<div style="color:red" />`
+- **Auto Escaping**: Control how values are processed via `autoEscape` and `autoFilter` options.
 
 ## Public API Reference
 
@@ -113,15 +127,3 @@ Registers a global component.
 ### `engine.invalidate(key?): void`
 
 Clears specific or all cache entries.
-
-### `html` (Tagged Template Literal)
-
-Marks content as trusted and performs escaping on interpolated values. Returns a `RawHtml` instance.
-
-### `escapeHtml(value): string`
-
-Escapes a value for safe insertion into HTML. Handles strings, numbers, booleans, and `RawHtml`.
-
-### `RawHtml` (Class)
-
-A wrapper for pre-rendered or trusted HTML that should skip escaping.

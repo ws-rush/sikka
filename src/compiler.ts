@@ -1,5 +1,5 @@
 /**
- * Compiler — Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 6.3, 7.1, 7.4
+ * Compiler
  *
  * Transforms a TemplateAST into a RenderFunction JS closure.
  *
@@ -15,12 +15,13 @@
  */
 
 import { escapeHtml, RawHtml } from './escape.js';
-import { parse } from './parser.js';
+import { parse, VOID_ELEMENTS } from './parser.js';
 import type {
   TemplateAST,
   TemplateNode,
   ElementNode,
   AttrNode,
+  SpreadAttrNode,
   CompileResult,
   CompileError,
   RenderFunction,
@@ -28,7 +29,7 @@ import type {
   ComponentImport,
 } from './types.js';
 
-export interface CompileOptions {
+interface CompileOptions {
   /** Resolved component render functions keyed by local name. */
   components?: Record<string, RenderFunction>;
   /** Custom name for the props variable (default: "Astro"). */
@@ -58,15 +59,8 @@ type ResolveResult =
 
 /**
  * Recursively resolve and compile all component imports in an AST.
- *
- * Requirements: 2.6, 2.8, 7.1, 7.4
- *
- * @param imports     The `imports` array from the AST being compiled.
- * @param fileReader  Injectable file-reader for loading component source.
- * @param basePath    The path of the file that owns these imports (for relative resolution).
- * @param inProgress  Set of paths currently being compiled (cycle detection).
  */
-export async function resolveComponents(
+async function resolveComponents(
   imports: ComponentImport[],
   fileReader: FileReader,
   basePath: string,
@@ -75,10 +69,8 @@ export async function resolveComponents(
   const components: Record<string, RenderFunction> = {};
 
   for (const imp of imports) {
-    // Resolve the specifier relative to the current file's directory.
     const resolvedPath = resolvePath(basePath, imp.specifier);
 
-    // Circular dependency check — Requirement 7.4
     if (inProgress.has(resolvedPath)) {
       const cycle = [...inProgress, resolvedPath];
       return {
@@ -91,7 +83,6 @@ export async function resolveComponents(
       };
     }
 
-    // Load the component source — Requirement 2.8 / 7.1
     let source: string;
     try {
       source = await fileReader(resolvedPath);
@@ -105,7 +96,6 @@ export async function resolveComponents(
       };
     }
 
-    // Parse the component source
     const parseResult = parse(source);
     if (!parseResult.ok) {
       return {
@@ -117,7 +107,6 @@ export async function resolveComponents(
       };
     }
 
-    // Recursively resolve this component's own imports
     const childInProgress = new Set([...inProgress, resolvedPath]);
     const childResult = await resolveComponents(
       parseResult.ast.imports,
@@ -129,7 +118,6 @@ export async function resolveComponents(
       return childResult;
     }
 
-    // Compile the component
     const compileResult = compileAST(parseResult.ast, { components: childResult.components });
     if (!compileResult.ok) {
       return { ok: false, error: compileResult.error };
@@ -143,11 +131,6 @@ export async function resolveComponents(
 
 /**
  * Higher-level compile entry point: resolves component imports then compiles the AST.
- *
- * Requirements: 2.6, 2.8, 7.1, 7.4, 6.3
- *
- * @param ast        The parsed TemplateAST.
- * @param options    Compile options including an optional fileReader and basePath.
  */
 export async function compile(
   ast: TemplateAST,
@@ -158,7 +141,6 @@ export async function compile(
   if (ast.imports.length > 0) {
     const fileReader = options?.fileReader;
     if (!fileReader) {
-      // No file reader — any import is unresolvable
       const first = ast.imports[0];
       return {
         ok: false,
@@ -174,80 +156,51 @@ export async function compile(
     if (!result.ok) {
       return result;
     }
-    // Merge resolved components with any pre-supplied ones
     components = { ...result.components, ...components };
   }
 
   return compileAST(ast, { ...options, components });
 }
 
-// ─── Path resolution helper ───────────────────────────────────────────────────
-
-/**
- * Resolve a relative specifier against a base file path.
- * Keeps the engine free of Node.js `path` module — uses simple string manipulation.
- */
 function resolvePath(basePath: string, specifier: string): string {
-  // If specifier is absolute or has no relative prefix, return as-is
   if (!specifier.startsWith('./') && !specifier.startsWith('../')) {
     return specifier;
   }
-
-  // Get the directory of the base path
   const lastSlash = basePath.lastIndexOf('/');
   const baseDir = lastSlash >= 0 ? basePath.slice(0, lastSlash) : '';
-
-  // Join and normalise
   const joined = baseDir ? `${baseDir}/${specifier}` : specifier;
   return normalisePath(joined);
 }
 
-/**
- * Normalise a path by resolving `.` and `..` segments.
- */
 function normalisePath(path: string): string {
   const parts = path.split('/');
   const resolved: string[] = [];
   for (const part of parts) {
-    if (part === '.' || part === '') {
-      // skip
-    } else if (part === '..') {
+    if (part === '.' || part === '') continue;
+    if (part === '..') {
       resolved.pop();
     } else {
       resolved.push(part);
     }
   }
-  // Preserve leading slash if present
   const prefix = path.startsWith('/') ? '/' : '';
   return prefix + resolved.join('/');
 }
 
-// AsyncFunction constructor — supports await in the function body.
 async function __dummyAsync() {}
-__dummyAsync(); // Call it to ensure it's "covered"
+__dummyAsync();
 const AsyncFunction = __dummyAsync.constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<unknown>;
 
 /**
  * Compile a TemplateAST into a RenderFunction.
- *
- * Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7
  */
 export function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
   try {
     const components = options?.components ?? {};
     const body = buildFunctionBody(ast, components, options);
 
-    // The async render function receives injected helpers as named parameters:
-    //   props        — the props object
-    //   slots        — pre-rendered slot content strings keyed by slot name
-    //   __escape     — escapeHtml helper
-    //   __RawHtml    — RawHtml class
-    //   __components — resolved child component render functions
-    //   __classList  — class:list helper
-    //   __styleObject — style object helper
-    //   __filter      - optional filter function
     const asyncFn = new AsyncFunction(
       'props',
       'slots',
@@ -262,6 +215,7 @@ export function compileAST(ast: TemplateAST, options?: CompileOptions): CompileR
 
     const classListHelper = (arg: ClassListArg): string => {
       if (typeof arg === 'string') return arg;
+      if (arg instanceof Set) return Array.from(arg).join(' ');
       if (Array.isArray(arg)) return arg.map(classListHelper).filter(Boolean).join(' ');
       if (arg && typeof arg === 'object') {
         return Object.entries(arg)
@@ -275,6 +229,9 @@ export function compileAST(ast: TemplateAST, options?: CompileOptions): CompileR
     const styleObjectHelper = (arg: StyleObjectArg): string => {
       if (typeof arg === 'string') return arg;
       if (arg && typeof arg === 'object') {
+        if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
+          return arg.toString();
+        }
         return Object.entries(arg)
           .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}:${v}`)
           .join(';');
@@ -316,17 +273,6 @@ export function compileAST(ast: TemplateAST, options?: CompileOptions): CompileR
   }
 }
 
-// ─── Function body builder ────────────────────────────────────────────────────
-
-/**
- * Build the JS function body string for the compiled render function.
- *
- * The body:
- *   1. Opens a `with(props)` block so frontmatter can reference props by name
- *   2. Injects the frontmatter source verbatim
- *   3. Emits each template body node as `__out +=` statements
- *   4. Returns `__out`
- */
 function buildFunctionBody(
   ast: TemplateAST,
   components: Record<string, RenderFunction>,
@@ -337,22 +283,26 @@ function buildFunctionBody(
 
   lines.push('let __out = "";');
   lines.push('');
-
-  // Open with(props) block — sloppy mode (AsyncFunction via constructor) allows this.
-  // This makes all prop keys available as bare identifiers in the frontmatter.
-  lines.push(`const ${varName} = { props };`);
+  lines.push(
+    `const ${varName} = { props, slots: { ...slots, render: async (name) => slots[name] || "" } };`
+  );
   lines.push('with (props) {');
   lines.push('');
 
-  // Inject components into local scope
   for (const imp of ast.imports) {
     lines.push(`const ${imp.localName} = __components[${JSON.stringify(imp.localName)}];`);
   }
 
   if (ast.frontmatter.source.trim()) {
     lines.push('// --- frontmatter ---');
-    // Remove import statements from frontmatter source to prevent runtime errors
-    const cleanFM = ast.frontmatter.source.replace(/^\s*import\s+.*from\s+['"].*['"];?\s*$/gm, '');
+    const cleanFM = ast.frontmatter.source
+      .replace(/^\s*import\s+.*from\s+['"].*['"];?\s*$/gm, '')
+      .replace(/^\s*export\s+/gm, '')
+      .replace(
+        /:\s*(string|number|boolean|any|object|unknown|never|void|undefined|null)(\[\])?/g,
+        ''
+      )
+      .replace(/^\s*(interface|type)\s+.*$/gm, '');
     lines.push(cleanFM);
     lines.push('');
   }
@@ -372,8 +322,6 @@ function buildFunctionBody(
   return lines.join('\n');
 }
 
-// ─── Node emitters ────────────────────────────────────────────────────────────
-
 function emitNode(
   node: TemplateNode,
   components: Record<string, RenderFunction>,
@@ -384,9 +332,11 @@ function emitNode(
       return emitText(node.value);
 
     case 'expression': {
-      // Requirements 2.3, 2.4, 2.5 — escape the expression result
       const source = transformExpression(node.source);
-      let expr = `__filter(${source})`;
+      if (/^\s*(\/\*[\s\S]*\*\/|\/\/.*)\s*$/.test(source)) {
+        return [];
+      }
+      let expr = `__filter(await (${source}))`;
       if (options?.autoEscape !== false) {
         expr = `__escape(${expr})`;
       }
@@ -417,11 +367,23 @@ function emitNode(
       return lines;
     }
 
-    case 'script':
-      return [`__out += ${JSON.stringify('<script>' + node.content + '</script>')};`];
+    case 'script': {
+      const lines: string[] = [`__out += "<script";`];
+      for (const attr of node.attrs) {
+        lines.push(...emitAttr(attr));
+      }
+      lines.push(`__out += ">" + ${JSON.stringify(node.content)} + "</script>";`);
+      return lines;
+    }
 
-    case 'style':
-      return [`__out += ${JSON.stringify('<style>' + node.content + '</style>')};`];
+    case 'style': {
+      const lines: string[] = [`__out += "<style";`];
+      for (const attr of node.attrs) {
+        lines.push(...emitAttr(attr));
+      }
+      lines.push(`__out += ">" + ${JSON.stringify(node.content)} + "</style>";`);
+      return lines;
+    }
 
     case 'raw':
       return [`__out += ${JSON.stringify(node.html)};`];
@@ -443,40 +405,189 @@ function emitElement(
 ): string[] {
   const lines: string[] = [];
 
-  // Check if this tag matches a known component or is an imported one
-  if (node.tag in components) {
+  if (!node.tag || node.tag === 'Fragment') {
+    let setHtml: AttrNode | undefined;
+    let setText: AttrNode | undefined;
+
+    for (const attr of node.attrs) {
+      if (!('type' in attr)) {
+        if (attr.name === 'set:html') setHtml = attr;
+        if (attr.name === 'set:text') setText = attr;
+      }
+    }
+
+    if (setHtml) {
+      if (typeof setHtml.value === 'string') {
+        lines.push(`__out += ${JSON.stringify(setHtml.value)};`);
+      } else if (setHtml.value !== true) {
+        lines.push(
+          `{ const __h = await (${transformExpression(setHtml.value.source)}); __out += [].concat(__h).join(""); }`
+        );
+      }
+    } else if (setText) {
+      if (typeof setText.value === 'string') {
+        lines.push(`__out += __escape(${JSON.stringify(setText.value)});`);
+      } else if (setText.value !== true) {
+        lines.push(`__out += __escape(await ${transformExpression(setText.value.source)});`);
+      }
+    } else {
+      for (const child of node.children) {
+        lines.push(...emitNode(child, components, options));
+      }
+    }
+    return lines;
+  }
+
+  const isCapitalized = /^[A-Z]/.test(node.tag);
+  if (node.tag in components || isCapitalized) {
     return emitComponentCall(node, components, options);
   }
 
-  // Opening tag
-  lines.push(`__out += ${JSON.stringify('<' + node.tag)};`);
+  let setHtml: AttrNode | undefined;
+  let setText: AttrNode | undefined;
 
-  // Attributes
+  const standardAttrs: (AttrNode | SpreadAttrNode)[] = [];
   for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr));
+    if (!('type' in attr)) {
+      if (attr.name === 'set:html') {
+        setHtml = attr;
+        continue;
+      }
+      if (attr.name === 'set:text') {
+        setText = attr;
+        continue;
+      }
+    }
+    standardAttrs.push(attr);
   }
 
-  if (node.selfClosing) {
-    lines.push(`__out += " />";`);
+  lines.push(`__out += ${JSON.stringify('<' + node.tag)};`);
+
+  lines.push(`{`);
+  lines.push(`  const __attrs = {};`);
+  lines.push(`  const __classes = [];`);
+  lines.push(`  const __styles = [];`);
+  for (const attr of standardAttrs) {
+    if ('type' in attr) {
+      lines.push(`  {`);
+      lines.push(`    const __s = await (${transformExpression(attr.expression)});`);
+      lines.push(`    for (const __k in __s) {`);
+      lines.push(`      if (__k === "class" || __k === "className" || __k === "class:list") {`);
+      lines.push(
+        `        __classes.push(__k === "class:list" ? __classList(__s[__k]) : __s[__k]);`
+      );
+      lines.push(`      } else if (__k === "style") {`);
+      lines.push(`        const __v = __s[__k];`);
+      lines.push(`        if (typeof __v === "string") __styles.push(__v);`);
+      lines.push(`        else __styles.push(__styleObject(__v));`);
+      lines.push(`      } else {`);
+      lines.push(`        __attrs[__k] = __s[__k];`);
+      lines.push(`      }`);
+      lines.push(`    }`);
+      lines.push(`  }`);
+    } else {
+      if (attr.name === 'class' || attr.name === 'className' || attr.name === 'class:list') {
+        if (attr.value === true) lines.push(`  __classes.push("");`);
+        else if (typeof attr.value === 'string')
+          lines.push(`  __classes.push(${JSON.stringify(attr.value)});`);
+        else
+          lines.push(`  __classes.push(__classList(${transformExpression(attr.value.source)}));`);
+      } else if (attr.name === 'style') {
+        if (attr.value === true) lines.push(`  __styles.push("");`);
+        else if (typeof attr.value === 'string')
+          lines.push(`  __styles.push(${JSON.stringify(attr.value)});`);
+        else
+          lines.push(`  __styles.push(__styleObject(${transformExpression(attr.value.source)}));`);
+      } else {
+        if (attr.value === true) lines.push(`  __attrs[${JSON.stringify(attr.name)}] = true;`);
+        else if (typeof attr.value === 'string')
+          lines.push(
+            `  __attrs[${JSON.stringify(attr.name)}] = new __RawHtml(${JSON.stringify(attr.value)});`
+          );
+        else
+          lines.push(
+            `  __attrs[${JSON.stringify(attr.name)}] = await (${transformExpression(attr.value.source)});`
+          );
+      }
+    }
+  }
+
+  lines.push(`  for (const __k in __attrs) {`);
+  lines.push(`    const __v = __attrs[__k];`);
+  lines.push(`    if (__v === true) __out += " " + __escape(__k);`);
+  lines.push(
+    `    else if (__v !== false && __v != null) __out += " " + __escape(__k) + '="' + __escape(__v) + '"';`
+  );
+  lines.push(`  }`);
+  lines.push(`  const __finalCls = __classes.filter(Boolean).join(' ');`);
+  lines.push(`  if (__finalCls) __out += ' class="' + __escape(__finalCls) + '"';`);
+  lines.push(
+    `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`
+  );
+  lines.push(`  if (__finalSty) __out += ' style="' + __escape(__finalSty) + '"';`);
+  lines.push(`}`);
+
+  const isVoid = VOID_ELEMENTS.has(node.tag) || node.tag.startsWith('!');
+  if (isVoid) {
+    if (node.tag.startsWith('!')) lines.push(`__out += ">";`);
+    else lines.push(`__out += " />";`);
     return lines;
   }
 
   lines.push(`__out += ">";`);
 
-  // Children
-  for (const child of node.children) {
-    lines.push(...emitNode(child, components, options));
+  if (setHtml) {
+    if (setText) throw new Error('Cannot use both set:html and set:text');
+    if (node.children.length > 0) throw new Error('Cannot use set:html with children');
+    if (typeof setHtml.value === 'string') {
+      lines.push(`__out += ${JSON.stringify(setHtml.value)};`);
+    } else if (setHtml.value !== true) {
+      lines.push(
+        `{ const __h = await (${transformExpression(setHtml.value.source)}); __out += [].concat(__h).join(""); }`
+      );
+    }
+  } else if (setText) {
+    if (node.children.length > 0) throw new Error('Cannot use set:text with children');
+    if (typeof setText.value === 'string') {
+      lines.push(`__out += __escape(${JSON.stringify(setText.value)});`);
+    } else if (setText.value !== true) {
+      lines.push(`__out += __escape(await ${transformExpression(setText.value.source)});`);
+    }
+  } else {
+    for (const child of node.children) {
+      lines.push(...emitNode(child, components, options));
+    }
   }
 
-  // Closing tag
-  lines.push(`__out += ${JSON.stringify('</' + node.tag + '>')};`);
+  if (!isVoid) {
+    lines.push(`__out += ${JSON.stringify('</' + node.tag + '>')};`);
+  }
 
   return lines;
 }
 
-function emitAttr(attr: AttrNode): string[] {
+function emitAttr(attr: AttrNode | SpreadAttrNode): string[] {
+  if ('type' in attr) {
+    return [
+      `{`,
+      `  const __spread = await (${transformExpression(attr.expression)});`,
+      `  for (const __k in __spread) {`,
+      `    const __val = __spread[__k];`,
+      `    if (__k === "class:list") {`,
+      `      __out += " class=\\"" + __escape(__classList(__val)) + "\\"";`,
+      `    } else if (__k === "style" && typeof __val === "object") {`,
+      `      __out += " style=\\"" + __escape(__styleObject(__val)) + "\\"";`,
+      `    } else if (__val === true) {`,
+      `      __out += " " + __escape(__k);`,
+      `    } else if (__val !== false && __val != null) {`,
+      `      __out += " " + __escape(__k) + '="' + __escape(__val) + '"';`,
+      `    }`,
+      `  }`,
+      `}`,
+    ];
+  }
+
   if (attr.value === true) {
-    // Boolean attribute
     return [`__out += ${JSON.stringify(' ' + attr.name)};`];
   }
 
@@ -484,7 +595,6 @@ function emitAttr(attr: AttrNode): string[] {
     return [`__out += ${JSON.stringify(' ' + attr.name + '="' + attr.value + '"')};`];
   }
 
-  // Dynamic expression attribute
   const source = transformExpression(attr.value.source);
 
   if (attr.name === 'class:list') {
@@ -506,54 +616,106 @@ function emitComponentCall(
   const lines: string[] = [];
   const localName = node.tag;
 
-  // Build props object from JSX attributes
   const propParts: string[] = [];
   for (const attr of node.attrs) {
-    if (attr.value === true) {
-      propParts.push(`${JSON.stringify(attr.name)}: true`);
-    } else if (typeof attr.value === 'string') {
-      propParts.push(`${JSON.stringify(attr.name)}: ${JSON.stringify(attr.value)}`);
+    if ('type' in attr) {
+      propParts.push(`...(${transformExpression(attr.expression)})`);
     } else {
-      const source = transformExpression(attr.value.source);
-      if (attr.name === 'class:list') {
-        // For components, we might want to pass the raw class list or a processed one.
-        // Astro passes a string if it's class:list on a component?
-        // Actually, it passes the object/array to the component.
-        propParts.push(`"class:list": (${source})`);
+      if (attr.value === true) {
+        propParts.push(`${JSON.stringify(attr.name)}: true`);
+      } else if (typeof attr.value === 'string') {
+        propParts.push(`${JSON.stringify(attr.name)}: ${JSON.stringify(attr.value)}`);
       } else {
-        propParts.push(`${JSON.stringify(attr.name)}: (${source})`);
+        const source = transformExpression(attr.value.source);
+        if (attr.name === 'class:list') {
+          propParts.push(`"class:list": (${source})`);
+        } else {
+          propParts.push(`${JSON.stringify(attr.name)}: (${source})`);
+        }
       }
     }
   }
 
   const propsExpr = `{${propParts.join(', ')}}`;
 
-  // Build slot content from children
   lines.push(`{`);
-  lines.push(`  const __childSlots = {};`);
+  lines.push(`  let __component = __components[${JSON.stringify(localName)}];`);
+  lines.push(
+    `  try { if (!__component && typeof ${localName} !== 'undefined') __component = ${localName}; } catch (e) {}`
+  );
+  lines.push(`  if (typeof __component === 'function') {`);
+  lines.push(`    const __childSlots = {};`);
 
-  // Simple implementation: render all children into the default slot
-  lines.push(`  let __defaultOut = "";`);
-  for (const child of node.children) {
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    let slotName: string;
+    if (child.type === 'element') {
+      const slotAttr = child.attrs.find((a): a is AttrNode => !('type' in a) && a.name === 'slot');
+      if (slotAttr) {
+        if (typeof slotAttr.value === 'string') {
+          slotName = JSON.stringify(slotAttr.value);
+        } else if (slotAttr.value !== true) {
+          slotName = transformExpression(slotAttr.value.source);
+        } else {
+          slotName = JSON.stringify('');
+        }
+        child.attrs = child.attrs.filter((a) => a !== slotAttr);
+      } else {
+        slotName = JSON.stringify('');
+      }
+    } else {
+      slotName = JSON.stringify('');
+    }
+
+    const varName = `__slot_${i}`;
+    lines.push(`  let ${varName} = "";`);
     const childLines = emitNode(child, components, options);
     for (const l of childLines) {
-      lines.push('  ' + l.replace(/__out\b/g, '__defaultOut'));
+      lines.push('  ' + l.replace(/__out\b/g, varName));
     }
-  }
-  lines.push(`  if (__defaultOut !== "") {`);
-  lines.push(`    __childSlots[""] = __defaultOut;`);
-  lines.push(`    __childSlots["default"] = __defaultOut;`);
-  lines.push(`  }`);
 
-  lines.push(
-    `  __out += await __components[${JSON.stringify(localName)}](${propsExpr}, __childSlots);`
-  );
+    lines.push(`  {`);
+    lines.push(`    const __sname = ${slotName};`);
+    lines.push(`    if (!__childSlots[__sname]) __childSlots[__sname] = "";`);
+    lines.push(`    __childSlots[__sname] += ${varName};`);
+    lines.push(`    if (__sname === "") {`);
+    lines.push(`      if (!__childSlots["default"]) __childSlots["default"] = "";`);
+    lines.push(`      __childSlots["default"] += ${varName};`);
+    lines.push(`    }`);
+    lines.push(`  }`);
+  }
+
+  lines.push(`    __out += await __component(${propsExpr}, __childSlots);`);
+  lines.push(`  } else if (typeof __component === 'string') {`);
+  lines.push(`    __out += "<" + __component;`);
+  for (const attr of node.attrs) {
+    lines.push(...emitAttr(attr).map((l) => '    ' + l));
+  }
+  lines.push(`    __out += ">";`);
+  for (const child of node.children) {
+    lines.push(...emitNode(child, components, options).map((l) => '    ' + l));
+  }
+  lines.push(`    __out += "</" + __component + ">";`);
+  lines.push(`  } else {`);
+  lines.push(`    __out += "<${localName}";`);
+  for (const attr of node.attrs) {
+    lines.push(...emitAttr(attr).map((l) => '    ' + l));
+  }
+  if (node.selfClosing) {
+    lines.push(`    __out += " />";`);
+  } else {
+    lines.push(`    __out += ">";`);
+    for (const child of node.children) {
+      lines.push(...emitNode(child, components, options).map((l) => '    ' + l));
+    }
+    lines.push(`    __out += "</${localName}>";`);
+  }
+  lines.push(`  }`);
   lines.push(`}`);
 
   return lines;
 }
 
-/** Naive JSX-to-html transform for expressions. */
 function transformExpression(source: string): string {
   return source;
 }

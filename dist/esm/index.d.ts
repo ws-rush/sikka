@@ -1,8 +1,4 @@
 import type { EngineOptions, EngineInstance } from './types.js';
-export type { RenderFunction, RenderOptions, EngineOptions, EngineInstance, TemplateAST, FrontmatterNode, ComponentImport, TemplateNode, ElementNode, AttrNode, ExpressionNode, TextNode, SlotNode, ScriptNode, StyleNode, RawNode, ParseResult, ParseError, CompileResult, CompileError, } from './types.js';
-export { compile, compileAST, resolveComponents, type CompileOptions } from './compiler.js';
-export { TemplateEngineError, LoadError, RenderError } from './types.js';
-export { escapeHtml, html, RawHtml } from './escape.js';
 export declare class Engine implements EngineInstance {
     private options;
     private cache;

@@ -37,25 +37,29 @@ describe('HTML Escaper — Property-Based Tests', () => {
   });
 
   it(// Feature: astro-template-engine, Property 2: HTML escaping applied to all interpolated strings (non-string primitives)
-  'Property 2: escapeHtml coerces integers and booleans to string and escapes them', () => {
+  'Property 2: escapeHtml coerces integers to string and escapes them (booleans render nothing)', () => {
     fc.assert(
       fc.property(fc.oneof(fc.integer(), fc.boolean()), (value) => {
         const result = escapeHtml(value);
-        // Result must equal the escaped string representation
-        const expected = String(value).replace(/[&<>"']/g, (ch) => {
-          const map: Record<string, string> = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;',
-          };
-          return map[ch];
-        });
-        expect(result).toBe(expected);
-        // No raw special chars in output
-        for (const ch of SPECIAL_CHARS) {
-          expect(result).not.toContain(ch);
+        if (typeof value === 'boolean') {
+          expect(result).toBe('');
+        } else {
+          // Result must equal the escaped string representation
+          const expected = String(value).replace(/[&<>"']/g, (ch) => {
+            const map: Record<string, string> = {
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              '"': '&quot;',
+              "'": '&#39;',
+            };
+            return map[ch];
+          });
+          expect(result).toBe(expected);
+          // No raw special chars in output
+          for (const ch of SPECIAL_CHARS) {
+            expect(result).not.toContain(ch);
+          }
         }
       }),
       { numRuns: 100 }

@@ -1,5 +1,5 @@
 /**
- * Unit tests for compiler error cases — Requirements 2.8, 7.4
+ * Unit tests for compiler error cases
  *
  * Covers:
  *   1. Unresolvable import with no fileReader → CompileError with missing specifier
@@ -32,8 +32,6 @@ function makeASTWithImport(specifier: string, localName = 'Comp'): TemplateAST {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('Compiler error cases', () => {
-  // ── Requirement 2.8: unresolvable import ────────────────────────────────────
-
   it('returns CompileError with the missing specifier when no fileReader is provided', async () => {
     const ast = makeASTWithImport('./Button.astro');
 
@@ -62,8 +60,6 @@ describe('Compiler error cases', () => {
     expect(result.error.specifier).toBe(specifier);
     expect(result.error.message).toMatch(/Missing\.astro/);
   });
-
-  // ── Requirement 7.4: circular dependency ────────────────────────────────────
 
   it('returns CompileError listing the cycle when A imports B and B imports A', async () => {
     // A.astro imports B.astro; B.astro imports A.astro
@@ -158,7 +154,7 @@ describe('Compiler — node emission', () => {
   it('emits self-closing elements', async () => {
     const ast = ok('<div />');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
-    expect(await fn({})).toBe('<div />');
+    expect(await fn({})).toBe('<div></div>');
   });
 
   it('emits boolean attributes', async () => {
@@ -182,25 +178,25 @@ describe('Compiler — node emission', () => {
   it('handles class:list on elements', async () => {
     const ast = ok('<div class:list={["a", { b: true, c: false }]} />');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
-    expect(await fn({})).toBe('<div class="a b" />');
+    expect(await fn({})).toBe('<div class="a b"></div>');
   });
 
   it('handles style objects on elements', async () => {
     const ast = ok('<div style={{ color: "red", fontSize: "12px" }} />');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
-    expect(await fn({})).toBe('<div style="color:red;font-size:12px" />');
+    expect(await fn({})).toBe('<div style="color:red;font-size:12px"></div>');
   });
 
   it('handles empty/falsy class:list and style', async () => {
     const ast = ok('<div class:list={null} style={undefined} />');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
-    expect(await fn({})).toBe('<div class="" style="" />');
+    expect(await fn({})).toBe('<div></div>');
   });
 
   it('handles style attributes as strings in expressions (coverage for styleObjectHelper string branch)', async () => {
     const ast = ok('<div style={"color: blue"} />');
     const { fn } = (await compile(ast)) as { fn: RenderFunction };
-    expect(await fn({})).toBe('<div style="color: blue" />');
+    expect(await fn({})).toBe('<div style="color: blue"></div>');
   });
 });
 

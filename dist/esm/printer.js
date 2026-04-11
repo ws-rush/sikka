@@ -1,5 +1,5 @@
 /**
- * Pretty Printer — Requirement 1.8
+ * Pretty Printer
  *
  * Serializes a `TemplateAST` back into a syntactically correct template string.
  * The output is designed to round-trip through the parser (parse → print → parse
@@ -7,6 +7,10 @@
  */
 // ─── Attribute serialization ──────────────────────────────────────────────────
 function printAttr(attr) {
+    if ('type' in attr) {
+        // Spread attribute: {...expr}
+        return `{...${attr.expression}}`;
+    }
     if (attr.value === true) {
         // Boolean attribute: just the name
         return attr.name;
@@ -19,7 +23,7 @@ function printAttr(attr) {
     return `${attr.name}={${attr.value.source}}`;
 }
 function printAttrs(attrs) {
-    if (attrs.length === 0)
+    if (!attrs || attrs.length === 0)
         return '';
     return ' ' + attrs.map(printAttr).join(' ');
 }
@@ -63,10 +67,12 @@ function printSlot(node) {
     return `<slot name="${node.name}" />`;
 }
 function printScript(node) {
-    return `<script>${node.content}</script>`;
+    const attrs = printAttrs(node.attrs);
+    return `<script${attrs}>${node.content}</script>`;
 }
 function printStyle(node) {
-    return `<style>${node.content}</style>`;
+    const attrs = printAttrs(node.attrs);
+    return `<style${attrs}>${node.content}</style>`;
 }
 function printRaw(node) {
     return node.html;
@@ -77,8 +83,6 @@ function printRaw(node) {
  *
  * The output is syntactically correct and round-trips through the parser:
  * `parse(print(ast))` produces an AST structurally equivalent to `ast`.
- *
- * Requirement: 1.8
  */
 export function print(ast) {
     const parts = [];

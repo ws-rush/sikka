@@ -52,4 +52,51 @@ const { name } = data.props;
     const result = await engine.renderString('<h1>{name}</h1>', { name: 'world' });
     expect(result).toBe('<h1>WORLD</h1>');
   });
+
+  it('should support object spreading', async () => {
+    const engine = new Engine();
+    const result = await engine.renderString('<div {...{ id: "12", "data-test": "demo" }}></div>');
+    expect(result).toBe('<div id="12" data-test="demo"></div>');
+  });
+
+  it('should support unescaped html via set:html', async () => {
+    const engine = new Engine();
+    const result = await engine.renderString('<div set:html="<s>strike</s>"></div>');
+    expect(result).toBe('<div><s>strike</s></div>');
+  });
+
+  it('should support multiple named slots passing nested elements', async () => {
+    const engine = new Engine();
+    engine.loadComponent(
+      'Layout',
+      '<header><slot name="header" /></header><main><slot /></main><footer><slot name="footer" /></footer>'
+    );
+    const result = await engine.renderString(`
+<Layout>
+  <div slot="header">Header Content</div>
+  <div>Main Content 1</div>
+  <div>Main Content 2</div>
+  <div slot="footer">Footer Content</div>
+</Layout>
+    `);
+
+    // Normalize spaces for simpler exact match if possible, or just exact match
+    // Actually, Astro retains spaces between tags in children usually, but let's test exact
+    expect(result.trim().replace(/>\s+</g, '><')).toBe(
+      '<header><div>Header Content</div></header><main><div>Main Content 1</div><div>Main Content 2</div></main><footer><div>Footer Content</div></footer>'
+    );
+  });
+
+  it('should support attributes and spreading on script and style tags', async () => {
+    const engine = new Engine();
+    const result1 = await engine.renderString(
+      '<script type="module" {...{ "data-id": "123" }}>console.log(1)</script>'
+    );
+    expect(result1).toBe('<script type="module" data-id="123">console.log(1)</script>');
+
+    const result2 = await engine.renderString(
+      '<style is:global {...{ "data-theme": "dark" }}>body{}</style>'
+    );
+    expect(result2).toBe('<style is:global data-theme="dark">body{}</style>');
+  });
 });

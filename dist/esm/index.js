@@ -1,9 +1,6 @@
 import { parse } from './parser.js';
 import { compileAST } from './compiler.js';
 import { createCache, hashTemplate } from './cache.js';
-export { compile, compileAST, resolveComponents } from './compiler.js';
-export { TemplateEngineError, LoadError, RenderError } from './types.js';
-export { escapeHtml, html, RawHtml } from './escape.js';
 export class Engine {
     options;
     cache;

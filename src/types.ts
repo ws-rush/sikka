@@ -9,16 +9,6 @@ export type RenderFunction = (
 /** Injectable file-reader for runtime-agnostic file loading. */
 export type FileReader = (path: string) => Promise<string>;
 
-/** Options accepted by `render` and `compile`. */
-export interface RenderOptions {
-  /** Disables caching when true — templates are recompiled on every call. */
-  devMode?: boolean;
-  /** Injectable I/O implementation for loading templates from disk. */
-  fileReader?: FileReader;
-  /** Pre-rendered slot content keyed by slot name ("" = default slot). */
-  slots?: Record<string, string>;
-}
-
 /** Options accepted by `new Engine()`. */
 export interface EngineOptions {
   /** Directory path for template resolution. */
@@ -84,10 +74,16 @@ export type TemplateNode =
   | StyleNode
   | RawNode;
 
+export interface SpreadAttrNode {
+  type: 'spread';
+  /** The expression inside the spread (including or excluding `...`, wait, if source is `...props` we can just keep it as source, or expression string) */
+  expression: string;
+}
+
 export interface ElementNode {
   type: 'element';
   tag: string;
-  attrs: AttrNode[];
+  attrs: (AttrNode | SpreadAttrNode)[];
   children: TemplateNode[];
   selfClosing: boolean;
 }
@@ -120,11 +116,13 @@ export interface SlotNode {
 export interface ScriptNode {
   type: 'script';
   content: string;
+  attrs: (AttrNode | SpreadAttrNode)[];
 }
 
 export interface StyleNode {
   type: 'style';
   content: string;
+  attrs: (AttrNode | SpreadAttrNode)[];
 }
 
 export interface RawNode {
@@ -161,39 +159,4 @@ export interface Cache {
   set(key: string, fn: RenderFunction): void;
   delete(key: string): void;
   clear(): void;
-}
-
-// ─── Error classes ────────────────────────────────────────────────────────────
-
-/** Base class for all errors thrown by the template engine. */
-export class TemplateEngineError extends Error {
-  readonly code: string;
-  readonly cause?: unknown;
-
-  constructor(message: string, code: string, cause?: unknown) {
-    super(message);
-    this.name = 'TemplateEngineError';
-    this.code = code;
-    this.cause = cause;
-  }
-}
-
-export class LoadError extends TemplateEngineError {
-  readonly path: string;
-
-  constructor(path: string, cause?: unknown) {
-    super(`Failed to load template: ${path}`, 'LOAD_ERROR', cause);
-    this.name = 'LoadError';
-    this.path = path;
-  }
-}
-
-export class RenderError extends TemplateEngineError {
-  readonly expressionSource?: string;
-
-  constructor(message: string, expressionSource?: string, cause?: unknown) {
-    super(message, 'RENDER_ERROR', cause);
-    this.name = 'RenderError';
-    this.expressionSource = expressionSource;
-  }
 }

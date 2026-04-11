@@ -1,5 +1,5 @@
 /**
- * Pretty Printer — Requirement 1.8
+ * Pretty Printer
  *
  * Serializes a `TemplateAST` back into a syntactically correct template string.
  * The output is designed to round-trip through the parser (parse → print → parse
@@ -17,11 +17,16 @@ import type {
   StyleNode,
   RawNode,
   AttrNode,
+  SpreadAttrNode,
 } from './types.js';
 
 // ─── Attribute serialization ──────────────────────────────────────────────────
 
-function printAttr(attr: AttrNode): string {
+function printAttr(attr: AttrNode | SpreadAttrNode): string {
+  if ('type' in attr) {
+    // Spread attribute: {...expr}
+    return `{...${attr.expression}}`;
+  }
   if (attr.value === true) {
     // Boolean attribute: just the name
     return attr.name;
@@ -34,8 +39,8 @@ function printAttr(attr: AttrNode): string {
   return `${attr.name}={${attr.value.source}}`;
 }
 
-function printAttrs(attrs: AttrNode[]): string {
-  if (attrs.length === 0) return '';
+function printAttrs(attrs: (AttrNode | SpreadAttrNode)[] | undefined | null): string {
+  if (!attrs || attrs.length === 0) return '';
   return ' ' + attrs.map(printAttr).join(' ');
 }
 
@@ -85,11 +90,13 @@ function printSlot(node: SlotNode): string {
 }
 
 function printScript(node: ScriptNode): string {
-  return `<script>${node.content}</script>`;
+  const attrs = printAttrs(node.attrs);
+  return `<script${attrs}>${node.content}</script>`;
 }
 
 function printStyle(node: StyleNode): string {
-  return `<style>${node.content}</style>`;
+  const attrs = printAttrs(node.attrs);
+  return `<style${attrs}>${node.content}</style>`;
 }
 
 function printRaw(node: RawNode): string {
@@ -103,8 +110,6 @@ function printRaw(node: RawNode): string {
  *
  * The output is syntactically correct and round-trips through the parser:
  * `parse(print(ast))` produces an AST structurally equivalent to `ast`.
- *
- * Requirement: 1.8
  */
 export function print(ast: TemplateAST): string {
   const parts: string[] = [];

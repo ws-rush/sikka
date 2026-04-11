@@ -39,16 +39,43 @@ describe('Pretty Printer', () => {
     expect(print(ast)).toBe('<div>raw</div>');
   });
 
-  it('prints scripts and styles', () => {
+  it('prints scripts and styles with attributes', () => {
     const ast: TemplateAST = {
       frontmatter: { source: '' },
       imports: [],
       body: [
-        { type: 'script', content: 'console.log(1)' },
-        { type: 'style', content: '.a { color: red }' },
+        {
+          type: 'script',
+          content: 'console.log(1)',
+          attrs: [{ name: 'type', value: 'module' }],
+        },
+        {
+          type: 'style',
+          content: '.a { color: red }',
+          attrs: [{ name: 'is:global', value: true }],
+        },
       ],
     };
-    expect(print(ast)).toBe('<script>console.log(1)</script><style>.a { color: red }</style>');
+    expect(print(ast)).toBe(
+      '<script type="module">console.log(1)</script><style is:global>.a { color: red }</style>'
+    );
+  });
+
+  it('prints spread attributes', () => {
+    const ast: TemplateAST = {
+      frontmatter: { source: '' },
+      imports: [],
+      body: [
+        {
+          type: 'element',
+          tag: 'div',
+          attrs: [{ type: 'spread', expression: 'props' }],
+          children: [],
+          selfClosing: true,
+        },
+      ],
+    };
+    expect(print(ast)).toBe('<div {...props} />');
   });
 
   it('prints expressions and elements', () => {

@@ -9,34 +9,6 @@ import { parse } from './parser.js';
 import { compileAST } from './compiler.js';
 import { createCache, hashTemplate } from './cache.js';
 
-export type {
-  RenderFunction,
-  RenderOptions,
-  EngineOptions,
-  EngineInstance,
-  TemplateAST,
-  FrontmatterNode,
-  ComponentImport,
-  TemplateNode,
-  ElementNode,
-  AttrNode,
-  ExpressionNode,
-  TextNode,
-  SlotNode,
-  ScriptNode,
-  StyleNode,
-  RawNode,
-  ParseResult,
-  ParseError,
-  CompileResult,
-  CompileError,
-} from './types.js';
-
-export { compile, compileAST, resolveComponents, type CompileOptions } from './compiler.js';
-
-export { TemplateEngineError, LoadError, RenderError } from './types.js';
-export { escapeHtml, html, RawHtml } from './escape.js';
-
 export class Engine implements EngineInstance {
   private cache: ReturnType<typeof createCache> | null;
   private globalComponents: Record<string, RenderFunction | Promise<RenderFunction>> = {};

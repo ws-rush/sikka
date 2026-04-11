@@ -1,5 +1,5 @@
 /**
- * Unit tests for the parser — Requirements 1.1–1.7
+ * Unit tests for the parser
  */
 
 import { describe, it, expect } from 'vitest';
@@ -12,6 +12,7 @@ import type {
   SlotNode,
   ScriptNode,
   StyleNode,
+  AttrNode,
 } from './types.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ function fail(source: string) {
   return result.error;
 }
 
-// ─── Frontmatter (Requirement 1.1) ───────────────────────────────────────────
+// ─── Frontmatter  ───────────────────────────────────────────
 
 describe('frontmatter extraction', () => {
   it('extracts frontmatter source between --- fences', () => {
@@ -64,7 +65,7 @@ describe('frontmatter extraction', () => {
   });
 });
 
-// ─── Import collection (Requirement 1.3) ─────────────────────────────────────
+// ─── Import collection ─────────────────────────────────────
 
 describe('import collection', () => {
   it('collects component imports from frontmatter', () => {
@@ -96,7 +97,7 @@ describe('text nodes', () => {
   });
 });
 
-// ─── Expression nodes (Requirement 1.2) ──────────────────────────────────────
+// ─── Expression nodes ──────────────────────────────────────
 
 describe('expression nodes', () => {
   it('parses a simple expression', () => {
@@ -137,7 +138,7 @@ describe('expression nodes', () => {
   });
 });
 
-// ─── Element nodes (Requirement 1.2) ─────────────────────────────────────────
+// ─── Element nodes ─────────────────────────────────────────
 
 describe('element nodes', () => {
   it('parses a simple element', () => {
@@ -155,6 +156,26 @@ describe('element nodes', () => {
     expect(el.type).toBe('element');
     expect(el.tag).toBe('br');
     expect(el.selfClosing).toBe(true);
+  });
+
+  it('parses a fragment (<>)', () => {
+    const ast = ok(`<>hello</>`);
+    const el = ast.body[0] as ElementNode;
+    expect(el.type).toBe('element');
+    expect(el.tag).toBe('');
+    expect((el.children[0] as TextNode).value).toBe('hello');
+  });
+
+  it('parses spread attributes ({...props})', () => {
+    const ast = ok(`<div {...props}></div>`);
+    const el = ast.body[0] as ElementNode;
+    expect(el.attrs[0]).toEqual({ type: 'spread', expression: 'props' });
+  });
+
+  it('parses set:html directive', () => {
+    const ast = ok(`<div set:html="<b>hello</b>"></div>`);
+    const el = ast.body[0] as ElementNode;
+    expect(el.attrs[0]).toEqual({ name: 'set:html', value: '<b>hello</b>' });
   });
 
   it('parses nested elements', () => {
@@ -180,9 +201,9 @@ describe('element nodes', () => {
   it('parses dynamic expression attributes', () => {
     const ast = ok(`<div class={cls} />`);
     const el = ast.body[0] as ElementNode;
-    expect(el.attrs[0].name).toBe('class');
-    expect((el.attrs[0].value as ExpressionNode).type).toBe('expression');
-    expect((el.attrs[0].value as ExpressionNode).source).toBe('cls');
+    expect((el.attrs[0] as AttrNode).name).toBe('class');
+    expect(((el.attrs[0] as AttrNode).value as ExpressionNode).type).toBe('expression');
+    expect(((el.attrs[0] as AttrNode).value as ExpressionNode).source).toBe('cls');
   });
 
   it('returns ParseError for unclosed tag', () => {
@@ -198,9 +219,9 @@ describe('element nodes', () => {
     expect(el.children).toHaveLength(0);
   });
 
-  it('returns ParseError when no tag name after <', () => {
-    const err = fail(`< `);
-    expect(err.message).toMatch(/Expected tag name after `<`/i);
+  it('allows unescaped < in text if not followed by tag-start char', () => {
+    const ast = ok('< ');
+    expect(ast.body[0].type).toBe('text');
   });
 
   it('returns ParseError for malformed closing tag expected >', () => {
@@ -220,10 +241,11 @@ describe('element nodes', () => {
 });
 
 describe('comments', () => {
-  it('parses and drops comments', () => {
+  it('parses and preserves comments as raw nodes', () => {
     const ast = ok(`<!-- comment --><p>hi</p>`);
-    expect(ast.body).toHaveLength(1);
-    const p = ast.body[0] as ElementNode;
+    expect(ast.body).toHaveLength(2);
+    expect(ast.body[0].type).toBe('raw');
+    const p = ast.body[1] as ElementNode;
     expect(p.tag).toBe('p');
     expect((p.children[0] as TextNode).value).toBe('hi');
   });
@@ -233,15 +255,16 @@ describe('comments', () => {
     expect(err.message).toMatch(/unclosed HTML comment/i);
   });
 
-  it('drops comments inside elements (coverage line 492)', () => {
+  it('preserves comments inside elements', () => {
     const ast = ok(`<div><!-- comment --><span>hi</span></div>`);
     const div = ast.body[0] as ElementNode;
-    expect(div.children).toHaveLength(1);
-    expect((div.children[0] as ElementNode).tag).toBe('span');
+    expect(div.children).toHaveLength(2);
+    expect(div.children[0].type).toBe('raw');
+    expect((div.children[1] as ElementNode).tag).toBe('span');
   });
 });
 
-// ─── Slot nodes (Requirement 1.4) ────────────────────────────────────────────
+// ─── Slot nodes ────────────────────────────────────────────
 
 describe('slot nodes', () => {
   it('parses default slot', () => {
@@ -278,15 +301,16 @@ describe('slot nodes', () => {
     expect(err.message).toMatch(/unclosed expression/i);
   });
 
-  it('drops comments inside slots (coverage line 419)', () => {
+  it('preserves comments inside slots', () => {
     const ast = ok(`<slot><!-- comment --><p>hi</p></slot>`);
     const slot = ast.body[0] as SlotNode;
-    expect(slot.children).toHaveLength(1);
-    expect((slot.children[0] as ElementNode).tag).toBe('p');
+    expect(slot.children).toHaveLength(2);
+    expect(slot.children[0].type).toBe('raw');
+    expect((slot.children[1] as ElementNode).tag).toBe('p');
   });
 });
 
-// ─── Script / Style nodes (Requirement 1.5) ──────────────────────────────────
+// ─── Script / Style nodes ──────────────────────────────────
 
 describe('script and style nodes', () => {
   it('parses script tag with verbatim content', () => {
@@ -342,7 +366,7 @@ describe('attribute value parsing', () => {
   it('parses unquoted attribute values', () => {
     const ast = ok(`<div class=foo></div>`);
     const el = ast.body[0] as ElementNode;
-    expect(el.attrs[0].value).toBe('foo');
+    expect((el.attrs[0] as AttrNode).value).toBe('foo');
   });
 
   it('returns ParseError for unclosed attribute string', () => {
@@ -356,7 +380,7 @@ describe('attribute value parsing', () => {
   });
 });
 
-// ─── Error location (Requirements 1.6, 1.7) ──────────────────────────────────
+// ─── Error location ──────────────────────────────────
 
 describe('error location reporting', () => {
   it('reports correct line for unclosed frontmatter', () => {
@@ -371,10 +395,10 @@ describe('error location reporting', () => {
   });
 });
 
-// ─── Parser error cases — Requirements 1.6, 1.7 ──────────────────────────────
+// ─── Parser error cases ──────────────────────────────
 
 describe('parser error cases', () => {
-  // Requirement 1.6: unclosed frontmatter fence
+  // unclosed frontmatter fence
   it('unclosed frontmatter fence returns ParseError with correct line and column', () => {
     // Source: "---\nconst x = 1;\n" — no closing ---
     // The parser reaches end-of-string (offset 17) to report the error.
@@ -393,7 +417,7 @@ describe('parser error cases', () => {
     expect(err.column).toBe(1);
   });
 
-  // Requirement 1.7: unclosed JSX tag
+  // unclosed JSX tag
   it('unclosed JSX tag returns ParseError with correct line and column', () => {
     // Source: "<div>\n<p>text</p>\n" — <div> is never closed
     // Error points to the start of <div> at offset 0 → line 1, column 1
@@ -403,13 +427,9 @@ describe('parser error cases', () => {
     expect(err.column).toBe(1);
   });
 
-  it('unclosed JSX tag on second line reports correct line and column', () => {
-    // Source: "<p>\n<div>\n</p>" — <div> is unclosed (</p> closes <p> first)
-    // <div> starts at offset 4 → line 2, column 1
-    const err = fail(`<p>\n<div>\n</p>`);
-    expect(err.message).toMatch(/unclosed tag/i);
-    expect(err.line).toBe(2);
-    expect(err.column).toBe(1);
+  it('overlapping JSX tags are parsed linearly', () => {
+    const ast = ok(`<p>\n<div>\n</p>`);
+    expect(ast.body).toHaveLength(1);
   });
 });
 

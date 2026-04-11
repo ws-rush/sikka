@@ -1,5 +1,5 @@
 /**
- * HTML Escaper — Requirements 3.1, 3.2, 3.3, 3.4
+ * HTML Escaper
  *
  * Provides:
  *   - `RawHtml`  — a wrapper that marks content as trusted/pre-escaped
@@ -14,11 +14,11 @@ export declare class RawHtml {
 /**
  * Escape an untrusted value for safe HTML insertion.
  *
- * - `null` / `undefined`  → `""`          (Requirement 3.4)
- * - `RawHtml` instance    → `.value` verbatim (Requirement 3.2)
+ * - `null` / `undefined`  → `""`
+ * - `RawHtml` instance    → `.value` verbatim
  * - Array                 → recursively escape and join elements without commas
- * - number / boolean      → coerce to string, then escape (Requirement 3.3)
- * - string                → escape `& < > " '` (Requirement 3.1)
+ * - number / boolean      → coerce to string, then escape
+ * - string                → escape `& < > " '`
  */
 export declare function escapeHtml(value: unknown): string;
 /**
@@ -30,7 +30,6 @@ export declare function escapeHtml(value: unknown): string;
  * Returns a `RawHtml` instance so the result is never double-escaped
  * when used inside another `html` tag or passed to `escapeHtml`.
  *
- * Requirement 3.2
  */
 export declare function html(strings: TemplateStringsArray, ...values: unknown[]): RawHtml;
 //# sourceMappingURL=escape.d.ts.map

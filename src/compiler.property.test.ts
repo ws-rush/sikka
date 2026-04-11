@@ -1,5 +1,5 @@
 /**
- * Property-based tests for the compiler — Requirements 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 6.2, 6.3, 7.2, 7.3
+ * Property-based tests for the compiler
  */
 
 import { describe, it, expect } from 'vitest';

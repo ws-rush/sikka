@@ -1,16 +1,20 @@
 /**
- * Property-based tests for the parser — Requirements 1.2, 1.3, 1.4, 1.5, 1.8, 1.9
+ * Property-based tests for the parser
  *
  * // Feature: astro-template-engine, Property 1: Parser round-trip — parse → print → parse produces equivalent AST
- *
- * Validates: Requirements 1.2, 1.3, 1.4, 1.5, 1.8, 1.9
  */
 
 import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 import { parse } from './parser.js';
 import { print } from './printer.js';
-import type { TemplateAST, TemplateNode, AttrNode, ComponentImport } from './types.js';
+import type {
+  TemplateAST,
+  TemplateNode,
+  AttrNode,
+  SpreadAttrNode,
+  ComponentImport,
+} from './types.js';
 
 // ─── AST equivalence helpers ──────────────────────────────────────────────────
 
@@ -63,17 +67,40 @@ function nodeEquivalent(a: TemplateNode, b: TemplateNode): boolean {
   }
 }
 
-function attrsEquivalent(a: AttrNode[], b: AttrNode[]): boolean {
+function attrsEquivalent(
+  a: (AttrNode | SpreadAttrNode)[],
+  b: (AttrNode | SpreadAttrNode)[]
+): boolean {
   if (a.length !== b.length) return false;
   return a.every((ai, i) => {
     const bi = b[i];
-    if (ai.name !== bi.name) return false;
-    if (ai.value === true && bi.value === true) return true;
-    if (typeof ai.value === 'string' && typeof bi.value === 'string') {
-      return ai.value === bi.value;
+
+    // Narrow SpreadAttrNode
+    if ('type' in ai && ai.type === 'spread') {
+      const bSpread = bi as SpreadAttrNode;
+      return 'type' in bi && bi.type === 'spread' && ai.expression === bSpread.expression;
     }
-    if (typeof ai.value === 'object' && typeof bi.value === 'object') {
-      return ai.value.source === bi.value.source;
+    // If we reach here, ai is AttrNode (or at least not a spread we support)
+    if ('type' in bi && bi.type === 'spread') return false;
+
+    // Both are AttrNode
+    const aAttr = ai as AttrNode;
+    const bAttr = bi as AttrNode;
+
+    if (aAttr.name !== bAttr.name) return false;
+    if (aAttr.value === true && bAttr.value === true) return true;
+    if (typeof aAttr.value === 'string' && typeof bAttr.value === 'string') {
+      return aAttr.value === bAttr.value;
+    }
+    if (
+      typeof aAttr.value === 'object' &&
+      typeof bAttr.value === 'object' &&
+      'type' in aAttr.value &&
+      aAttr.value.type === 'expression' &&
+      'type' in bAttr.value &&
+      bAttr.value.type === 'expression'
+    ) {
+      return aAttr.value.source === bAttr.value.source;
     }
     return false;
   });
@@ -148,13 +175,23 @@ const leafNodeArb: fc.Arbitrary<TemplateNode> = fc.oneof(
   // Expression node
   exprSource.map((source) => ({ type: 'expression' as const, source })),
   // Default slot
-  fc.constant({ type: 'slot' as const, name: '', children: [] }),
+  fc.constant({ type: 'slot' as const, name: '', children: [] as TemplateNode[] }),
   // Named slot
-  slotName.filter((n) => n !== '').map((name) => ({ type: 'slot' as const, name, children: [] })),
+  slotName
+    .filter((n) => n !== '')
+    .map((name) => ({ type: 'slot' as const, name, children: [] as TemplateNode[] })),
   // Script node
-  verbatimContent.map((content) => ({ type: 'script' as const, content })),
+  verbatimContent.map((content) => ({
+    type: 'script' as const,
+    content,
+    attrs: [] as (AttrNode | SpreadAttrNode)[],
+  })),
   // Style node
-  verbatimContent.map((content) => ({ type: 'style' as const, content }))
+  verbatimContent.map((content) => ({
+    type: 'style' as const,
+    content,
+    attrs: [] as (AttrNode | SpreadAttrNode)[],
+  }))
 );
 
 /** Element node with optional leaf children */
@@ -169,7 +206,7 @@ const elementNodeArb: fc.Arbitrary<TemplateNode> = fc
   .map((node) => {
     // Self-closing elements must have no children
     if (node.selfClosing) {
-      return { ...node, children: [] };
+      return { ...node, children: [] as TemplateNode[] };
     }
     return node;
   });

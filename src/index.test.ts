@@ -1,18 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Engine, type TemplateAST, type TemplateNode } from './index.js';
+import { Engine } from './index.js';
 import { parse } from './parser.js';
+import { TemplateAST, TemplateNode } from './types.js';
 
 // ─── 1. renderString() with inline string template ──────────────────────────────────
 
 describe('renderString() — inline string template', () => {
-  it('returns the correct HTML for a simple template (Requirement 9.1, 4.2)', async () => {
+  it('returns the correct HTML for a simple template', async () => {
     const engine = new Engine();
     const template = '<p>Hello world</p>';
     const result = await engine.renderString(template);
     expect(result).toContain('Hello world');
   });
 
-  it('interpolates props into the output (Requirement 9.1, 4.2)', async () => {
+  it('interpolates props into the output', async () => {
     const engine = new Engine();
     const template = `---
 const { name } = Astro.props;
@@ -22,7 +23,7 @@ const { name } = Astro.props;
     expect(result).toContain('Alice');
   });
 
-  it('HTML-escapes interpolated string props (Requirement 3.1)', async () => {
+  it('HTML-escapes interpolated string props', async () => {
     const engine = new Engine();
     const template = `---
 const { value } = Astro.props;
@@ -50,7 +51,7 @@ const { value } = Astro.props;
 // ─── 2. render() with a file path ────────────────────────────────────────────
 
 describe('render() — file path with injected readFile', () => {
-  it('calls the readFile with the correct path (Requirement 4.1, 9.3)', async () => {
+  it('calls the readFile with the correct path', async () => {
     const readFile = vi.fn().mockResolvedValue('<h1>From file</h1>');
     const path = '/templates/page.astro';
     const engine = new Engine({ readFile });
@@ -62,7 +63,7 @@ describe('render() — file path with injected readFile', () => {
     expect(result).toContain('From file');
   });
 
-  it('passes props to the rendered file template (Requirement 4.1, 9.3)', async () => {
+  it('passes props to the rendered file template', async () => {
     const source = `---
 const { title } = Astro.props;
 ---
@@ -92,14 +93,14 @@ const { title } = Astro.props;
 // ─── 3. create isolated instances ───────────────────────────────────────────
 
 describe('Engine — isolated instances', () => {
-  it('returns an object with render, renderString, and invalidate methods (Requirement 9.4)', () => {
+  it('returns an object with render, renderString, and invalidate methods', () => {
     const engine = new Engine();
     expect(typeof engine.render).toBe('function');
     expect(typeof engine.renderString).toBe('function');
     expect(typeof engine.invalidate).toBe('function');
   });
 
-  it('each engine instance uses its own options (Requirement 9.4)', async () => {
+  it('each engine instance uses its own options', async () => {
     const readerA = vi.fn().mockResolvedValue('<p>engine A</p>');
     const readerB = vi.fn().mockResolvedValue('<p>engine B</p>');
 
@@ -117,7 +118,7 @@ describe('Engine — isolated instances', () => {
 });
 
 describe('LoadError — missing or unreadable file', () => {
-  it('throws when the readFile rejects (Requirement 4.3)', async () => {
+  it('throws when the readFile rejects', async () => {
     const readFile = vi
       .fn()
       .mockRejectedValue(new Error("ENOENT: no such file '/templates/missing.astro'"));
