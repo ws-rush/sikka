@@ -21,18 +21,20 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "knip": "knip"
+    "knip": "knip",
+    "bench": "node bench/index.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@vitest/coverage-v8": "^4.1.4",
     "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.4",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "fast-check": "^4.6.0",
     "globals": "^17.4.0",
     "knip": "^6.3.1",
     "prettier": "^3.8.2",
+    "tinybench": "^6.0.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
     "vitest": "^4.1.4"

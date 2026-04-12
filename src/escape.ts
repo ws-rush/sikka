@@ -24,6 +24,17 @@ const ESCAPE_MAP: Record<string, string> = {
 const ESCAPE_RE = /[&<>"']/g;
 const ESCAPE_TEST_RE = /[&<>"']/;
 
+function escapeChar(ch: string): string {
+  switch (ch) {
+    case '&': return '&amp;';
+    case '<': return '&lt;';
+    case '>': return '&gt;';
+    case '"': return '&quot;';
+    case "'": return '&#39;';
+    default: return ch;
+  }
+}
+
 /**
  * Escape an untrusted value for safe HTML insertion.
  *
@@ -34,47 +45,32 @@ const ESCAPE_TEST_RE = /[&<>"']/;
  * - string                → escape `& < > " '`
  */
 export function escapeHtml(v: any): string {
-  if (typeof v === 'string') {
-    if (v.length === 0) return '';
+  const type = typeof v;
+  if (type === 'string') {
     if (!ESCAPE_TEST_RE.test(v)) return v;
-    return v.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+    return v.replace(ESCAPE_RE, escapeChar);
   }
-  if (v === null || v === undefined || v === true || v === false) return '';
-  if (typeof v === 'object') {
+  if (v == null || v === true || v === false) return '';
+  if (type === 'object') {
     if (v.__isRawHtml) return v.value;
     if (Array.isArray(v)) {
-      let s = '';
+      let result = '';
       for (let i = 0; i < v.length; i++) {
         const item = v[i];
-        if (typeof item === 'string') {
-          if (item.length > 0) {
-            s += !ESCAPE_TEST_RE.test(item) ? item : item.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
-          }
-        } else if (item !== null && item !== undefined && item !== true && item !== false) {
-          if (typeof item === 'object') {
-            if (item.__isRawHtml) {
-              s += item.value;
-              continue;
-            }
-            if (Array.isArray(item)) {
-              s += escapeHtml(item);
-              continue;
-            }
-          }
-          if (typeof item === 'number') {
-            s += item;
-            continue;
-          }
-          const str = String(item);
-          s += !ESCAPE_TEST_RE.test(str) ? str : str.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+        if (item == null || item === true || item === false) continue;
+        if (typeof item === 'object' && item.__isRawHtml) {
+          result += item.value;
+        } else {
+          result += escapeHtml(item);
         }
       }
-      return s;
+      return result;
     }
   }
-  if (typeof v === 'number') return '' + v;
+  if (type === 'number') return '' + v;
   const s = String(v);
-  return ESCAPE_TEST_RE.test(s) ? s.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]) : s;
+  if (!ESCAPE_TEST_RE.test(s)) return s;
+  return s.replace(ESCAPE_RE, escapeChar);
 }
 
 /**

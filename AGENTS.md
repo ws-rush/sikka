@@ -203,6 +203,66 @@ The engine defines specific error types for different failure points:
 2.  Modify the code generation logic in `src/compiler.ts`.
 3.  If the change affects performance, ensure the cache still functions correctly (Properties 6, 7).
 
+## Performance Guidelines
+
+To maintain the engine's position as a top-performer in benchmarks (surpassing Eta and Pug), follow these core principles when modifying the compiler, escaper, or rendering logic.
+
+### 1. Shift Computation to Compile-Time
+Move as much processing as possible from the **render phase** to the **compile phase**.
+- **Principle**: If any part of the output (tag names, static attributes, whitespace) is known during compilation, it must be pre-escaped, pre-formatted, and merged with adjacent static parts into single string literals.
+- **Goal**: The generated render function should perform the absolute minimum number of string concatenations and logic checks.
+
+### 2. Flat Execution Paths
+Minimize the depth of the call stack and avoid deep recursion in hot paths.
+- **Principle**: Favor flat loops and inlined logic for common data types (Strings, Numbers, and pre-escaped markers) over generic recursive functions. 
+- **Goal**: Reduce function call overhead, especially inside loops like `.map()`.
+
+### 3. Zero-Allocation Hot Loops
+Minimize the creation of temporary objects, arrays, or closures during the rendering of a template.
+- **Principle**: Avoid allocating intermediate objects inside frequently executed blocks (e.g., the body of a loop). Every `new` object or function closure created per-item adds significant garbage collection pressure.
+- **Goal**: Transform nested structures into flat string building operations wherever the syntax allows.
+
+### 4. Specialize for the "Happy Path"
+Implement "fast-path" checks to bypass expensive operations for the most common data types.
+- **Principle**: Most strings in a template do not contain special HTML characters. Most elements do not use dynamic spread attributes. Use lightweight "pre-flight" checks (like `.test()` or simple type checks) to skip heavy logic like `.replace()` or complex attribute merging.
+- **Goal**: Ensure the most common use cases run at near-native string concatenation speeds.
+
+### 5. Favor Low-Complexity String Operations
+Avoid high-overhead operations in the runtime rendering loop.
+- **Principle**: Runtime `RegExp` matching, `try/catch` blocks, and complex property lookups are significantly slower than basic string methods. Use `startsWith`, `endsWith`, `slice`, and local variable references instead of repeating expensive lookups.
+- **Goal**: Maintain a low CPU-cycle-per-byte ratio during rendering.
+
+## Performance Benchmarking & Profiling
+
+The project includes a dedicated benchmarking suite that relies only on the **Public API** (`Engine.renderString`, etc.), ensuring tests remain valid even if internals change.
+
+### 1. Running Benchmarks
+Use the built-in bench suite to measure raw performance across different scenarios:
+```bash
+pnpm build && pnpm bench
+```
+This uses **tinybench** to provide statistically significant results (Ops/sec, average latency).
+
+### 2. Detecting Bottlenecks (Profiling)
+To identify which specific parts of the code are slowing down rendering, use the Node.js built-in profiler:
+
+1. **Generate Profile Data**:
+   ```bash
+   node --prof bench/index.js
+   ```
+2. **Process the Log**:
+   ```bash
+   node --prof-process isolate-*-v8.log > profile.txt
+   ```
+3. **Analyze**: Open `profile.txt`. Look at the `[Summary]` and `[JavaScript]` sections. High percentages in `escapeHtml` or generated functions indicate areas for optimization.
+
+### 3. Visual Profiling with Flamegraphs
+For a visual representation of the call stack and "hot" functions:
+```bash
+npx clinic flame -- node bench/index.js
+```
+This will open a flamegraph in your browser. Wide bars represent functions that consume the most CPU time.
+
 ## Testing
 
 The tests should primary focus on testing **functionality** and the **public API**.

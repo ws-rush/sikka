@@ -250,15 +250,19 @@ function mergeLines(bodyLines, target) {
                     let nextExpr = nextLine.slice(prefix.length);
                     if (nextExpr.endsWith(';'))
                         nextExpr = nextExpr.slice(0, -1);
-                    combined += ' + ' + nextExpr;
+                    // Fold constant string concatenations like "a" + "b"
+                    if (combined.endsWith('"') && nextExpr.startsWith('"')) {
+                        combined = combined.slice(0, -1) + nextExpr.slice(1);
+                    }
+                    else {
+                        combined += ' + ' + nextExpr;
+                    }
                     j++;
                 }
                 else {
                     break;
                 }
             }
-            // Fold constant string concatenations like "a" + "b"
-            combined = combined.replace(/" \+ "/g, "");
             lines.push(`${target} += ${combined};`);
             i = j;
         }
@@ -443,14 +447,14 @@ function emitElement(node, components, options, target = '__out') {
             const source = transformExpression(attr.value, components, options);
             if (attr.name === 'class') {
                 const valExpr = attr.type === 'list' ? `__classList(${source})` : source;
-                lines.push(emit(`' class="' + __escape(${valExpr}) + '"'`));
+                lines.push(emit(`" class=\\"" + __escape(${valExpr}) + "\\""`));
             }
             else if (attr.name === 'style') {
                 const valExpr = attr.type === 'style' ? `__styleObject(${source})` : source;
-                lines.push(emit(`' style="' + __escape(${valExpr}) + '"'`));
+                lines.push(emit(`" style=\\"" + __escape(${valExpr}) + "\\""`));
             }
             else {
-                lines.push(emit(`" " + ${JSON.stringify(attr.name)} + '="' + __escape(${source}) + '"'`));
+                lines.push(emit(`${JSON.stringify(' ' + attr.name + '="')} + __escape(${source}) + "\\""`));
             }
         }
     }
