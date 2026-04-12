@@ -47,8 +47,32 @@ export function escapeHtml(v) {
             return v.value;
         if (Array.isArray(v)) {
             let s = '';
-            for (let i = 0; i < v.length; i++)
-                s += escapeHtml(v[i]);
+            for (let i = 0; i < v.length; i++) {
+                const item = v[i];
+                if (typeof item === 'string') {
+                    if (item.length > 0) {
+                        s += !ESCAPE_TEST_RE.test(item) ? item : item.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+                    }
+                }
+                else if (item !== null && item !== undefined && item !== true && item !== false) {
+                    if (typeof item === 'object') {
+                        if (item.__isRawHtml) {
+                            s += item.value;
+                            continue;
+                        }
+                        if (Array.isArray(item)) {
+                            s += escapeHtml(item);
+                            continue;
+                        }
+                    }
+                    if (typeof item === 'number') {
+                        s += item;
+                        continue;
+                    }
+                    const str = String(item);
+                    s += !ESCAPE_TEST_RE.test(str) ? str : str.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+                }
+            }
             return s;
         }
     }

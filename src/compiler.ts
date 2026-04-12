@@ -212,11 +212,6 @@ function normalisePath(path: string): string {
   return prefix + resolved.join('/');
 }
 
-function isStaticAttr(attr: AttrNode | SpreadAttrNode): boolean {
-  if ('type' in attr) return false;
-  return typeof attr.value === 'string' || attr.value === true;
-}
-
 /**
  * Compile a TemplateAST into a RenderFunction.
  */
@@ -377,6 +372,10 @@ function mergeLines(bodyLines: string[], target: string): string[] {
           break;
         }
       }
+      
+      // Fold constant string concatenations like "a" + "b"
+      combined = combined.replace(/" \+ "/g, "");
+      
       lines.push(`${target} += ${combined};`);
       i = j;
     } else {
@@ -546,11 +545,6 @@ function emitElement(
   }
 
   const hasSpread = node.attrs.some((a) => 'type' in a);
-  const hasComplexAttr = node.attrs.some(
-    (a) =>
-      !('type' in a) &&
-      (a.name === 'class:list' || (a.name === 'style' && typeof a.value !== 'string'))
-  );
 
   if (!hasSpread) {
     let tagOpen = `<${node.tag}`;
@@ -893,7 +887,13 @@ function transformExpression(
     } else {
       const bodyLines = emitNode(part, components, options, '__out');
       const lines = mergeLines(bodyLines, '__out');
-      result += `((() => { let __out = ""; ${lines.join('')} return new __RawHtml(__out); })())`;
+
+      if (lines.length === 1 && lines[0].startsWith('__out += ') && lines[0].endsWith(';')) {
+        const exprContent = lines[0].slice(9, -1); // '__out += '.length === 9
+        result += `new __RawHtml(${exprContent})`;
+      } else {
+        result += `((() => { let __out = ""; ${lines.join(' ')} return new __RawHtml(__out); })())`;
+      }
     }
   }
 
