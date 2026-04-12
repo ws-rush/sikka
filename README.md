@@ -1,5 +1,8 @@
 # astro-template-engine
 
+> [!WARNING]
+> This project is currently under **heavy development**. APIs and internal behaviors are subject to significant changes as we optimize for performance and expand Astro syntax support.
+
 A runtime-agnostic, Astro-like template engine for rendering HTML. It parses `.astro` syntax, compiles templates to efficient JavaScript functions, and produces clean HTML.
 
 ## Features
@@ -153,3 +156,13 @@ Registers a global component.
 ### `engine.invalidate(key?): void`
 
 Clears specific or all cache entries.
+
+## TODO: Testing Roadmap
+
+The project is currently undergoing a testing refactor. Tests will focus exclusively on the **public interface** and **syntax compliance**, avoiding any dependency on internal implementation details which are subject to change for performance reasons.
+
+Future updates will include:
+
+1.  **Test Strategy**: Defining the overall approach for performance-conscious, black-box testing.
+2.  **Public API Group**: Full test suite for the `Engine` class methods and module exports.
+3.  **Syntax Compliance Group**: Comprehensive tests for every supported Astro syntax feature and directive.
