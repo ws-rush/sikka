@@ -33,32 +33,24 @@ const ESCAPE_TEST_RE = /[&<>"']/;
  * - number / boolean      → coerce to string, then escape
  * - string                → escape `& < > " '`
  */
-export function escapeHtml(value: unknown): string {
-  if (typeof value === 'string') {
-    if (value.length === 0) return '';
-    if (!ESCAPE_TEST_RE.test(value)) return value;
-    return value.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+export function escapeHtml(v: any): string {
+  if (typeof v === 'string') {
+    if (v.length === 0) return '';
+    if (!ESCAPE_TEST_RE.test(v)) return v;
+    return v.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
   }
-  if (value == null || value === true || value === false) return '';
-  if (typeof value === 'object') {
-    if ((value as { __isRawHtml?: boolean }).__isRawHtml) {
-      return (value as { value: string }).value;
-    }
-    if (Array.isArray(value)) {
-      let result = '';
-      for (let i = 0; i < value.length; i++) {
-        const v = value[i];
-        if (v != null && v !== false && v !== true) {
-          result += escapeHtml(v);
-        }
-      }
-      return result;
+  if (v === null || v === undefined || v === true || v === false) return '';
+  if (typeof v === 'object') {
+    if (v.__isRawHtml) return v.value;
+    if (Array.isArray(v)) {
+      let s = '';
+      for (let i = 0; i < v.length; i++) s += escapeHtml(v[i]);
+      return s;
     }
   }
-  const s = String(value);
-  if (s.length === 0) return '';
-  if (!ESCAPE_TEST_RE.test(s)) return s;
-  return s.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+  if (typeof v === 'number') return '' + v;
+  const s = String(v);
+  return ESCAPE_TEST_RE.test(s) ? s.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]) : s;
 }
 
 /**

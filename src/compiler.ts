@@ -281,9 +281,10 @@ export function compileAST(ast: TemplateAST, options?: CompileOptions): CompileR
       slots?: Record<string, string>
     ): string {
       try {
+        const s = slots ?? {};
         return syncFn(
           props,
-          slots ?? {},
+          s,
           escapeHtml,
           RawHtml,
           components,
@@ -328,7 +329,7 @@ function buildFunctionBody(
       }
     };`);
   lines.push('');
-  const importNames = ast.imports.map(imp => imp.localName);
+  const importNames = ast.imports.map((imp) => imp.localName);
   if (importNames.length > 0) {
     for (const name of importNames) {
       lines.push(`const ${name} = __components[${JSON.stringify(name)}];`);
@@ -336,7 +337,6 @@ function buildFunctionBody(
   }
 
   if (ast.frontmatter.source.trim()) {
-    // Strip imports and exports from frontmatter
     const cleanFM = ast.frontmatter.source
       .replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '')
       .replace(/^\s*export\s+/gm, '');
@@ -344,7 +344,7 @@ function buildFunctionBody(
     lines.push('');
   }
 
-  const bodyLines = [];
+  const bodyLines: string[] = [];
   for (const node of ast.body) {
     bodyLines.push(...emitNode(node, components, options, '__out'));
   }
@@ -358,19 +358,20 @@ function buildFunctionBody(
 
 function mergeLines(bodyLines: string[], target: string): string[] {
   const lines: string[] = [];
-  const re = new RegExp(`^${target} \\+= (.*);$`);
+  const prefix = `${target} += `;
   let i = 0;
   while (i < bodyLines.length) {
     const line = bodyLines[i].trim();
-    const match = line.match(re);
-    if (match) {
-      let combined = match[1];
+    if (line.startsWith(prefix)) {
+      let combined = line.slice(prefix.length);
+      if (combined.endsWith(';')) combined = combined.slice(0, -1);
       let j = i + 1;
       while (j < bodyLines.length) {
         const nextLine = bodyLines[j].trim();
-        const nextMatch = nextLine.match(re);
-        if (nextMatch) {
-          combined += ' + ' + nextMatch[1];
+        if (nextLine.startsWith(prefix)) {
+          let nextExpr = nextLine.slice(prefix.length);
+          if (nextExpr.endsWith(';')) nextExpr = nextExpr.slice(0, -1);
+          combined += ' + ' + nextExpr;
           j++;
         } else {
           break;
@@ -881,7 +882,7 @@ function transformExpression(
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
 ): string {
-  if (!expr.nodes || expr.nodes.every((n: string | TemplateNode) => typeof n === 'string')) {
+  if (!expr.nodes || (expr.nodes.length === 1 && typeof expr.nodes[0] === 'string')) {
     return expr.source;
   }
 
@@ -892,7 +893,7 @@ function transformExpression(
     } else {
       const bodyLines = emitNode(part, components, options, '__out');
       const lines = mergeLines(bodyLines, '__out');
-      result += `((() => { let __out = ""; ${lines.join('')}; return new __RawHtml(__out); })())`;
+      result += `((() => { let __out = ""; ${lines.join('')} return new __RawHtml(__out); })())`;
     }
   }
 

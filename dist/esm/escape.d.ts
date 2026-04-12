@@ -21,7 +21,7 @@ export declare class RawHtml {
  * - number / boolean      → coerce to string, then escape
  * - string                → escape `& < > " '`
  */
-export declare function escapeHtml(value: unknown): string;
+export declare function escapeHtml(v: any): string;
 /**
  * Tagged template literal that assembles a trusted HTML string.
  * Each interpolated value is passed through `escapeHtml` so that

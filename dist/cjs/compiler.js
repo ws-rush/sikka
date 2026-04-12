@@ -182,7 +182,8 @@ export function compileAST(ast, options) {
         });
         renderFn.renderSync = function (props, slots) {
             try {
-                return syncFn(props, slots ?? {}, escapeHtml, RawHtml, components, classListHelper, styleObjectHelper, filterHelper);
+                const s = slots ?? {};
+                return syncFn(props, s, escapeHtml, RawHtml, components, classListHelper, styleObjectHelper, filterHelper);
             }
             catch (err) {
                 if (options?.debug) {
@@ -215,14 +216,13 @@ function buildFunctionBody(ast, components, options) {
       }
     };`);
     lines.push('');
-    const importNames = ast.imports.map(imp => imp.localName);
+    const importNames = ast.imports.map((imp) => imp.localName);
     if (importNames.length > 0) {
         for (const name of importNames) {
             lines.push(`const ${name} = __components[${JSON.stringify(name)}];`);
         }
     }
     if (ast.frontmatter.source.trim()) {
-        // Strip imports and exports from frontmatter
         const cleanFM = ast.frontmatter.source
             .replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '')
             .replace(/^\s*export\s+/gm, '');
@@ -240,19 +240,22 @@ function buildFunctionBody(ast, components, options) {
 }
 function mergeLines(bodyLines, target) {
     const lines = [];
-    const re = new RegExp(`^${target} \\+= (.*);$`);
+    const prefix = `${target} += `;
     let i = 0;
     while (i < bodyLines.length) {
         const line = bodyLines[i].trim();
-        const match = line.match(re);
-        if (match) {
-            let combined = match[1];
+        if (line.startsWith(prefix)) {
+            let combined = line.slice(prefix.length);
+            if (combined.endsWith(';'))
+                combined = combined.slice(0, -1);
             let j = i + 1;
             while (j < bodyLines.length) {
                 const nextLine = bodyLines[j].trim();
-                const nextMatch = nextLine.match(re);
-                if (nextMatch) {
-                    combined += ' + ' + nextMatch[1];
+                if (nextLine.startsWith(prefix)) {
+                    let nextExpr = nextLine.slice(prefix.length);
+                    if (nextExpr.endsWith(';'))
+                        nextExpr = nextExpr.slice(0, -1);
+                    combined += ' + ' + nextExpr;
                     j++;
                 }
                 else {
@@ -705,7 +708,7 @@ function emitComponentCall(node, components, options, target = '__out') {
     return lines;
 }
 function transformExpression(expr, components, options) {
-    if (!expr.nodes || expr.nodes.every((n) => typeof n === 'string')) {
+    if (!expr.nodes || (expr.nodes.length === 1 && typeof expr.nodes[0] === 'string')) {
         return expr.source;
     }
     let result = '';
@@ -716,7 +719,7 @@ function transformExpression(expr, components, options) {
         else {
             const bodyLines = emitNode(part, components, options, '__out');
             const lines = mergeLines(bodyLines, '__out');
-            result += `((() => { let __out = ""; ${lines.join('')}; return new __RawHtml(__out); })())`;
+            result += `((() => { let __out = ""; ${lines.join('')} return new __RawHtml(__out); })())`;
         }
     }
     return result;
