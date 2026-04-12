@@ -14,10 +14,8 @@ export interface RenderFunction {
 export interface EngineOptions {
   /** Directory path for template resolution. */
   views?: string;
-  /** Async function to read file content. */
-  readFile?: (path: string) => Promise<string>;
   /** Sync function to read file content. */
-  readFileSync?: (path: string) => string;
+  readFile?: (path: string) => string;
   /** Sync/Async function to resolve paths. */
   resolvePath?: (base: string, specifier: string) => string | Promise<string>;
   /** Custom name for the props variable (default: "Astro"). */

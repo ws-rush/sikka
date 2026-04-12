@@ -1,15 +1,4 @@
 /**
- * Compute a SHA-256 hex hash of a string using the browser-compatible
- * `crypto.subtle` API. Used as cache keys for string-based templates.
- */
-export async function hashTemplate(source) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(source);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-/**
  * Create a Cache instance backed by a Map.
  *
  * When `maxSize` is provided, the cache uses LRU eviction: the least-recently-used

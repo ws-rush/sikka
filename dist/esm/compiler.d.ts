@@ -1,17 +1,5 @@
 /**
  * Compiler
- *
- * Transforms a TemplateAST into a RenderFunction JS closure.
- *
- * Strategy:
- *   1. Walk the AST and emit a JS function body string
- *   2. Inject frontmatter source so props are in scope
- *   3. Emit __escape(expr) for ExpressionNode values
- *   4. Emit verbatim content for ScriptNode and StyleNode
- *   5. Substitute SlotNode with slot content from the `slots` argument
- *   6. Use new AsyncFunction(...) to support await in frontmatter
- *   7. Recursively resolve component imports via FileReader
- *   8. Detect circular dependencies via an in-progress path set
  */
 import type { TemplateAST, CompileResult, RenderFunction } from './types.js';
 interface CompileOptions {
@@ -36,17 +24,9 @@ export declare const compile: typeof compileSync;
 /**
  * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
-export declare function compileSync(ast: TemplateAST, options?: CompileOptions & {
+declare function compileSync(ast: TemplateAST, options?: CompileOptions & {
     fileReader?: (path: string) => string;
     basePath?: string;
 }): CompileResult;
-/**
- * Compile a TemplateAST into a RenderFunction.
- */
-export declare function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult;
-/**
- * Compile a TemplateAST into a standalone ESM module string.
- */
-export declare function compileToModule(ast: TemplateAST, options?: CompileOptions): string;
 export {};
 //# sourceMappingURL=compiler.d.ts.map

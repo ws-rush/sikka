@@ -1,5 +1,5 @@
 import { parse } from './parser.js';
-import { compileSync } from './compiler.js';
+import { compile } from './compiler.js';
 import { createCache } from './cache.js';
 export class Engine {
     options;
@@ -18,15 +18,15 @@ export class Engine {
         }
     }
     renderString(template, props = {}) {
-        const fn = this.compileStringSync(template);
+        const fn = this.compileString(template);
         return fn.renderSync(props, {});
     }
     render(name, props = {}) {
-        const fn = this.compileFileSync(name);
+        const fn = this.compileFile(name);
         return fn.renderSync(props, {});
     }
     loadComponent(name, template) {
-        this.globalComponents[name] = this.compileStringSync(template);
+        this.globalComponents[name] = this.compileString(template);
     }
     registerComponent(name, fn) {
         this.globalComponents[name] = fn;
@@ -41,10 +41,9 @@ export class Engine {
             }
         }
     }
-    compileStringSync(template, basePath = '') {
-        const cacheKey = this.cache ? (template.length < 100 ? template : null) : null;
-        if (this.cache && cacheKey) {
-            const cached = this.cache.get(cacheKey);
+    compileString(template, basePath = '') {
+        if (this.cache) {
+            const cached = this.cache.get(template);
             if (cached)
                 return cached;
         }
@@ -52,21 +51,21 @@ export class Engine {
         if (!parseResult.ok) {
             throw new Error(`ParseError: ${parseResult.error.message}`);
         }
-        const result = compileSync(parseResult.ast, {
+        const result = compile(parseResult.ast, {
             ...this.options,
             components: this.globalComponents,
             basePath,
-            fileReader: this.options.readFileSync,
+            fileReader: this.options.readFile,
         });
         if (!result.ok) {
             throw new Error(`CompileError: ${result.error.message}`);
         }
-        if (this.cache && cacheKey) {
-            this.cache.set(cacheKey, result.fn);
+        if (this.cache) {
+            this.cache.set(template, result.fn);
         }
         return result.fn;
     }
-    compileFileSync(name) {
+    compileFile(name) {
         const fullPath = this.options.views && !name.startsWith('/') && !name.includes(':')
             ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
             : name;
@@ -75,10 +74,10 @@ export class Engine {
             if (cached)
                 return cached;
         }
-        if (!this.options.readFileSync) {
-            throw new Error('Engine.renderSync() requires options.readFileSync to be configured');
+        if (!this.options.readFile) {
+            throw new Error('Engine.render() requires options.readFile to be configured');
         }
-        const content = this.options.readFileSync(fullPath);
+        const content = this.options.readFile(fullPath);
         if (content === undefined || content === null) {
             throw new Error(`Could not read file: ${fullPath}`);
         }
@@ -86,11 +85,11 @@ export class Engine {
         if (!parseResult.ok) {
             throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
         }
-        const result = compileSync(parseResult.ast, {
+        const result = compile(parseResult.ast, {
             ...this.options,
             components: this.globalComponents,
             basePath: fullPath,
-            fileReader: this.options.readFileSync,
+            fileReader: this.options.readFile,
         });
         if (!result.ok) {
             throw new Error(`CompileError in ${fullPath}: ${result.error.message}`);

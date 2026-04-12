@@ -14,23 +14,6 @@ export declare class RawHtml {
 }
 /**
  * Escape an untrusted value for safe HTML insertion.
- *
- * - `null` / `undefined`  → `""`
- * - `RawHtml` instance    → `.value` verbatim
- * - Array                 → recursively escape and join elements without commas
- * - number / boolean      → coerce to string, then escape
- * - string                → escape `& < > " '`
  */
-export declare function escapeHtml(v: any): string;
-/**
- * Tagged template literal that assembles a trusted HTML string.
- * Each interpolated value is passed through `escapeHtml` so that
- * dynamic parts are escaped while the static template strings are
- * treated as trusted markup.
- *
- * Returns a `RawHtml` instance so the result is never double-escaped
- * when used inside another `html` tag or passed to `escapeHtml`.
- *
- */
-export declare function html(strings: TemplateStringsArray, ...values: unknown[]): RawHtml;
+export declare function escapeHtml(v: unknown): string;
 //# sourceMappingURL=escape.d.ts.map

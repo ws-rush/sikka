@@ -1,17 +1,5 @@
 /**
  * Compiler
- *
- * Transforms a TemplateAST into a RenderFunction JS closure.
- *
- * Strategy:
- *   1. Walk the AST and emit a JS function body string
- *   2. Inject frontmatter source so props are in scope
- *   3. Emit __escape(expr) for ExpressionNode values
- *   4. Emit verbatim content for ScriptNode and StyleNode
- *   5. Substitute SlotNode with slot content from the `slots` argument
- *   6. Use new AsyncFunction(...) to support await in frontmatter
- *   7. Recursively resolve component imports via FileReader
- *   8. Detect circular dependencies via an in-progress path set
  */
 
 import { escapeHtml, RawHtml } from './escape.js';
@@ -160,7 +148,7 @@ export const compile = compileSync;
 /**
  * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
-export function compileSync(
+function compileSync(
   ast: TemplateAST,
   options?: CompileOptions & { fileReader?: (path: string) => string; basePath?: string }
 ): CompileResult {
@@ -215,7 +203,7 @@ function normalisePath(path: string): string {
 /**
  * Compile a TemplateAST into a RenderFunction.
  */
-export function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
+function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
   try {
     const components = options?.components ?? {};
     const renderSyncBody = buildFunctionBody(ast, components, options);
@@ -315,7 +303,13 @@ function buildFunctionBody(
   const varName = options?.varName || 'Astro';
 
   lines.push(`let __out = "";`);
-  lines.push(`const ${varName} = {
+
+  // Heuristic: only create Astro if it's explicitly used in the template or frontmatter
+  const isAstroUsed = ast.frontmatter.source.includes(varName) ||
+    JSON.stringify(ast.body).includes(varName);
+
+  if (isAstroUsed) {
+    lines.push(`const ${varName} = {
       props,
       slots: {
         ...slots,
@@ -323,6 +317,7 @@ function buildFunctionBody(
         has: (name) => slots[name] !== undefined || (name === "default" && slots[""] !== undefined)
       }
     };`);
+  }
   lines.push('');
   const importNames = ast.imports.map((imp) => imp.localName);
   if (importNames.length > 0) {
@@ -581,12 +576,12 @@ function emitElement(
       const source = transformExpression(attr.value, components, options);
       if (attr.name === 'class') {
         const valExpr = attr.type === 'list' ? `__classList(${source})` : source;
-        lines.push(emit(`" class=\\"" + __escape(${valExpr}) + "\\""`));
+        lines.push(emit(JSON.stringify(` class="`) + ` + __escape(${valExpr}) + "\\""`));
       } else if (attr.name === 'style') {
         const valExpr = attr.type === 'style' ? `__styleObject(${source})` : source;
-        lines.push(emit(`" style=\\"" + __escape(${valExpr}) + "\\""`));
+        lines.push(emit(JSON.stringify(` style="`) + ` + __escape(${valExpr}) + "\\""`));
       } else {
-        lines.push(emit(`${JSON.stringify(' ' + attr.name + '="')} + __escape(${source}) + "\\""`));
+        lines.push(emit(JSON.stringify(` ${attr.name}="`) + ` + __escape(${source}) + "\\""`));
       }
     }
   } else {
@@ -741,14 +736,14 @@ function emitAttr(
   const source = transformExpression(val, components, options);
 
   if (attr.name === 'class:list') {
-    return [emit(`" class=\\"" + __escape(__classList(${source})) + "\\""`)];
+    return [emit(JSON.stringify(` class="`) + ` + __escape(__classList(${source})) + "\\""`)];
   }
 
   if (attr.name === 'style') {
-    return [emit(`" style=\\"" + __escape(__styleObject(${source})) + "\\""`)];
+    return [emit(JSON.stringify(` style="`) + ` + __escape(__styleObject(${source})) + "\\""`)];
   }
 
-  return [emit(`" " + ${JSON.stringify(attr.name)} + '="' + __escape(${source}) + '"'`)];
+  return [emit(JSON.stringify(` ${attr.name}="`) + ` + __escape(${source}) + "\\""`)];
 }
 
 function emitComponentCall(
@@ -900,76 +895,4 @@ function transformExpression(
   }
 
   return result;
-}
-
-/**
- * Compile a TemplateAST into a standalone ESM module string.
- */
-export function compileToModule(ast: TemplateAST, options?: CompileOptions): string {
-  const varName = options?.varName || 'Astro';
-  const components = options?.components ?? {};
-
-  const bodyLines: string[] = [];
-  bodyLines.push('  let __out = "";');
-  bodyLines.push(
-    `  const ${varName} = { props, slots: { ...slots, render: async (name) => new __RawHtml(slots[name] || ""), has: (name) => slots[name] !== undefined || (name === "default" && slots[""] !== undefined) } };`
-  );
-
-  // In a standalone module, we assume components are already in scope or handled.
-  // Actually, for AOT, the imports from frontmatter should be preserved at the top.
-
-  const fmSource = ast.frontmatter.source.trim();
-  if (fmSource) {
-    bodyLines.push('  // --- frontmatter ---');
-    // We keep the frontmatter as-is (assuming it's valid JS/TS)
-    // but we need to strip imports to move them to the top level.
-    const cleanFM = fmSource.replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '');
-    bodyLines.push(cleanFM);
-  }
-
-  bodyLines.push('  // --- template body ---');
-  for (const node of ast.body) {
-    for (const l of emitNode(node, components, options)) {
-      bodyLines.push('  ' + l);
-    }
-  }
-  bodyLines.push('  return __out;');
-
-  const imports: string[] = [];
-  // Extract real imports from frontmatter
-  const importRegex = /^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm;
-  let m;
-  while ((m = importRegex.exec(fmSource)) !== null) {
-    imports.push(m[0].trim());
-  }
-
-  return `
-import { escapeHtml as __escape, RawHtml as __RawHtml } from 'astro-template-engine';
-${imports.join('\n')}
-
-const __classList = (arg) => {
-  if (typeof arg === 'string') return arg;
-  if (arg instanceof Set) return Array.from(arg).join(' ');
-  if (Array.isArray(arg)) return arg.map(__classList).filter(Boolean).join(' ');
-  if (arg && typeof arg === 'object') {
-    return Object.entries(arg).filter(([_, v]) => v).map(([k]) => k).join(' ');
-  }
-  return '';
-};
-
-const __styleObject = (arg) => {
-  if (typeof arg === 'string') return arg;
-  if (arg && typeof arg === 'object') {
-    if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) return arg.toString();
-    return Object.entries(arg).map(([k, v]) => \`\${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}:\${v}\`).join(';');
-  }
-  return '';
-};
-
-const __filter = (v) => v;
-
-export default async function render(props = {}, slots = {}) {
-${bodyLines.join('\n')}
-}
-`.trim();
 }

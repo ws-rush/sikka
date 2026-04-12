@@ -17,8 +17,7 @@ module.exports = {
         // Since the benchmark main.js calls engine.render(templatePath, data),
         // we need to handle both absolute and relative paths.
         // main.js passes relative paths like './templates/friends/template.astro'
-        readFile: (p) => fs.promises.readFile(p, 'utf-8'),
-        readFileSync: (p) => fs.readFileSync(p, 'utf-8'),
+        readFile: (p) => fs.readFileSync(p, 'utf-8'),
         resolvePath: (base, specifier) => path.resolve(path.dirname(base), specifier),
       });
     }

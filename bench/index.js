@@ -1,13 +1,11 @@
 import { Bench } from 'tinybench';
 import { Engine } from '../dist/esm/index.js';
 import fs from 'node:fs';
-import path from 'node:path';
 
 // Initialize engine with basic config
 const engine = new Engine({
   cache: true,
-  readFile: (p) => fs.promises.readFile(p, 'utf-8'),
-  readFileSync: (p) => fs.readFileSync(p, 'utf-8'),
+  readFile: (p) => fs.readFileSync(p, 'utf-8'),
 });
 
 // Load friends data
@@ -28,7 +26,7 @@ bench
   })
   .add('Nested Loops', () => {
     engine.renderString('<ul>{Astro.props.items.map(i => <li>{i.subs.map(s => <span>{s}</span>)}</li>)}</ul>', {
-      items: Array.from({ length: 10 }, (_, i) => ({ subs: [1, 2, 3] }))
+      items: Array.from({ length: 10 }, (_) => ({ subs: [1, 2, 3] }))
     });
   });
 

@@ -9,7 +9,7 @@ export declare class Engine {
     loadComponent(name: string, template: string): void;
     registerComponent(name: string, fn: RenderFunction): void;
     invalidate(key?: string): void;
-    private compileStringSync;
-    private compileFileSync;
+    private compileString;
+    private compileFile;
 }
 //# sourceMappingURL=index.d.ts.map

@@ -3,7 +3,7 @@ import type {
   EngineOptions,
 } from './types.js';
 import { parse } from './parser.js';
-import { compileSync } from './compiler.js';
+import { compile } from './compiler.js';
 import { createCache } from './cache.js';
 
 export class Engine {
@@ -21,17 +21,17 @@ export class Engine {
   }
 
   renderString(template: string, props: Record<string, unknown> = {}): string {
-    const fn = this.compileStringSync(template);
+    const fn = this.compileString(template);
     return fn.renderSync(props, {});
   }
 
   render(name: string, props: Record<string, unknown> = {}): string {
-    const fn = this.compileFileSync(name);
+    const fn = this.compileFile(name);
     return fn.renderSync(props, {});
   }
 
   loadComponent(name: string, template: string): void {
-    this.globalComponents[name] = this.compileStringSync(template);
+    this.globalComponents[name] = this.compileString(template);
   }
 
   registerComponent(name: string, fn: RenderFunction): void {
@@ -48,10 +48,9 @@ export class Engine {
     }
   }
 
-  private compileStringSync(template: string, basePath: string = ''): RenderFunction {
-    const cacheKey = this.cache ? (template.length < 100 ? template : null) : null;
-    if (this.cache && cacheKey) {
-      const cached = this.cache.get(cacheKey);
+  private compileString(template: string, basePath: string = ''): RenderFunction {
+    if (this.cache) {
+      const cached = this.cache.get(template);
       if (cached) return cached;
     }
 
@@ -60,25 +59,25 @@ export class Engine {
       throw new Error(`ParseError: ${parseResult.error.message}`);
     }
 
-    const result = compileSync(parseResult.ast, {
+    const result = compile(parseResult.ast, {
       ...this.options,
       components: this.globalComponents,
       basePath,
-      fileReader: this.options.readFileSync,
+      fileReader: this.options.readFile,
     });
 
     if (!result.ok) {
       throw new Error(`CompileError: ${result.error.message}`);
     }
 
-    if (this.cache && cacheKey) {
-      this.cache.set(cacheKey, result.fn);
+    if (this.cache) {
+      this.cache.set(template, result.fn);
     }
 
     return result.fn;
   }
 
-  private compileFileSync(name: string): RenderFunction {
+  private compileFile(name: string): RenderFunction {
     const fullPath =
       this.options.views && !name.startsWith('/') && !name.includes(':')
         ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
@@ -89,11 +88,11 @@ export class Engine {
       if (cached) return cached;
     }
 
-    if (!this.options.readFileSync) {
-      throw new Error('Engine.renderSync() requires options.readFileSync to be configured');
+    if (!this.options.readFile) {
+      throw new Error('Engine.render() requires options.readFile to be configured');
     }
 
-    const content = this.options.readFileSync(fullPath);
+    const content = this.options.readFile(fullPath);
     if (content === undefined || content === null) {
       throw new Error(`Could not read file: ${fullPath}`);
     }
@@ -102,11 +101,11 @@ export class Engine {
       throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
     }
 
-    const result = compileSync(parseResult.ast, {
+    const result = compile(parseResult.ast, {
       ...this.options,
       components: this.globalComponents,
       basePath: fullPath,
-      fileReader: this.options.readFileSync,
+      fileReader: this.options.readFile,
     });
 
     if (!result.ok) {
