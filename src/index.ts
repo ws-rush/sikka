@@ -3,7 +3,7 @@ import type {
   EngineOptions,
 } from './types.js';
 import { parse } from './parser.js';
-import { compile } from './compiler.js';
+import { compile as internalCompile } from './compiler.js';
 import { createCache } from './cache.js';
 
 export class Engine {
@@ -20,24 +20,46 @@ export class Engine {
     }
   }
 
+  /**
+   * Renders a template string with the provided props.
+   *
+   * @param template - The template content to render.
+   * @param props - Data object to pass as `Astro.props`.
+   */
   renderString(template: string, props: Record<string, unknown> = {}): string {
     const fn = this.compileString(template);
     return fn.renderSync(props, {});
   }
 
+  /**
+   * Renders a template file from the configured views directory.
+   *
+   * @param name - The path or name of the template file.
+   * @param props - Data object to pass as `Astro.props`.
+   */
   render(name: string, props: Record<string, unknown> = {}): string {
     const fn = this.compileFile(name);
     return fn.renderSync(props, {});
   }
 
+  /**
+   * Pre-loads and compiles a component for use in other templates.
+   */
   loadComponent(name: string, template: string): void {
     this.globalComponents[name] = this.compileString(template);
   }
 
+  /**
+   * Registers a pre-compiled render function as a global component.
+   */
   registerComponent(name: string, fn: RenderFunction): void {
     this.globalComponents[name] = fn;
   }
 
+  /**
+   * Invalidates the template cache.
+   * @param key - Optional specific key to remove. If omitted, the entire cache is cleared.
+   */
   invalidate(key?: string): void {
     if (this.cache) {
       if (key !== undefined) {
@@ -48,8 +70,40 @@ export class Engine {
     }
   }
 
-  private compileString(template: string, basePath: string = ''): RenderFunction {
-    if (this.cache) {
+  /**
+   * Compiles a template string into a render function.
+   *
+   * @param str - The template content.
+   * @param config - Optional configuration overrides for this compilation.
+   */
+  compile(str: string, config?: EngineOptions): RenderFunction {
+    return this.compileString(str, '', config);
+  }
+
+  /**
+   * Compiles a template string to its JavaScript function body string.
+   *
+   * @param str - The template content.
+   * @param config - Optional configuration overrides for this compilation.
+   */
+  compileToString(str: string, config?: EngineOptions): string {
+    const parseResult = parse(str);
+    if (!parseResult.ok) {
+      throw new Error(`ParseError: ${parseResult.error.message}`);
+    }
+    const result = internalCompile(parseResult.ast, {
+      ...(config || this.options),
+      components: this.globalComponents,
+    });
+    if (!result.ok) {
+      throw new Error(`CompileError: ${result.error.message}`);
+    }
+    return result.source;
+  }
+
+  private compileString(template: string, basePath: string = '', config?: EngineOptions): RenderFunction {
+    const options = config || this.options;
+    if (this.cache && !config) {
       const cached = this.cache.get(template);
       if (cached) return cached;
     }
@@ -59,18 +113,18 @@ export class Engine {
       throw new Error(`ParseError: ${parseResult.error.message}`);
     }
 
-    const result = compile(parseResult.ast, {
-      ...this.options,
+    const result = internalCompile(parseResult.ast, {
+      ...options,
       components: this.globalComponents,
       basePath,
-      fileReader: this.options.readFile,
+      fileReader: options.readFile,
     });
 
     if (!result.ok) {
       throw new Error(`CompileError: ${result.error.message}`);
     }
 
-    if (this.cache) {
+    if (this.cache && !config) {
       this.cache.set(template, result.fn);
     }
 
@@ -101,7 +155,7 @@ export class Engine {
       throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
     }
 
-    const result = compile(parseResult.ast, {
+    const result = internalCompile(parseResult.ast, {
       ...this.options,
       components: this.globalComponents,
       basePath: fullPath,

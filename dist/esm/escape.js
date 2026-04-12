@@ -4,7 +4,6 @@
  * Provides:
  *   - `RawHtml`  — a wrapper that marks content as trusted/pre-escaped
  *   - `escapeHtml` — escapes untrusted values before HTML insertion
- *   - `html`     — tagged template literal that produces a `RawHtml` instance
  */
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
 export class RawHtml {

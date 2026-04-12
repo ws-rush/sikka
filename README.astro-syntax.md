@@ -6,29 +6,25 @@
 
 ```astro
 ---
-// 1. Top-level await destructuring
-const { results: [firstUser] } = await fetch('...').then(r => r.json());
-// 2. TypeScript interface declarations for Props
+// 1. TypeScript interface declarations for Props
 export interface Props { title: string; }
-// 3. Exporting standard types
+// 2. Exporting standard types
 export type User = { id: string };
-// 4. Hoisting functions vs const functions
+// 3. Hoisting functions vs const functions
 function hoisted() { return "A"; }
 const notHoisted = () => "B";
-// 5. Exporting layout props
+// 4. Exporting layout props
 export const layoutProps = { theme: "dark" };
-// 6. Using Node process
+// 5. Using Node process
 const apiKey = process.env.SECRET_KEY;
-// 7. Declaring global variables
+// 6. Declaring global variables
 declare global { var customVar: number; }
-// 8. Reading file system (Node APIs)
+// 7. Reading file system (Node APIs)
 import fs from 'node:fs';
 const file = fs.readFileSync('data.json', 'utf8');
-// 9. Throwing errors intentionally
+// 8. Throwing errors intentionally
 if (!data) throw new Error("404");
-// 10. Async generators
-async function* generator() { yield await Promise.resolve(1); }
-// 11. Mutating globalThis
+// 9. Mutating globalThis
 globalThis.cachedData = data;
 ---
 ```
@@ -154,35 +150,6 @@ const Tag = "section";
 <div>{ arr.map(i => i ? <A/> : null) }</div>
 <!-- 11. Mixed numbers and strings -->
 <div>{ [1, "a", 2, "b"] }</div>
-```
-
-### Promises
-
-```astro
-<!-- 1. Unawaited string (auto-await) -->
-<div>{Promise.resolve("B")}</div>
-<!-- 2. Promise.all -->
-<div>{Promise.all([Promise.resolve("C")])}</div>
-<!-- 3. Rejected promise -->
-<div>{Promise.reject("E").catch(e => e)}</div>
-<!-- 4. Promise resolving fragment -->
-<div>{Promise.resolve(<><p>X</p></>)}</div>
-<!-- 5. Async IIFE -->
-<div>{await (async () => "D")()}</div>
-<!-- 6. Deeply nested promises -->
-<div>{Promise.resolve(Promise.resolve("F"))}</div>
-<!-- 7. Mixed strings and promises array -->
-<div>{["Sync", Promise.resolve("Async")]}</div>
-<!-- 8. Promise resolving component -->
-<div>{Promise.resolve(<Component />)}</div>
-<!-- 9. Promise.race -->
-<div>{Promise.race([p1, p2])}</div>
-<!-- 10. Unhandled rejection rendering (throws error) -->
-<!-- <div>{Promise.reject("Fatal")}</div> -->
-<!-- 11. Async generators yield -->
-<div>{await asyncGen().next().then(r => r.value)}</div>
-<!-- 12. Awaiting mapped array -->
-<div>{await Promise.all(arr.map(async i => await process(i)))}</div>
 ```
 
 ---
@@ -311,25 +278,23 @@ const { a, ...rest } = Astro.props;
 ```astro
 <!-- 1. set:html null / set:text undef -->
 <div set:html={null} set:text={undefined} />
-<!-- 2. set:html promise -->
-<div set:html={Promise.resolve("3")} />
-<!-- 3. set:html + set:text (Error) -->
+<!-- 2. set:html + set:text (Error) -->
 <!-- <div set:html="a" set:text="b" /> -->
-<!-- 4. set:html + children (Error) -->
+<!-- 3. set:html + children (Error) -->
 <!-- <div set:html="a">b</div> -->
-<!-- 5. set:html on Fragment -->
+<!-- 4. set:html on Fragment -->
 <Fragment set:html="4" />
-<!-- 6. set:html with script tags -->
+<!-- 5. set:html with script tags -->
 <div set:html={"<script>alert()</script>"} />
-<!-- 7. set:html with style tags -->
+<!-- 6. set:html with style tags -->
 <div set:html={"<style>body{}</style>"} />
-<!-- 8. set:html with Arrays / boolean / Object -->
+<!-- 7. set:html with Arrays / boolean / Object -->
 <div set:html={['a','b']} />
 <div set:html={true} />
 <div set:html={{}} />
-<!-- 9. set:html on template -->
+<!-- 8. set:html on template -->
 <template set:html="5" />
-<!-- 10. set:html bypassing XSS -->
+<!-- 9. set:html bypassing XSS -->
 <div set:html={userProvidedUnsafeString} />
 ```
 
@@ -385,11 +350,7 @@ const { a, ...rest } = Astro.props;
 <Comp><div slot="unknown"></div></Comp>
 <!-- 10. Slot forwarding -->
 <slot name="x" slot="y"/>
-<!-- 11. Astro.slots.render programmatically -->
----
-const html = await Astro.slots.render('default');
----
-<!-- 12. Names with spaces / hyphens / numbers -->
+<!-- 11. Names with spaces / hyphens / numbers -->
 <slot name="a b"/>
 <slot name="a-b"/>
 <slot name="1"/>
@@ -447,13 +408,11 @@ const data = Astro.props['data-val'];
 Astro.props.a = 2; // mutating
 // 8. class vs className
 const cls = Astro.props.class;
-// 9. Promises
-const p = await Astro.props.promise;
-// 10. Components
+// 9. Components
 const Icon = Astro.props.icon;
-// 11. Zod validation
+// 10. Zod validation
 const validated = schema.parse(Astro.props);
-// 12. Dynamic accessing
+// 11. Dynamic accessing
 const val = Astro.props[dynamicKey];
 ---
 ```

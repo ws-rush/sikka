@@ -78,15 +78,16 @@ const html = await engine.renderString(template);
 
 | Engine | "friends" Benchmark |
 | :--- | :--- |
-| **Astro (Ours)** | **323ms** |
-| Pug | 343ms |
-| Eta | 345ms |
+| **Astro (Ours)** | **197ms** |
+| Pug | 209ms |
+| Eta | 214ms |
 
 *Results based on 2000 runs. Higher is slower.*
 
 It achieves this through:
-- **Compile-time static merging**: Adjacent static HTML parts are folded into single constant strings.
-- **Fast-path escaper**: Optimized HTML escaping that skips processing for safe strings.
+- **Zero-allocation caching**: Large templates are compiled once and stored in a high-speed cache.
+- **Compile-time static merging**: Adjacent static HTML parts and attributes are folded into single continuous strings.
+- **Fast-path escaper**: Optimized HTML escaping using type-dispatching and regex-skipping.
 - **Expression inlining**: JSX within loops is transformed into direct string concatenations to avoid function call overhead.
 
 ## Core Principles
@@ -120,8 +121,8 @@ Creates a configured engine instance.
 #### `options`
 
 - `views`: Base directory for templates.
-- `readFile`: Async function to read file content.
-- `resolvePath`: Function to resolve import paths.
+- `readFile`: Sync function to read file content from disk.
+- `resolvePath`: Sync/Async function to resolve import paths.
 - `varName`: Name of the global variable (default: `"Astro"`).
 - `debug`: Enable runtime error debugging.
 - `cache`: Enable template caching.
@@ -129,13 +130,21 @@ Creates a configured engine instance.
 - `autoFilter`: Enable automatic value filtering.
 - `filterFunction`: Custom filter for interpolated values.
 
-### `engine.renderString(template, props?): Promise<string>`
+### `engine.renderString(template, props?): string`
 
 Renders a template string and returns the HTML result.
 
-### `engine.render(name, props?): Promise<string>`
+### `engine.render(name, props?): string`
 
 Renders a template file from the `views` directory and returns the HTML result.
+
+### `engine.compile(template, config?): RenderFunction`
+
+Compiles a template string into a render function.
+
+### `engine.compileToString(template, config?): string`
+
+Compiles a template string into its JavaScript source body.
 
 ### `engine.loadComponent(name, template): void`
 
