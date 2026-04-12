@@ -16,9 +16,9 @@
 import { escapeHtml, RawHtml } from './escape.js';
 import { parse, VOID_ELEMENTS } from './parser.js';
 /**
- * Recursively resolve and compile all component imports in an AST.
+ * Recursively resolve and compile all component imports in an AST (Synchronous).
  */
-async function resolveComponents(imports, fileReader, basePath, options, inProgress = new Set()) {
+function resolveComponentsSync(imports, fileReader, basePath, options, inProgress = new Set()) {
     const components = {};
     for (const imp of imports) {
         if (options.components && options.components[imp.localName]) {
@@ -28,14 +28,12 @@ async function resolveComponents(imports, fileReader, basePath, options, inProgr
             return {
                 ok: false,
                 error: {
-                    message: `Cannot resolve component: ${imp.specifier} (no fileReader provided)`,
+                    message: `Cannot resolve component: ${imp.specifier} (no readFileSync provided)`,
                     specifier: imp.specifier,
                 },
             };
         }
-        const resolvedPath = await (options.resolvePath
-            ? options.resolvePath(basePath, imp.specifier)
-            : resolvePath(basePath, imp.specifier));
+        const resolvedPath = resolvePath(basePath, imp.specifier);
         if (inProgress.has(resolvedPath)) {
             const cycle = [...inProgress, resolvedPath];
             return {
@@ -49,7 +47,7 @@ async function resolveComponents(imports, fileReader, basePath, options, inProgr
         }
         let source;
         try {
-            source = await fileReader(resolvedPath);
+            source = fileReader(resolvedPath);
             if (source === undefined || source === null) {
                 throw new Error('Not found');
             }
@@ -74,7 +72,7 @@ async function resolveComponents(imports, fileReader, basePath, options, inProgr
             };
         }
         const childInProgress = new Set([...inProgress, resolvedPath]);
-        const childResult = await resolveComponents(parseResult.ast.imports, fileReader, resolvedPath, options, childInProgress);
+        const childResult = resolveComponentsSync(parseResult.ast.imports, fileReader, resolvedPath, options, childInProgress);
         if (!childResult.ok) {
             return childResult;
         }
@@ -89,15 +87,16 @@ async function resolveComponents(imports, fileReader, basePath, options, inProgr
     }
     return { ok: true, components };
 }
+export const compile = compileSync;
 /**
- * Higher-level compile entry point: resolves component imports then compiles the AST.
+ * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
-export async function compile(ast, options) {
+export function compileSync(ast, options) {
     let components = options?.components ?? {};
     if (ast.imports.length > 0) {
         const fileReader = options?.fileReader;
         const basePath = options?.basePath ?? '';
-        const result = await resolveComponents(ast.imports, fileReader, basePath, {
+        const result = resolveComponentsSync(ast.imports, fileReader, basePath, {
             ...options,
             components,
         });
@@ -133,13 +132,6 @@ function normalisePath(path) {
     const prefix = path.startsWith('/') ? '/' : '';
     return prefix + resolved.join('/');
 }
-async function __dummyAsync() { }
-__dummyAsync();
-async function* __dummyAsyncGen() { }
-__dummyAsyncGen();
-const AsyncGeneratorFunction = Object.getPrototypeOf(__dummyAsyncGen).constructor;
-async function __dummyAsyncFn() { }
-const AsyncFunction = Object.getPrototypeOf(__dummyAsyncFn).constructor;
 function isStaticAttr(attr) {
     if ('type' in attr)
         return false;
@@ -151,10 +143,8 @@ function isStaticAttr(attr) {
 export function compileAST(ast, options) {
     try {
         const components = options?.components ?? {};
-        const streamBody = buildFunctionBody(ast, components, options, 'stream');
-        const renderBody = buildFunctionBody(ast, components, options, 'render');
-        const asyncGenFn = new AsyncGeneratorFunction('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', streamBody);
-        const asyncFn = new AsyncFunction('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', renderBody);
+        const renderSyncBody = buildFunctionBody(ast, components, options);
+        const syncFn = new Function('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', renderSyncBody);
         const classListHelper = (arg) => {
             // ... (omitting for brevity in this thought, will use full edit)
             if (typeof arg === 'string')
@@ -188,11 +178,11 @@ export function compileAST(ast, options) {
             ? options.filterFunction || ((v) => v)
             : (v) => v;
         const renderFn = (async (props, slots) => {
-            return renderFn.render(props, slots);
+            return renderFn.renderSync(props, slots);
         });
-        renderFn.render = async function (props, slots) {
+        renderFn.renderSync = function (props, slots) {
             try {
-                return await asyncFn(props, slots ?? {}, escapeHtml, RawHtml, components, classListHelper, styleObjectHelper, filterHelper);
+                return syncFn(props, slots ?? {}, escapeHtml, RawHtml, components, classListHelper, styleObjectHelper, filterHelper);
             }
             catch (err) {
                 if (options?.debug) {
@@ -203,20 +193,7 @@ export function compileAST(ast, options) {
                 throw err;
             }
         };
-        renderFn.stream = async function* (props, slots) {
-            try {
-                yield* asyncGenFn(props, slots ?? {}, escapeHtml, RawHtml, components, classListHelper, styleObjectHelper, filterHelper);
-            }
-            catch (err) {
-                if (options?.debug) {
-                    throw new Error(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
-                        cause: err,
-                    });
-                }
-                throw err;
-            }
-        };
-        return { ok: true, fn: renderFn, source: renderBody };
+        return { ok: true, fn: renderFn, source: renderSyncBody };
     }
     catch (err) {
         return {
@@ -225,7 +202,7 @@ export function compileAST(ast, options) {
         };
     }
 }
-function buildFunctionBody(ast, components, options, mode = 'render') {
+function buildFunctionBody(ast, components, options) {
     const lines = [];
     const varName = options?.varName || 'Astro';
     lines.push(`let __out = "";`);
@@ -233,58 +210,94 @@ function buildFunctionBody(ast, components, options, mode = 'render') {
       props,
       slots: {
         ...slots,
-        render: async (name) => new __RawHtml(slots[name] || ""),
+        render: (name) => new __RawHtml(slots[name] || ""),
         has: (name) => slots[name] !== undefined || (name === "default" && slots[""] !== undefined)
       }
     };`);
     lines.push('');
-    for (const imp of ast.imports) {
-        lines.push(`const ${imp.localName} = __components[${JSON.stringify(imp.localName)}];`);
+    const importNames = ast.imports.map(imp => imp.localName);
+    if (importNames.length > 0) {
+        for (const name of importNames) {
+            lines.push(`const ${name} = __components[${JSON.stringify(name)}];`);
+        }
     }
     if (ast.frontmatter.source.trim()) {
-        lines.push('// --- frontmatter ---');
-        // Strip imports because they are handled by __components and not allowed in AsyncFunction body.
-        // Strip exports because they are not allowed in AsyncFunction body.
+        // Strip imports and exports from frontmatter
         const cleanFM = ast.frontmatter.source
             .replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '')
             .replace(/^\s*export\s+/gm, '');
         lines.push(cleanFM);
         lines.push('');
     }
-    lines.push('// --- template body ---');
+    const bodyLines = [];
     for (const node of ast.body) {
-        for (const l of emitNode(node, components, options, '__out', mode)) {
-            lines.push(l);
-        }
+        bodyLines.push(...emitNode(node, components, options, '__out'));
     }
-    if (mode === 'stream') {
-        lines.push(`if (__out) yield __out;`);
-    }
-    else {
-        lines.push(`return __out;`);
-    }
-    lines.push('');
+    const mergedLines = mergeLines(bodyLines, '__out');
+    lines.push(...mergedLines);
+    lines.push(`return __out;`);
     return lines.join('\n');
 }
-function emitNode(node, components, options, target = '__out', mode = 'render') {
+function mergeLines(bodyLines, target) {
+    const lines = [];
+    const re = new RegExp(`^${target} \\+= (.*);$`);
+    let i = 0;
+    while (i < bodyLines.length) {
+        const line = bodyLines[i].trim();
+        const match = line.match(re);
+        if (match) {
+            let combined = match[1];
+            let j = i + 1;
+            while (j < bodyLines.length) {
+                const nextLine = bodyLines[j].trim();
+                const nextMatch = nextLine.match(re);
+                if (nextMatch) {
+                    combined += ' + ' + nextMatch[1];
+                    j++;
+                }
+                else {
+                    break;
+                }
+            }
+            lines.push(`${target} += ${combined};`);
+            i = j;
+        }
+        else {
+            lines.push(bodyLines[i]);
+            i++;
+        }
+    }
+    return lines;
+}
+function emitNode(node, components, options, target = '__out') {
     const emit = (val) => `${target} += ${val};`;
-    const flush = () => mode === 'stream' ? [`if (${target}) yield ${target};`, `${target} = "";`] : [];
     switch (node.type) {
         case 'text':
             return node.value ? [emit(JSON.stringify(node.value))] : [];
         case 'expression': {
-            const source = transformExpression(node.source);
+            if (!node.nodes || node.nodes.length === 1 && typeof node.nodes[0] === 'string') {
+                let expr = node.source;
+                if (options?.autoFilter)
+                    expr = `__filter(${expr})`;
+                if (options?.autoEscape !== false)
+                    expr = `__escape(${expr})`;
+                return [emit(expr)];
+            }
+            const source = transformExpression(node, components, options);
             if (/^\s*(\/\*[\s\S]*\*\/|\/\/.*)\s*$/.test(source)) {
                 return [];
             }
-            let expr = `__filter(await (${source}))`;
+            let expr = source;
+            if (options?.autoFilter) {
+                expr = `__filter(${expr})`;
+            }
             if (options?.autoEscape !== false) {
                 expr = `__escape(${expr})`;
             }
             return [emit(expr)];
         }
         case 'element':
-            return emitElement(node, components, options, target, mode);
+            return emitElement(node, components, options, target);
         case 'slot': {
             const slotName = node.name || 'default';
             const slotNameKey = JSON.stringify(slotName);
@@ -296,7 +309,7 @@ function emitNode(node, components, options, target = '__out', mode = 'render') 
             if (node.children.length > 0) {
                 lines.push(`} else {`);
                 for (const child of node.children) {
-                    lines.push(...emitNode(child, components, options, target, mode).map((l) => '  ' + l));
+                    lines.push(...emitNode(child, components, options, target).map((l) => '  ' + l));
                 }
             }
             lines.push(`}`);
@@ -304,35 +317,23 @@ function emitNode(node, components, options, target = '__out', mode = 'render') 
         }
         case 'script': {
             if (options?.aggregateAssets) {
-                if (mode === 'stream') {
-                    return [
-                        ...flush(),
-                        `yield { type: 'script', content: ${JSON.stringify(node.content)}, attrs: ${JSON.stringify(node.attrs)} };`,
-                    ];
-                }
                 // In render mode, assets are ignored (or could be collected if we passed an asset array)
                 return [];
             }
             const lines = [emit(`"<script"`)];
             for (const attr of node.attrs) {
-                lines.push(...emitAttr(attr, target, mode));
+                lines.push(...emitAttr(attr, components, options, target));
             }
             lines.push(emit(`">" + ${JSON.stringify(node.content)} + "</script>"`));
             return lines;
         }
         case 'style': {
             if (options?.aggregateAssets) {
-                if (mode === 'stream') {
-                    return [
-                        ...flush(),
-                        `yield { type: 'style', content: ${JSON.stringify(node.content)}, attrs: ${JSON.stringify(node.attrs)} };`,
-                    ];
-                }
                 return [];
             }
             const lines = [emit(`"<style"`)];
             for (const attr of node.attrs) {
-                lines.push(...emitAttr(attr, target, mode));
+                lines.push(...emitAttr(attr, components, options, target));
             }
             lines.push(emit(`">" + ${JSON.stringify(node.content)} + "</style>"`));
             return lines;
@@ -343,10 +344,9 @@ function emitNode(node, components, options, target = '__out', mode = 'render') 
             throw new Error(`Unknown node type: ${node.type}`);
     }
 }
-function emitElement(node, components, options, target = '__out', mode = 'render') {
+function emitElement(node, components, options, target = '__out') {
     const lines = [];
     const emit = (val) => `${target} += ${val};`;
-    const flush = () => mode === 'stream' ? [`if (${target}) yield ${target};`, `${target} = "";`] : [];
     if (!node.tag || node.tag === 'Fragment') {
         let setHtml;
         let setText;
@@ -359,31 +359,35 @@ function emitElement(node, components, options, target = '__out', mode = 'render
             }
         }
         if (setHtml) {
-            if (typeof setHtml.value === 'string') {
-                lines.push(emit(JSON.stringify(setHtml.value)));
+            const val = setHtml.value;
+            if (typeof val === 'string') {
+                lines.push(emit(JSON.stringify(val)));
             }
-            else if (setHtml.value !== true) {
-                lines.push(`{ const __h = await (${transformExpression(setHtml.value.source)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`);
+            else if (val !== true) {
+                lines.push(`{ const __h = (${transformExpression(val, components, options)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`);
             }
         }
         else if (setText) {
-            if (typeof setText.value === 'string') {
-                lines.push(emit(`__escape(${JSON.stringify(setText.value)})`));
+            const val = setText.value;
+            if (node.children.length > 0)
+                throw new Error('Cannot use set:text with children');
+            if (typeof val === 'string') {
+                lines.push(emit(`__escape(${JSON.stringify(val)})`));
             }
-            else if (setText.value !== true) {
-                lines.push(emit(`__escape(await ${transformExpression(setText.value.source)})`));
+            else if (val !== true) {
+                lines.push(emit(`__escape(${transformExpression(val, components, options)})`));
             }
         }
         else {
             for (const child of node.children) {
-                lines.push(...emitNode(child, components, options, target, mode));
+                lines.push(...emitNode(child, components, options, target));
             }
         }
         return lines;
     }
     const isCapitalized = /^[A-Z]/.test(node.tag);
     if (node.tag in components || isCapitalized) {
-        return emitComponentCall(node, components, options, target, mode);
+        return emitComponentCall(node, components, options, target);
     }
     let setHtml;
     let setText;
@@ -401,32 +405,56 @@ function emitElement(node, components, options, target = '__out', mode = 'render
         }
         standardAttrs.push(attr);
     }
-    const allStatic = standardAttrs.every(isStaticAttr);
-    if (allStatic) {
+    const hasSpread = node.attrs.some((a) => 'type' in a);
+    const hasComplexAttr = node.attrs.some((a) => !('type' in a) &&
+        (a.name === 'class:list' || (a.name === 'style' && typeof a.value !== 'string')));
+    if (!hasSpread) {
         let tagOpen = `<${node.tag}`;
-        let classes = '';
-        let styles = '';
+        const dynamicAttrs = [];
         for (const attr of standardAttrs) {
             if (attr.name === 'class' || attr.name === 'className' || attr.name === 'class:list') {
-                if (typeof attr.value === 'string')
-                    classes += (classes ? ' ' : '') + attr.value;
+                if (typeof attr.value === 'string') {
+                    tagOpen += ` class="${escapeHtml(attr.value)}"`;
+                }
+                else if (attr.value !== true) {
+                    dynamicAttrs.push({ name: 'class', value: attr.value, type: attr.name === 'class:list' ? 'list' : undefined });
+                }
             }
             else if (attr.name === 'style') {
-                if (typeof attr.value === 'string')
-                    styles += (styles ? (styles.endsWith(';') ? '' : ';') : '') + attr.value;
+                if (typeof attr.value === 'string') {
+                    tagOpen += ` style="${escapeHtml(attr.value)}"`;
+                }
+                else if (attr.value !== true) {
+                    dynamicAttrs.push({ name: 'style', value: attr.value, type: 'style' });
+                }
             }
             else {
-                if (attr.value === true)
+                if (attr.value === true) {
                     tagOpen += ` ${attr.name}`;
-                else
-                    tagOpen += ` ${attr.name}="${attr.value}"`;
+                }
+                else if (typeof attr.value === 'string') {
+                    tagOpen += ` ${attr.name}="${escapeHtml(attr.value)}"`;
+                }
+                else {
+                    dynamicAttrs.push({ name: attr.name, value: attr.value });
+                }
             }
         }
-        if (classes)
-            tagOpen += ` class="${escapeHtml(classes)}"`;
-        if (styles)
-            tagOpen += ` style="${escapeHtml(styles)}"`;
         lines.push(emit(JSON.stringify(tagOpen)));
+        for (const attr of dynamicAttrs) {
+            const source = transformExpression(attr.value, components, options);
+            if (attr.name === 'class') {
+                const valExpr = attr.type === 'list' ? `__classList(${source})` : source;
+                lines.push(emit(`' class="' + __escape(${valExpr}) + '"'`));
+            }
+            else if (attr.name === 'style') {
+                const valExpr = attr.type === 'style' ? `__styleObject(${source})` : source;
+                lines.push(emit(`' style="' + __escape(${valExpr}) + '"'`));
+            }
+            else {
+                lines.push(emit(`" " + ${JSON.stringify(attr.name)} + '="' + __escape(${source}) + '"'`));
+            }
+        }
     }
     else {
         lines.push(emit(JSON.stringify('<' + node.tag)));
@@ -437,7 +465,7 @@ function emitElement(node, components, options, target = '__out', mode = 'render
         for (const attr of standardAttrs) {
             if ('type' in attr) {
                 lines.push(`  {`);
-                lines.push(`    const __s = await (${transformExpression(attr.expression)});`);
+                lines.push(`    const __s = (${transformExpression(attr.expression, components, options)});`);
                 lines.push(`    for (const __k in __s) {`);
                 lines.push(`      if (__k === "class" || __k === "className" || __k === "class:list") {`);
                 lines.push(`        __classes.push(__k === "class:list" ? __classList(__s[__k]) : __s[__k]);`);
@@ -458,7 +486,7 @@ function emitElement(node, components, options, target = '__out', mode = 'render
                     else if (typeof attr.value === 'string')
                         lines.push(`  __classes.push(${JSON.stringify(attr.value)});`);
                     else
-                        lines.push(`  __classes.push(__classList(${transformExpression(attr.value.source)}));`);
+                        lines.push(`  __classes.push(__classList(${transformExpression(attr.value, components, options)}));`);
                 }
                 else if (attr.name === 'style') {
                     if (attr.value === true)
@@ -466,7 +494,7 @@ function emitElement(node, components, options, target = '__out', mode = 'render
                     else if (typeof attr.value === 'string')
                         lines.push(`  __styles.push(${JSON.stringify(attr.value)});`);
                     else
-                        lines.push(`  __styles.push(__styleObject(${transformExpression(attr.value.source)}));`);
+                        lines.push(`  __styles.push(__styleObject(${transformExpression(attr.value, components, options)}));`);
                 }
                 else {
                     if (attr.value === true)
@@ -474,7 +502,7 @@ function emitElement(node, components, options, target = '__out', mode = 'render
                     else if (typeof attr.value === 'string')
                         lines.push(`  __attrs[${JSON.stringify(attr.name)}] = new __RawHtml(${JSON.stringify(attr.value)});`);
                     else
-                        lines.push(`  __attrs[${JSON.stringify(attr.name)}] = await (${transformExpression(attr.value.source)});`);
+                        lines.push(`  __attrs[${JSON.stringify(attr.name)}] = (${transformExpression(attr.value, components, options)});`);
                 }
             }
         }
@@ -507,7 +535,7 @@ function emitElement(node, components, options, target = '__out', mode = 'render
             lines.push(emit(JSON.stringify(setHtml.value)));
         }
         else if (setHtml.value !== true) {
-            lines.push(`{ const __h = await (${transformExpression(setHtml.value.source)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`);
+            lines.push(`{ const __h = (${transformExpression(setHtml.value, components, options)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`);
         }
     }
     else if (setText) {
@@ -517,12 +545,12 @@ function emitElement(node, components, options, target = '__out', mode = 'render
             lines.push(emit(`__escape(${JSON.stringify(setText.value)})`));
         }
         else if (setText.value !== true) {
-            lines.push(emit(`__escape(await ${transformExpression(setText.value.source)})`));
+            lines.push(emit(`__escape(${transformExpression(setText.value, components, options)})`));
         }
     }
     else {
         for (const child of node.children) {
-            lines.push(...emitNode(child, components, options, target, mode));
+            lines.push(...emitNode(child, components, options, target));
         }
     }
     if (!isVoid) {
@@ -530,15 +558,15 @@ function emitElement(node, components, options, target = '__out', mode = 'render
     }
     return lines;
 }
-function emitAttr(attr, target = '__out', mode = 'render') {
+function emitAttr(attr, components, options, target = '__out') {
     const emit = (val) => `${target} += ${val};`;
     if ('type' in attr) {
         return [
             `{`,
-            `  const __spread = await (${transformExpression(attr.expression)});`,
+            `  const __spread = (${transformExpression(attr.expression, components, options)});`,
             `  for (const __k in __spread) {`,
             `    const __val = __spread[__k];`,
-            `    if (__k === "class:list") {`,
+            `    if (__k === "class" || __k === "className" || __k === "class:list") {`,
             `      ${emit(`" class=\\"" + __escape(__classList(__val)) + "\\""`)}`,
             `    } else if (__k === "style" && typeof __val === "object") {`,
             `      ${emit(`" style=\\"" + __escape(__styleObject(__val)) + "\\""`)}`,
@@ -554,10 +582,11 @@ function emitAttr(attr, target = '__out', mode = 'render') {
     if (attr.value === true) {
         return [emit(JSON.stringify(' ' + attr.name))];
     }
-    if (typeof attr.value === 'string') {
-        return [emit(JSON.stringify(' ' + attr.name + '="' + attr.value + '"'))];
+    const val = attr.value;
+    if (typeof val === 'string') {
+        return [emit(JSON.stringify(' ' + attr.name + '="' + val + '"'))];
     }
-    const source = transformExpression(attr.value.source);
+    const source = transformExpression(val, components, options);
     if (attr.name === 'class:list') {
         return [emit(`" class=\\"" + __escape(__classList(${source})) + "\\""`)];
     }
@@ -566,15 +595,14 @@ function emitAttr(attr, target = '__out', mode = 'render') {
     }
     return [emit(`" " + ${JSON.stringify(attr.name)} + '="' + __escape(${source}) + '"'`)];
 }
-function emitComponentCall(node, components, options, target = '__out', mode = 'render') {
+function emitComponentCall(node, components, options, target = '__out') {
     const lines = [];
     const localName = node.tag;
     const emit = (val) => `${target} += ${val};`;
-    const flush = () => mode === 'stream' ? [`if (${target}) yield ${target};`, `${target} = "";`] : [];
     const propParts = [];
     for (const attr of node.attrs) {
         if ('type' in attr) {
-            propParts.push(`...(${transformExpression(attr.expression)})`);
+            propParts.push(`...(${transformExpression(attr.expression, components, options)})`);
         }
         else {
             if (attr.value === true) {
@@ -584,7 +612,8 @@ function emitComponentCall(node, components, options, target = '__out', mode = '
                 propParts.push(`${JSON.stringify(attr.name)}: ${JSON.stringify(attr.value)}`);
             }
             else {
-                const source = transformExpression(attr.value.source);
+                const val = attr.value;
+                const source = transformExpression(val, components, options);
                 if (attr.name === 'class:list') {
                     propParts.push(`"class:list": (${source})`);
                 }
@@ -612,7 +641,7 @@ function emitComponentCall(node, components, options, target = '__out', mode = '
                     slotName = JSON.stringify(slotAttr.value);
                 }
                 else if (slotAttr.value !== true) {
-                    slotName = transformExpression(slotAttr.value.source);
+                    slotName = transformExpression(slotAttr.value, components, options);
                 }
                 else {
                     slotName = JSON.stringify('');
@@ -623,14 +652,13 @@ function emitComponentCall(node, components, options, target = '__out', mode = '
                 slotName = JSON.stringify('');
             }
             lines.push(`    let ${childSlotVarName} = "";`);
-            // Use a temporary child element without the slot attribute to emit correctly
             const tempChild = { ...child, attrs: childAttrs };
-            lines.push(...emitNode(tempChild, components, options, childSlotVarName, 'render').map((l) => '    ' + l));
+            lines.push(...emitNode(tempChild, components, options, childSlotVarName).map((l) => '    ' + l));
         }
         else {
             slotName = JSON.stringify('');
             lines.push(`    let ${childSlotVarName} = "";`);
-            lines.push(...emitNode(child, components, options, childSlotVarName, 'render').map((l) => '    ' + l));
+            lines.push(...emitNode(child, components, options, childSlotVarName).map((l) => '    ' + l));
         }
         lines.push(`    {`);
         lines.push(`      const __sname = ${slotName};`);
@@ -645,29 +673,22 @@ function emitComponentCall(node, components, options, target = '__out', mode = '
         lines.push(`      }`);
         lines.push(`    }`);
     }
-    if (mode === 'stream') {
-        lines.push(...flush().map((l) => '    ' + l));
-        lines.push(`    for await (const __chunk of __component.stream(${propsExpr}, __childSlots)) {`);
-        lines.push(`      yield __chunk;`);
-        lines.push(`    }`);
-    }
-    else {
-        lines.push(`    ${emit(`await __component.render(${propsExpr}, __childSlots)`)}`);
-    }
+    lines.push(`    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`);
+    lines.push(`    ${emit(`__component.renderSync(${propsExpr}, __childSlots)`)}`);
     lines.push(`  } else if (typeof __component === 'string') {`);
     lines.push(emit(`"<" + __component`));
     for (const attr of node.attrs) {
-        lines.push(...emitAttr(attr, target, mode).map((l) => '    ' + l));
+        lines.push(...emitAttr(attr, components, options, target).map((l) => '    ' + l));
     }
     lines.push(emit(`">"`));
     for (const child of node.children) {
-        lines.push(...emitNode(child, components, options, target, mode).map((l) => '    ' + l));
+        lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
     }
     lines.push(emit(`"</" + __component + ">"`));
     lines.push(`  } else {`);
     lines.push(emit(`"<${localName}"`));
     for (const attr of node.attrs) {
-        lines.push(...emitAttr(attr, target, mode).map((l) => '    ' + l));
+        lines.push(...emitAttr(attr, components, options, target).map((l) => '    ' + l));
     }
     if (node.selfClosing) {
         lines.push(emit(`" />"`));
@@ -675,7 +696,7 @@ function emitComponentCall(node, components, options, target = '__out', mode = '
     else {
         lines.push(emit(`">"`));
         for (const child of node.children) {
-            lines.push(...emitNode(child, components, options, target, mode).map((l) => '    ' + l));
+            lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
         }
         lines.push(emit(`"</${localName}>"`));
     }
@@ -683,8 +704,22 @@ function emitComponentCall(node, components, options, target = '__out', mode = '
     lines.push(`}`);
     return lines;
 }
-function transformExpression(source) {
-    return source;
+function transformExpression(expr, components, options) {
+    if (!expr.nodes || expr.nodes.every((n) => typeof n === 'string')) {
+        return expr.source;
+    }
+    let result = '';
+    for (const part of expr.nodes) {
+        if (typeof part === 'string') {
+            result += part;
+        }
+        else {
+            const bodyLines = emitNode(part, components, options, '__out');
+            const lines = mergeLines(bodyLines, '__out');
+            result += `((() => { let __out = ""; ${lines.join('')}; return new __RawHtml(__out); })())`;
+        }
+    }
+    return result;
 }
 /**
  * Compile a TemplateAST into a standalone ESM module string.

@@ -13,7 +13,7 @@
  *   7. Recursively resolve component imports via FileReader
  *   8. Detect circular dependencies via an in-progress path set
  */
-import type { TemplateAST, CompileResult, RenderFunction, FileReader } from './types.js';
+import type { TemplateAST, CompileResult, RenderFunction } from './types.js';
 interface CompileOptions {
     /** Resolved component render functions keyed by local name. */
     components?: Record<string, RenderFunction>;
@@ -32,13 +32,14 @@ interface CompileOptions {
     /** Whether to aggregate <script> and <style> tags. */
     aggregateAssets?: boolean;
 }
+export declare const compile: typeof compileSync;
 /**
- * Higher-level compile entry point: resolves component imports then compiles the AST.
+ * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
-export declare function compile(ast: TemplateAST, options?: CompileOptions & {
-    fileReader?: FileReader;
+export declare function compileSync(ast: TemplateAST, options?: CompileOptions & {
+    fileReader?: (path: string) => string;
     basePath?: string;
-}): Promise<CompileResult>;
+}): CompileResult;
 /**
  * Compile a TemplateAST into a RenderFunction.
  */

@@ -187,7 +187,7 @@ class Parser {
     private readonly full: string, // full original source (for position reporting)
     private readonly src: string, // body slice
     private readonly bodyOffset: number // offset of body within full source
-  ) {}
+  ) { }
 
   // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -304,22 +304,39 @@ class Parser {
     const start = this.pos;
     this.advance(); // consume '{'
     let depth = 1;
-    let source = '';
+    const nodes: (string | TemplateNode)[] = [];
+    let currentString = '';
+
     while (!this.eof() && depth > 0) {
       const ch = this.peek();
       if (ch === '{') {
         depth++;
-        source += this.advance();
+        currentString += this.advance();
       } else if (ch === '}') {
         depth--;
-        if (depth > 0) source += this.advance();
-        else this.advance(); // consume closing '}'
+        if (depth > 0) {
+          currentString += this.advance();
+        } else {
+          this.advance(); // consume closing '}'
+        }
       } else if (ch === '"' || ch === "'" || ch === '`') {
         const str = this.parseStringLiteral(ch);
         if (!str.ok) return str;
-        source += str.value;
+        currentString += str.value;
+      } else if (ch === '<' && /[\w!/>]/.test(this.peek(1))) {
+        // Potential tag inside expression
+        if (currentString) nodes.push(currentString);
+        currentString = '';
+        const nodeResult = this.parseNode();
+        if (!nodeResult.ok) return nodeResult;
+        if (nodeResult.node) {
+          nodes.push(nodeResult.node);
+        } else {
+          // If parseNode returned null (e.g. at a closing tag), consume the '<' to avoid infinite loop
+          currentString += this.advance();
+        }
       } else {
-        source += this.advance();
+        currentString += this.advance();
       }
     }
     if (depth !== 0) {
@@ -328,7 +345,10 @@ class Parser {
         error: makeError('Unclosed expression `{`', this.full, this.bodyOffset + start),
       };
     }
-    return { ok: true, node: { type: 'expression', source } };
+    if (currentString) nodes.push(currentString);
+    const source = nodes.map((n) => (typeof n === 'string' ? n : '[NODE]')).join('');
+
+    return { ok: true, node: { type: 'expression', source, nodes } };
   }
 
   private parseStringLiteral(
@@ -577,7 +597,8 @@ class Parser {
     }
 
     // Void elements — no children, no closing tag
-    if (VOID_ELEMENTS.has(tag)) {
+    const lowerTag = tag.toLowerCase();
+    if (VOID_ELEMENTS.has(lowerTag)) {
       return {
         ok: true,
         node: { type: 'element', tag, attrs: attrsResult.attrs, children: [], selfClosing: false },
@@ -666,12 +687,15 @@ class Parser {
         const exprResult = this.parseExpression();
         if (!exprResult.ok) return exprResult;
 
-        let expr = exprResult.node.source.trim();
-        if (expr.startsWith('...')) {
-          expr = expr.slice(3).trim();
+        const exprNode = exprResult.node;
+        if (exprNode.source.startsWith('...')) {
+          exprNode.source = exprNode.source.slice(3).trim();
+          if (exprNode.nodes && typeof exprNode.nodes[0] === 'string') {
+            exprNode.nodes[0] = (exprNode.nodes[0] as string).slice(3).trim();
+          }
         }
 
-        attrs.push({ type: 'spread', expression: expr });
+        attrs.push({ type: 'spread', expression: exprNode });
         continue;
       }
 
@@ -749,7 +773,7 @@ class Parser {
 // ─── Void elements (HTML5) ────────────────────────────────────────────────────
 
 export const VOID_ELEMENTS = new Set([
-  '!DOCTYPE',
+  '!doctype',
   'area',
   'base',
   'br',

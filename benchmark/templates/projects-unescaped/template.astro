@@ -1,0 +1,22 @@
+---
+const { title, text, projects } = Astro.props;
+---
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{title}</title>
+  </head>
+  <body>
+    <p>{text}</p>
+    {projects.length > 0 ? (
+      projects.map(project => (
+        <>
+        <a href={project.url}>{project.name}</a>
+        <p>{project.description}</p>
+        </>
+      ))
+    ) : (
+      <p>No projects</p>
+    )}
+  </body>
+</html>

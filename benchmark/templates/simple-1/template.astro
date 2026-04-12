@@ -1,0 +1,21 @@
+---
+const { name, messageCount, colors, primary } = Astro.props;
+---
+<div class="simple-1" style="background-color: blue; border: 1px solid black">
+  <div class="colors">
+      <span class="hello">Hello {name}! <strong>You have {messageCount} messages!</strong></span>
+
+      {colors && colors.length > 0 ? (
+      <ul>
+          {colors.map(color => (
+          <li class="color">{color}</li>
+          ))}
+      </ul>
+      ) : (
+      <div>
+          No colors!
+      </div>
+      )}
+  </div>
+  <button type="button" class={primary ? 'primary' : 'secondary'}>Click me!</button>
+</div>

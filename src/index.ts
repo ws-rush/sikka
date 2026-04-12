@@ -1,17 +1,14 @@
 import type {
   RenderFunction,
   EngineOptions,
-  EngineInstance,
-  RenderResult,
-  Asset,
 } from './types.js';
 import { parse } from './parser.js';
-import { compile } from './compiler.js';
-import { createCache, hashTemplate } from './cache.js';
+import { compileSync } from './compiler.js';
+import { createCache } from './cache.js';
 
-export class Engine implements EngineInstance {
+export class Engine {
   private cache: ReturnType<typeof createCache> | null;
-  private globalComponents: Record<string, RenderFunction | Promise<RenderFunction>> = {};
+  private globalComponents: Record<string, RenderFunction> = {};
 
   constructor(private options: EngineOptions = {}) {
     if (options.cache === true || (options.cache === undefined && options.cacheSize)) {
@@ -23,121 +20,22 @@ export class Engine implements EngineInstance {
     }
   }
 
-  async renderString(template: string, props: Record<string, unknown> = {}): Promise<string> {
-    const fn = await this.compileString(template);
-    return await fn.render(props, {});
+  renderString(template: string, props: Record<string, unknown> = {}): string {
+    const fn = this.compileStringSync(template);
+    return fn.renderSync(props, {});
   }
 
-  async renderStringFull(
-    template: string,
-    props: Record<string, unknown> = {}
-  ): Promise<RenderResult> {
-    const fn = await this.compileString(template);
-    const scripts: string[] = [];
-    const styles: string[] = [];
-    let html = '';
-
-    for await (const chunk of fn.stream(props, {})) {
-      if (typeof chunk === 'string') {
-        html += chunk;
-      } else if (chunk.type === 'script') {
-        scripts.push(this.formatAsset(chunk));
-      } else if (chunk.type === 'style') {
-        styles.push(this.formatAsset(chunk));
-      }
-    }
-
-    return { html, scripts, styles };
-  }
-
-  async renderStringAsync(template: string, props: Record<string, unknown> = {}): Promise<string> {
-    return this.renderString(template, props);
-  }
-
-  async *renderStringStream(
-    template: string,
-    props: Record<string, unknown> = {}
-  ): AsyncIterable<string | Asset> {
-    const fn = await this.compileString(template);
-    yield* fn.stream(props, {});
-  }
-
-  async render(name: string, props: Record<string, unknown> = {}): Promise<string> {
-    const fn = await this.compileFile(name);
-    return await fn.render(props, {});
-  }
-
-  async renderFull(name: string, props: Record<string, unknown> = {}): Promise<RenderResult> {
-    const fn = await this.compileFile(name);
-    const scripts: string[] = [];
-    const styles: string[] = [];
-    let html = '';
-
-    for await (const chunk of fn.stream(props, {})) {
-      if (typeof chunk === 'string') {
-        html += chunk;
-      } else if (chunk.type === 'script') {
-        scripts.push(this.formatAsset(chunk));
-      } else if (chunk.type === 'style') {
-        styles.push(this.formatAsset(chunk));
-      }
-    }
-
-    return { html, scripts, styles };
-  }
-
-  async renderAsync(name: string, props: Record<string, unknown> = {}): Promise<string> {
-    return this.render(name, props);
-  }
-
-  async *renderStream(
-    name: string,
-    props: Record<string, unknown> = {}
-  ): AsyncIterable<string | Asset> {
-    const fn = await this.compileFile(name);
-    yield* fn.stream(props, {});
-  }
-
-  private formatAsset(asset: Asset): string {
-    const tag = asset.type;
-    let attrs = '';
-    for (const attr of asset.attrs) {
-      if ('type' in attr) {
-        // Spread not supported here yet or handled during compile?
-        // Actually asset aggregation usually happens after attributes are evaluated.
-      } else {
-        if (attr.value === true) attrs += ` ${attr.name}`;
-        else attrs += ` ${attr.name}="${attr.value}"`;
-      }
-    }
-    return `<${tag}${attrs}>${asset.content}</${tag}>`;
+  render(name: string, props: Record<string, unknown> = {}): string {
+    const fn = this.compileFileSync(name);
+    return fn.renderSync(props, {});
   }
 
   loadComponent(name: string, template: string): void {
-    this.globalComponents[name] = this.compileString(template);
+    this.globalComponents[name] = this.compileStringSync(template);
   }
 
   registerComponent(name: string, fn: RenderFunction): void {
-    if (typeof fn === 'function') {
-      const wrapped = fn as RenderFunction;
-      if (!wrapped.render) {
-        wrapped.render = async (props: any, slots: any) => {
-          let out = '';
-          for await (const chunk of wrapped.stream(props, slots)) {
-            if (typeof chunk === 'string') out += chunk;
-          }
-          return out;
-        };
-      }
-      if (!wrapped.stream) {
-        wrapped.stream = async function* (props: any, slots: any) {
-          yield await wrapped.render(props, slots);
-        };
-      }
-      this.globalComponents[name] = wrapped;
-    } else {
-      this.globalComponents[name] = fn;
-    }
+    this.globalComponents[name] = fn;
   }
 
   invalidate(key?: string): void {
@@ -150,8 +48,8 @@ export class Engine implements EngineInstance {
     }
   }
 
-  private async compileString(template: string, basePath: string = ''): Promise<RenderFunction> {
-    const cacheKey = this.cache ? await hashTemplate(template) : null;
+  private compileStringSync(template: string, basePath: string = ''): RenderFunction {
+    const cacheKey = this.cache ? (template.length < 100 ? template : null) : null;
     if (this.cache && cacheKey) {
       const cached = this.cache.get(cacheKey);
       if (cached) return cached;
@@ -162,16 +60,11 @@ export class Engine implements EngineInstance {
       throw new Error(`ParseError: ${parseResult.error.message}`);
     }
 
-    const resolvedComponents: Record<string, RenderFunction> = {};
-    for (const [name, fnOrPromise] of Object.entries(this.globalComponents)) {
-      resolvedComponents[name] = await fnOrPromise;
-    }
-
-    const result = await compile(parseResult.ast, {
+    const result = compileSync(parseResult.ast, {
       ...this.options,
-      components: resolvedComponents,
+      components: this.globalComponents,
       basePath,
-      fileReader: this.options.readFile,
+      fileReader: this.options.readFileSync,
     });
 
     if (!result.ok) {
@@ -185,7 +78,7 @@ export class Engine implements EngineInstance {
     return result.fn;
   }
 
-  private async compileFile(name: string): Promise<RenderFunction> {
+  private compileFileSync(name: string): RenderFunction {
     const fullPath =
       this.options.views && !name.startsWith('/') && !name.includes(':')
         ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
@@ -196,11 +89,11 @@ export class Engine implements EngineInstance {
       if (cached) return cached;
     }
 
-    if (!this.options.readFile) {
-      throw new Error('Engine.render() requires options.readFile to be configured');
+    if (!this.options.readFileSync) {
+      throw new Error('Engine.renderSync() requires options.readFileSync to be configured');
     }
 
-    const content = await this.options.readFile(fullPath);
+    const content = this.options.readFileSync(fullPath);
     if (content === undefined || content === null) {
       throw new Error(`Could not read file: ${fullPath}`);
     }
@@ -209,16 +102,11 @@ export class Engine implements EngineInstance {
       throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
     }
 
-    const resolvedComponents: Record<string, RenderFunction> = {};
-    for (const [name, fnOrPromise] of Object.entries(this.globalComponents)) {
-      resolvedComponents[name] = await fnOrPromise;
-    }
-
-    const result = await compile(parseResult.ast, {
+    const result = compileSync(parseResult.ast, {
       ...this.options,
-      components: resolvedComponents,
+      components: this.globalComponents,
       basePath: fullPath,
-      fileReader: this.options.readFile,
+      fileReader: this.options.readFileSync,
     });
 
     if (!result.ok) {

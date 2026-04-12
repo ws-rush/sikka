@@ -1,27 +1,17 @@
-export interface RenderResult {
-    html: string;
-    scripts: string[];
-    styles: string[];
-}
-export interface Asset {
-    type: 'script' | 'style';
-    content: string;
-    attrs: (AttrNode | SpreadAttrNode)[];
-}
 /** A compiled render function produced by the compiler. */
 export interface RenderFunction {
     (props: Record<string, unknown>, slots?: Record<string, string>): Promise<string>;
     render(props: Record<string, unknown>, slots?: Record<string, string | AsyncIterable<string>>): Promise<string>;
-    stream(props: Record<string, unknown>, slots?: Record<string, string | AsyncIterable<string>>): AsyncIterable<string | Asset>;
+    renderSync(props: Record<string, unknown>, slots?: Record<string, string>): string;
 }
-/** Injectable file-reader for runtime-agnostic file loading. */
-export type FileReader = (path: string) => Promise<string>;
 /** Options accepted by `new Engine()`. */
 export interface EngineOptions {
     /** Directory path for template resolution. */
     views?: string;
     /** Async function to read file content. */
     readFile?: (path: string) => Promise<string>;
+    /** Sync function to read file content. */
+    readFileSync?: (path: string) => string;
     /** Sync/Async function to resolve paths. */
     resolvePath?: (base: string, specifier: string) => string | Promise<string>;
     /** Custom name for the props variable (default: "Astro"). */
@@ -40,19 +30,6 @@ export interface EngineOptions {
     filterFunction?: (val: unknown) => unknown;
     /** Whether to aggregate <script> and <style> tags. */
     aggregateAssets?: boolean;
-}
-export interface EngineInstance {
-    render(template: string, props?: Record<string, unknown>): Promise<string>;
-    renderFull(template: string, props?: Record<string, unknown>): Promise<RenderResult>;
-    renderAsync(template: string, props?: Record<string, unknown>): Promise<string>;
-    renderString(template: string, props?: Record<string, unknown>): Promise<string>;
-    renderStringFull(template: string, props?: Record<string, unknown>): Promise<RenderResult>;
-    renderStringAsync(template: string, props?: Record<string, unknown>): Promise<string>;
-    renderStream(template: string, props?: Record<string, unknown>): AsyncIterable<string | Asset>;
-    renderStringStream(template: string, props?: Record<string, unknown>): AsyncIterable<string | Asset>;
-    loadComponent(name: string, template: string): void;
-    registerComponent(name: string, fn: RenderFunction): void;
-    invalidate(key?: string): void;
 }
 /** The root AST node produced by the parser. */
 export interface TemplateAST {
@@ -75,8 +52,8 @@ export interface ComponentImport {
 export type TemplateNode = ElementNode | ExpressionNode | TextNode | SlotNode | ScriptNode | StyleNode | RawNode;
 export interface SpreadAttrNode {
     type: 'spread';
-    /** The expression inside the spread (including or excluding `...`, wait, if source is `...props` we can just keep it as source, or expression string) */
-    expression: string;
+    /** The expression inside the spread. */
+    expression: ExpressionNode;
 }
 export interface ElementNode {
     type: 'element';
@@ -94,6 +71,8 @@ export interface ExpressionNode {
     type: 'expression';
     /** Raw JS/TS expression source, e.g. `"user.name"`. */
     source: string;
+    /** Nested nodes if any (for JSX support). */
+    nodes?: (string | TemplateNode)[];
 }
 export interface TextNode {
     type: 'text';
