@@ -1,3 +1,6 @@
 dist/
 node_modules/
 package-lock.json
+benchmark/templates/
+benchmark/package.json
+benchmark/package-lock.json
