@@ -1,7 +1,4 @@
-import type {
-  RenderFunction,
-  EngineOptions,
-} from './types.js';
+import type { RenderFunction, EngineOptions } from './types.js';
 import { parse } from './parser.js';
 import { compile as internalCompile } from './compiler.js';
 import { createCache } from './cache.js';
@@ -101,7 +98,11 @@ export class Engine {
     return result.source;
   }
 
-  private compileString(template: string, basePath: string = '', config?: EngineOptions): RenderFunction {
+  private compileString(
+    template: string,
+    basePath: string = '',
+    config?: EngineOptions
+  ): RenderFunction {
     const options = config || this.options;
     if (this.cache && !config) {
       const cached = this.cache.get(template);

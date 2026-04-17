@@ -25,9 +25,12 @@ bench
     engine.renderString(friendsTemplate, friendsData);
   })
   .add('Nested Loops', () => {
-    engine.renderString('<ul>{Astro.props.items.map(i => <li>{i.subs.map(s => <span>{s}</span>)}</li>)}</ul>', {
-      items: Array.from({ length: 10 }, (_) => ({ subs: [1, 2, 3] }))
-    });
+    engine.renderString(
+      '<ul>{Astro.props.items.map(i => <li>{i.subs.map(s => <span>{s}</span>)}</li>)}</ul>',
+      {
+        items: Array.from({ length: 10 }, (_) => ({ subs: [1, 2, 3] })),
+      }
+    );
   });
 
 // await bench.warmup();

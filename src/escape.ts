@@ -9,7 +9,7 @@
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
 export class RawHtml {
   __isRawHtml = true;
-  constructor(public readonly value: string) { }
+  constructor(public readonly value: string) {}
 }
 
 const ESCAPE_MAP: Record<string, string> = {

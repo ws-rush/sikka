@@ -187,7 +187,7 @@ class Parser {
     private readonly full: string, // full original source (for position reporting)
     private readonly src: string, // body slice
     private readonly bodyOffset: number // offset of body within full source
-  ) { }
+  ) {}
 
   // ── Utilities ──────────────────────────────────────────────────────────────
 

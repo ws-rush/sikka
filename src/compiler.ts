@@ -208,7 +208,6 @@ function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
     const components = options?.components ?? {};
     const renderSyncBody = buildFunctionBody(ast, components, options);
 
-
     const syncFn = new Function(
       'props',
       'slots',
@@ -297,7 +296,7 @@ function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
 function buildFunctionBody(
   ast: TemplateAST,
   components: Record<string, RenderFunction>,
-  options?: CompileOptions,
+  options?: CompileOptions
 ): string {
   const lines: string[] = [];
   const varName = options?.varName || 'Astro';
@@ -305,8 +304,8 @@ function buildFunctionBody(
   lines.push(`let __out = "";`);
 
   // Heuristic: only create Astro if it's explicitly used in the template or frontmatter
-  const isAstroUsed = ast.frontmatter.source.includes(varName) ||
-    JSON.stringify(ast.body).includes(varName);
+  const isAstroUsed =
+    ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
 
   if (isAstroUsed) {
     lines.push(`const ${varName} = {
@@ -387,7 +386,7 @@ function emitNode(
   node: TemplateNode,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
-  target = '__out',
+  target = '__out'
 ): string[] {
   const emit = (val: string) => `${target} += ${val};`;
 
@@ -396,7 +395,7 @@ function emitNode(
       return node.value ? [emit(JSON.stringify(node.value))] : [];
 
     case 'expression': {
-      if (!node.nodes || node.nodes.length === 1 && typeof node.nodes[0] === 'string') {
+      if (!node.nodes || (node.nodes.length === 1 && typeof node.nodes[0] === 'string')) {
         let expr = node.source;
         if (options?.autoFilter) expr = `__filter(${expr})`;
         if (options?.autoEscape !== false) expr = `__escape(${expr})`;
@@ -477,7 +476,7 @@ function emitElement(
   node: ElementNode,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
-  target = '__out',
+  target = '__out'
 ): string[] {
   const lines: string[] = [];
   const emit = (val: string) => `${target} += ${val};`;
@@ -552,7 +551,11 @@ function emitElement(
         if (typeof attr.value === 'string') {
           tagOpen += ` class="${escapeHtml(attr.value)}"`;
         } else if (attr.value !== true) {
-          dynamicAttrs.push({ name: 'class', value: attr.value, type: attr.name === 'class:list' ? 'list' : undefined });
+          dynamicAttrs.push({
+            name: 'class',
+            value: attr.value,
+            type: attr.name === 'class:list' ? 'list' : undefined,
+          });
         }
       } else if (attr.name === 'style') {
         if (typeof attr.value === 'string') {
@@ -594,7 +597,9 @@ function emitElement(
     for (const attr of standardAttrs) {
       if ('type' in attr) {
         lines.push(`  {`);
-        lines.push(`    const __s = (${transformExpression(attr.expression, components, options)});`);
+        lines.push(
+          `    const __s = (${transformExpression(attr.expression, components, options)});`
+        );
         lines.push(`    for (const __k in __s) {`);
         lines.push(`      if (__k === "class" || __k === "className" || __k === "class:list") {`);
         lines.push(
@@ -655,7 +660,6 @@ function emitElement(
     lines.push(`  if (__finalSty) ${emit(`' style="' + __escape(__finalSty) + '"'`)}`);
     lines.push(`}`);
   }
-
 
   const isVoid = VOID_ELEMENTS.has(node.tag) || node.tag.startsWith('!');
   if (isVoid) {
@@ -750,7 +754,7 @@ function emitComponentCall(
   node: ElementNode,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
-  target = '__out',
+  target = '__out'
 ): string[] {
   const lines: string[] = [];
   const localName = node.tag;
@@ -809,16 +813,12 @@ function emitComponentCall(
       lines.push(`    let ${childSlotVarName} = "";`);
       const tempChild = { ...child, attrs: childAttrs };
       lines.push(
-        ...emitNode(tempChild, components, options, childSlotVarName).map(
-          (l) => '    ' + l
-        )
+        ...emitNode(tempChild, components, options, childSlotVarName).map((l) => '    ' + l)
       );
     } else {
       slotName = JSON.stringify('');
       lines.push(`    let ${childSlotVarName} = "";`);
-      lines.push(
-        ...emitNode(child, components, options, childSlotVarName).map((l) => '    ' + l)
-      );
+      lines.push(...emitNode(child, components, options, childSlotVarName).map((l) => '    ' + l));
     }
 
     lines.push(`    {`);
@@ -835,7 +835,9 @@ function emitComponentCall(
     lines.push(`    }`);
   }
 
-  lines.push(`    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`);
+  lines.push(
+    `    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`
+  );
   lines.push(`    ${emit(`__component.renderSync(${propsExpr}, __childSlots)`)}`);
 
   lines.push(`  } else if (typeof __component === 'string') {`);
@@ -871,7 +873,7 @@ function emitComponentCall(
 function transformExpression(
   expr: ExpressionNode,
   components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
+  options: CompileOptions | undefined
 ): string {
   if (!expr.nodes || (expr.nodes.length === 1 && typeof expr.nodes[0] === 'string')) {
     return expr.source;

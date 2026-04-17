@@ -79,15 +79,16 @@ const html = await engine.renderString(template);
 
 `astro-template-engine` is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
 
-| Engine | "friends" Benchmark |
-| :--- | :--- |
-| **Astro (Ours)** | **197ms** |
-| Pug | 209ms |
-| Eta | 214ms |
+| Engine           | "friends" Benchmark |
+| :--------------- | :------------------ |
+| **Astro (Ours)** | **197ms**           |
+| Pug              | 209ms               |
+| Eta              | 214ms               |
 
-*Results based on 2000 runs. Higher is slower.*
+_Results based on 2000 runs. Higher is slower._
 
 It achieves this through:
+
 - **Zero-allocation caching**: Large templates are compiled once and stored in a high-speed cache.
 - **Compile-time static merging**: Adjacent static HTML parts and attributes are folded into single continuous strings.
 - **Fast-path escaper**: Optimized HTML escaping using type-dispatching and regex-skipping.
@@ -159,8 +160,8 @@ Clears specific or all cache entries.
 
 ## TODO
 
-- [ ] **Testing**: Focused exclusively on the **public interface** and **syntax compliance**, avoiding any dependency on internal implementation details.
-    - [ ] Define a performance-conscious, black-box testing strategy.
-    - [ ] Full test suite for the `Engine` class methods and module exports.
-    - [ ] Comprehensive compliance tests for every supported Astro syntax feature and directive.
+- [~] **Testing**: Focused exclusively on the **public interface** and **syntax compliance**, avoiding any dependency on internal implementation details.
+  - [~] Define a performance-conscious, black-box testing strategy.
+  - [x] Full test suite for the `Engine` class methods and module exports.
+  - [x] Comprehensive compliance tests for every supported Astro syntax feature and directive.
 - [ ] **Streaming Support**: Implementation of an asynchronous streaming API for large-scale data rendering.
