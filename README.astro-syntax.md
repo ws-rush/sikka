@@ -414,5 +414,16 @@ const Icon = Astro.props.icon;
 const validated = schema.parse(Astro.props);
 // 11. Dynamic accessing
 const val = Astro.props[dynamicKey];
+// 12. Functions as props
+const fullName = Astro.props.fullName();
 ---
+```
+
+Passing functions as props:
+```javascript
+engine.renderString(
+  '<p>{Astro.props.name}</p><p>{Astro.props.fullName()}</p>',
+  { name: 'runs', fullName: () => 'rush q. wusaby' }
+);
+// Output: <p>runs</p><p>rush q. wusaby</p>
 ```

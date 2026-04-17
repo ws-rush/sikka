@@ -157,7 +157,3 @@ Registers a global component.
 ### `engine.invalidate(key?): void`
 
 Clears specific or all cache entries.
-
-## TODO
-
-- [ ] **Streaming Support**: Implementation of an asynchronous streaming API for large-scale data rendering.

@@ -76,6 +76,22 @@ describe('Syntax: Astro Global', () => {
       expect(html).toBe('<div>sym-val</div>');
     });
 
+    it('calls function passed as prop', () => {
+      const html = render(
+        '<p>{Astro.props.name}</p><p>{Astro.props.fullName()}</p>',
+        { name: 'runs', fullName: () => 'rush q. wusaby' }
+      );
+      expect(html).toBe('<p>runs</p><p>rush q. wusaby</p>');
+    });
+
+    it('calls function prop with arguments from frontmatter', () => {
+      const html = render(
+        '---\nconst { greet } = Astro.props;\n---\n<div>{greet("World")}</div>',
+        { greet: (name: string) => `Hello, ${name}!` }
+      );
+      expect(html).toBe('<div>Hello, World!</div>');
+    });
+
     it('mutates Astro.props', () => {
       const html = render('---\nAstro.props.a = 2;\n---\n<div>{Astro.props.a}</div>', { a: 1 });
       expect(html).toBe('<div>2</div>');
