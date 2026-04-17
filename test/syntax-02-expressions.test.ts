@@ -154,11 +154,14 @@ describe('Syntax: Dynamic Expressions', () => {
       expect(html).toBe('<div>val</div>');
     });
 
-    it.skip('renders switch statement via IIFE', () => {
-      // Requires component A in scope
+    it('renders switch statement via IIFE', () => {
+      const html = render(
+        `<div>{(() => { switch (2) { case 1: return "a"; case 2: return "b"; default: return "c"; } })()}</div>`
+      );
+      expect(html).toBe('<div>b</div>');
     });
 
-    it.skip('renders try/catch in IIFE', () => {
+    it('renders try/catch in IIFE', () => {
       const html = render(
         '<div>{ (() => { try { throw "e"; } catch { return "caught"; } })() }</div>'
       );
@@ -221,8 +224,11 @@ describe('Syntax: Dynamic Expressions', () => {
       expect(html).toBe('<div>1a2b</div>');
     });
 
-    it.skip('renders conditional elements in map', () => {
-      // Requires component A in scope
+    it('renders conditional elements in map', () => {
+      const html = render(
+        '---\nconst items = [1, 2, 3];\n---\n<div>{items.map(i => i > 1 && <span>{i}</span>)}</div>'
+      );
+      expect(html).toBe('<div><span>2</span><span>3</span></div>');
     });
   });
 

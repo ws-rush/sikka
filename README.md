@@ -3,7 +3,7 @@
 > [!WARNING]
 > This project is currently under **heavy development**. APIs and internal behaviors are subject to significant changes as we optimize for performance and expand Astro syntax support.
 
-A runtime-agnostic, Astro-like template engine for rendering HTML. It parses `.astro` syntax, compiles templates to efficient JavaScript functions, and produces clean HTML.
+A vibecoded, zero-dependency JS template engine with an Astro-like template syntax. Parses `.astro` templates, compiles them to efficient JavaScript functions, and spits out clean HTML.
 
 ## Features
 
@@ -160,8 +160,4 @@ Clears specific or all cache entries.
 
 ## TODO
 
-- [~] **Testing**: Focused exclusively on the **public interface** and **syntax compliance**, avoiding any dependency on internal implementation details.
-  - [~] Define a performance-conscious, black-box testing strategy.
-  - [x] Full test suite for the `Engine` class methods and module exports.
-  - [x] Comprehensive compliance tests for every supported Astro syntax feature and directive.
 - [ ] **Streaming Support**: Implementation of an asynchronous streaming API for large-scale data rendering.

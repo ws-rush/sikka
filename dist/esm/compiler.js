@@ -191,8 +191,7 @@ function buildFunctionBody(ast, components, options) {
     const varName = options?.varName || 'Astro';
     lines.push(`let __out = "";`);
     // Heuristic: only create Astro if it's explicitly used in the template or frontmatter
-    const isAstroUsed = ast.frontmatter.source.includes(varName) ||
-        JSON.stringify(ast.body).includes(varName);
+    const isAstroUsed = ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
     if (isAstroUsed) {
         lines.push(`const ${varName} = {
       props,
@@ -272,7 +271,7 @@ function emitNode(node, components, options, target = '__out') {
         case 'text':
             return node.value ? [emit(JSON.stringify(node.value))] : [];
         case 'expression': {
-            if (!node.nodes || node.nodes.length === 1 && typeof node.nodes[0] === 'string') {
+            if (!node.nodes || (node.nodes.length === 1 && typeof node.nodes[0] === 'string')) {
                 let expr = node.source;
                 if (options?.autoFilter)
                     expr = `__filter(${expr})`;
@@ -296,20 +295,42 @@ function emitNode(node, components, options, target = '__out') {
         case 'element':
             return emitElement(node, components, options, target);
         case 'slot': {
-            const slotName = node.name || 'default';
-            const slotNameKey = JSON.stringify(slotName);
+            const slotNode = node;
+            const slotName = slotNode.name || 'default';
+            const slotNameExpr = slotNode.nameExpr;
             const lines = [];
-            lines.push(`if (slots[${slotNameKey}] !== undefined) {`);
-            lines.push(`  ${emit(`slots[${slotNameKey}]`)}`);
-            lines.push(`} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`);
-            lines.push(`  ${emit(`slots[${JSON.stringify('')}]`)}`);
-            if (node.children.length > 0) {
-                lines.push(`} else {`);
-                for (const child of node.children) {
-                    lines.push(...emitNode(child, components, options, target).map((l) => '  ' + l));
+            if (slotNameExpr) {
+                // Dynamic slot name — evaluate at runtime
+                const exprSource = transformExpression(slotNameExpr, components, options);
+                lines.push(`{ const __slotName = String(${exprSource});`);
+                lines.push(`  if (slots[__slotName] !== undefined) {`);
+                lines.push(`    ${emit('slots[__slotName]')}`);
+                lines.push(`  } else if (slots["" ] !== undefined && __slotName === "default") {`);
+                lines.push(`    ${emit('slots[""]')}`);
+                if (slotNode.children.length > 0) {
+                    lines.push(`  } else {`);
+                    for (const child of slotNode.children) {
+                        lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
+                    }
                 }
+                lines.push(`  }`);
+                lines.push(`}`);
             }
-            lines.push(`}`);
+            else {
+                // Static slot name
+                const slotNameKey = JSON.stringify(slotName);
+                lines.push(`if (slots[${slotNameKey}] !== undefined) {`);
+                lines.push(`  ${emit(`slots[${slotNameKey}]`)}`);
+                lines.push(`} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`);
+                lines.push(`  ${emit(`slots[${JSON.stringify('')}]`)}`);
+                if (slotNode.children.length > 0) {
+                    lines.push(`} else {`);
+                    for (const child of slotNode.children) {
+                        lines.push(...emitNode(child, components, options, target).map((l) => '  ' + l));
+                    }
+                }
+                lines.push(`}`);
+            }
             return lines;
         }
         case 'script': {
@@ -351,8 +372,17 @@ function emitElement(node, components, options, target = '__out') {
             if (!('type' in attr)) {
                 if (attr.name === 'set:html')
                     setHtml = attr;
-                if (attr.name === 'set:text')
+                else if (attr.name === 'set:text')
                     setText = attr;
+                else if (attr.name === 'slot') {
+                    /* allowed */
+                }
+                else {
+                    throw new Error(`CompileError: Fragments cannot have attributes or directives (found: ${attr.name})`);
+                }
+            }
+            else {
+                throw new Error(`CompileError: Fragments cannot have spread attributes`);
             }
         }
         if (setHtml) {
@@ -412,7 +442,11 @@ function emitElement(node, components, options, target = '__out') {
                     tagOpen += ` class="${escapeHtml(attr.value)}"`;
                 }
                 else if (attr.value !== true) {
-                    dynamicAttrs.push({ name: 'class', value: attr.value, type: attr.name === 'class:list' ? 'list' : undefined });
+                    dynamicAttrs.push({
+                        name: 'class',
+                        value: attr.value,
+                        type: attr.name === 'class:list' ? 'list' : undefined,
+                    });
                 }
             }
             else if (attr.name === 'style') {

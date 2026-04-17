@@ -58,21 +58,22 @@ describe('Syntax: Error Handling', () => {
     );
   });
 
-  it.skip('throws CompileError for circular component dependency', () => {
+  it('throws CompileError for circular component dependency', () => {
     const engine = new Engine({
       readFile: (p) => {
-        if (p.includes('a.astro')) return 'import B from "./b.astro";\n<B />';
-        if (p.includes('b.astro')) return 'import A from "./a.astro";\n<A />';
+        if (p.includes('a.astro')) return '---\nimport B from "./b.astro";\n---\n<B />';
+        if (p.includes('b.astro')) return '---\nimport A from "./a.astro";\n---\n<A />';
         return null as unknown as string;
       },
     });
     expect(() => engine.render('/views/a.astro')).toThrow(/CompileError/);
   });
 
-  it.skip('throws CompileError for unresolvable component import', () => {
+  it('throws CompileError for unresolvable component import', () => {
     const engine = new Engine({
       readFile: (p) => {
-        if (p.includes('main.astro')) return 'import Missing from "./missing.astro";\n<Missing />';
+        if (p.includes('main.astro'))
+          return '---\nimport Missing from "./missing.astro";\n---\n<Missing />';
         return null as unknown as string;
       },
     });

@@ -105,6 +105,8 @@ export interface SlotNode {
   type: 'slot';
   /** Empty string for the default slot; a name string for named slots. */
   name: string;
+  /** Dynamic expression for the slot name (takes precedence over `name` at runtime). */
+  nameExpr?: ExpressionNode;
   /** Fallback content. */
   children: TemplateNode[];
 }

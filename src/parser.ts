@@ -477,23 +477,28 @@ class Parser {
 
     // Determine slot name from `name="..."` attribute
     let name = '';
+    let nameExpr: ExpressionNode | undefined;
     for (const attr of attrsResult.attrs) {
-      if (!('type' in attr) && attr.name === 'name' && typeof attr.value === 'string') {
-        name = attr.value;
+      if (!('type' in attr) && attr.name === 'name') {
+        if (typeof attr.value === 'string') {
+          name = attr.value;
+        } else if (attr.value !== true && typeof attr.value === 'object') {
+          nameExpr = attr.value;
+        }
       }
     }
 
     // Consume self-closing /> or parse children until </slot>
     if (this.at('/>')) {
       this.advance(2);
-      return { ok: true, node: { type: 'slot', name, children: [] } };
+      return { ok: true, node: { type: 'slot', name, nameExpr, children: [] } };
     } else if (this.peek() === '>') {
       this.advance();
       const children: TemplateNode[] = [];
       while (!this.eof()) {
         if (this.at('</slot>')) {
           this.pos += 7;
-          return { ok: true, node: { type: 'slot', name, children } };
+          return { ok: true, node: { type: 'slot', name, nameExpr, children } };
         }
         const childStartPos = this.pos;
         const childResult = this.parseNode();

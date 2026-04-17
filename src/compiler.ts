@@ -419,23 +419,44 @@ function emitNode(
       return emitElement(node, components, options, target);
 
     case 'slot': {
-      const slotName = node.name || 'default';
-      const slotNameKey = JSON.stringify(slotName);
+      const slotNode = node as import('./types.js').SlotNode;
+      const slotName = slotNode.name || 'default';
+      const slotNameExpr = slotNode.nameExpr;
       const lines: string[] = [];
 
-      lines.push(`if (slots[${slotNameKey}] !== undefined) {`);
-      lines.push(`  ${emit(`slots[${slotNameKey}]`)}`);
-      lines.push(
-        `} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`
-      );
-      lines.push(`  ${emit(`slots[${JSON.stringify('')}]`)}`);
-      if (node.children.length > 0) {
-        lines.push(`} else {`);
-        for (const child of node.children) {
-          lines.push(...emitNode(child, components, options, target).map((l) => '  ' + l));
+      if (slotNameExpr) {
+        // Dynamic slot name — evaluate at runtime
+        const exprSource = transformExpression(slotNameExpr, components, options);
+        lines.push(`{ const __slotName = String(${exprSource});`);
+        lines.push(`  if (slots[__slotName] !== undefined) {`);
+        lines.push(`    ${emit('slots[__slotName]')}`);
+        lines.push(`  } else if (slots["" ] !== undefined && __slotName === "default") {`);
+        lines.push(`    ${emit('slots[""]')}`);
+        if (slotNode.children.length > 0) {
+          lines.push(`  } else {`);
+          for (const child of slotNode.children) {
+            lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
+          }
         }
+        lines.push(`  }`);
+        lines.push(`}`);
+      } else {
+        // Static slot name
+        const slotNameKey = JSON.stringify(slotName);
+        lines.push(`if (slots[${slotNameKey}] !== undefined) {`);
+        lines.push(`  ${emit(`slots[${slotNameKey}]`)}`);
+        lines.push(
+          `} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`
+        );
+        lines.push(`  ${emit(`slots[${JSON.stringify('')}]`)}`);
+        if (slotNode.children.length > 0) {
+          lines.push(`} else {`);
+          for (const child of slotNode.children) {
+            lines.push(...emitNode(child, components, options, target).map((l) => '  ' + l));
+          }
+        }
+        lines.push(`}`);
       }
-      lines.push(`}`);
       return lines;
     }
 
@@ -488,7 +509,16 @@ function emitElement(
     for (const attr of node.attrs) {
       if (!('type' in attr)) {
         if (attr.name === 'set:html') setHtml = attr;
-        if (attr.name === 'set:text') setText = attr;
+        else if (attr.name === 'set:text') setText = attr;
+        else if (attr.name === 'slot') {
+          /* allowed */
+        } else {
+          throw new Error(
+            `CompileError: Fragments cannot have attributes or directives (found: ${attr.name})`
+          );
+        }
+      } else {
+        throw new Error(`CompileError: Fragments cannot have spread attributes`);
       }
     }
 

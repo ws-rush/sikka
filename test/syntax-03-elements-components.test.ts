@@ -64,16 +64,17 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
       expect(html).toBe('<head><title>7</title></head>');
     });
 
-    it.skip('fails: Fragment inside <script>', () => {
-      // <script>/* <></> */</script> — fragments inside script are not parsed as JSX
+    it('renders Fragment inside <script> as raw text (not parsed as JSX)', () => {
+      const html = render('<script>/* <></> */</script>');
+      expect(html).toBe('<script>/* <></> */</script>');
     });
 
-    it.skip('fails: attributes on <> (compile error)', () => {
-      // < id="1"></> — should error
+    it('throws CompileError for attributes on <>', () => {
+      expect(() => render('<Fragment id="1">content</Fragment>')).toThrow();
     });
 
-    it.skip('fails: directives on <> (compile error)', () => {
-      // < client:load></> — should error
+    it('throws CompileError for directives on <>', () => {
+      expect(() => render('<Fragment is:raw></Fragment>')).toThrow();
     });
   });
 
@@ -150,8 +151,9 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
       expect(html).toContain('class="test"');
     });
 
-    it.skip('spreads objects with getters', () => {
-      // <div {...{ get a() { return 1; } }}>
+    it('spreads objects with getters', () => {
+      const html = render('<div {...{ get a() { return 1; } }}>hi</div>');
+      expect(html).toBe('<div a="1">hi</div>');
     });
   });
 

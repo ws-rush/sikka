@@ -58,24 +58,44 @@ describe('Syntax: Slots', () => {
       expect(html).toBe('<div></div>');
     });
 
-    it.skip('renders dynamic slot name', () => {
-      // <slot name={name}/>
+    it('renders dynamic slot name', () => {
+      const engine = new Engine();
+      engine.loadComponent(
+        'Comp',
+        '---\nconst name = "header";\n---\n<div><slot name={name} /></div>'
+      );
+      const html = engine.renderString('<Comp><span slot="header">Title</span></Comp>');
+      expect(html).toBe('<div><span>Title</span></div>');
     });
 
-    it.skip('renders dynamic slot assignment', () => {
-      // <div slot={name}>C</div>
+    it('renders dynamic slot assignment', () => {
+      const engine = new Engine();
+      engine.loadComponent('Comp', '<div><slot name="x" /></div>');
+      const html = engine.renderString(
+        '---\nconst name = "x";\n---\n<Comp><span slot={name}>dyn</span></Comp>'
+      );
+      expect(html).toBe('<div><span>dyn</span></div>');
     });
 
-    it.skip('renders slot names with spaces', () => {
-      // <slot name="a b"/>
+    it('renders slot names with spaces', () => {
+      const engine = new Engine();
+      engine.loadComponent('Comp', '<div><slot name="a b" /></div>');
+      const html = engine.renderString('<Comp><span slot="a b">spaced</span></Comp>');
+      expect(html).toBe('<div><span>spaced</span></div>');
     });
 
-    it.skip('renders slot names with hyphens', () => {
-      // <slot name="a-b"/>
+    it('renders slot names with hyphens', () => {
+      const engine = new Engine();
+      engine.loadComponent('Comp', '<div><slot name="a-b" /></div>');
+      const html = engine.renderString('<Comp><span slot="a-b">hyphen</span></Comp>');
+      expect(html).toBe('<div><span>hyphen</span></div>');
     });
 
-    it.skip('renders slot names with numbers', () => {
-      // <slot name="1"/>
+    it('renders slot names with numbers', () => {
+      const engine = new Engine();
+      engine.loadComponent('Comp', '<div><slot name="1" /></div>');
+      const html = engine.renderString('<Comp><span slot="1">num</span></Comp>');
+      expect(html).toBe('<div><span>num</span></div>');
     });
   });
 

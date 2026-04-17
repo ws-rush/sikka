@@ -176,7 +176,7 @@ const Tag = "section";
 <!-- 8. Attributes on <> (Compile Error) -->
 <!-- < id="1"></> -->
 <!-- 9. Directives on <> (Compile Error) -->
-<!-- < client:load></> -->
+<!-- < is:raw></> -->
 <!-- 10. Fragment inside <head> -->
 <head><><title>7</title></></head>
 <!-- 11. Fragment inside <script> (Fails) -->

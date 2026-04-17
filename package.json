@@ -1,7 +1,7 @@
 {
   "name": "astro-template-engine",
   "version": "0.1.0",
-  "description": "Runtime-agnostic Astro-like template engine",
+  "description": "A vibecoded, zero-dependency JS template engine with an Astro-like template syntax",
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
@@ -37,6 +37,7 @@
     "tinybench": "^6.0.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.4",
+    "zod": "^4.3.6"
   }
 }

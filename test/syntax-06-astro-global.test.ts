@@ -68,16 +68,26 @@ describe('Syntax: Astro Global', () => {
       expect(html).toBe('<div>3</div>');
     });
 
-    it.skip('accesses symbols as prop keys', () => {
-      // Astro.props[Symbol.for('key')]
+    it('accesses symbols as prop keys', () => {
+      const html = render(
+        '---\nconst key = Symbol.for("test");\nconst val = Astro.props[key];\n---\n<div>{val}</div>',
+        { [Symbol.for('test')]: 'sym-val' }
+      );
+      expect(html).toBe('<div>sym-val</div>');
     });
 
-    it.skip('mutates Astro.props', () => {
-      // Astro.props.a = 2
+    it('mutates Astro.props', () => {
+      const html = render('---\nAstro.props.a = 2;\n---\n<div>{Astro.props.a}</div>', { a: 1 });
+      expect(html).toBe('<div>2</div>');
     });
 
-    it.skip('uses Zod validation', () => {
-      // schema.parse(Astro.props)
+    it('uses Zod validation', async () => {
+      const { z } = await import('zod');
+      const html = render(
+        '---\nconst { z } = Astro.props;\nconst schema = z.object({ name: z.string() });\nconst data = schema.parse({ name: "valid" });\n---\n<div>{data.name}</div>',
+        { z }
+      );
+      expect(html).toBe('<div>valid</div>');
     });
   });
 });
