@@ -1,10 +1,10 @@
 # AGENT.md
 
-This document provides technical context and guidance for AI agents working on the `astro-template-engine` project.
+This document provides technical context and guidance for AI agents working on the `sikka` project.
 
 ## Context
 
-The `astro-template-engine` is a runtime-agnostic, Astro-like template engine for rendering HTML. It transforms `.astro` template syntax into efficient JavaScript render functions that produce HTML strings.
+`Sikka` (سكّة) is a zero-dependency, runtime-agnostic, Astro-like template engine for rendering HTML. It transforms `.astro` template syntax into efficient JavaScript render functions that produce HTML strings.
 
 ### Tech Stack
 

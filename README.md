@@ -1,9 +1,9 @@
-# astro-template-engine
+# Sikka (سكّة)
+
+> A vibecoded, zero-dependency, runtime-agnostic template engine with Astro-like syntax.
 
 > [!WARNING]
 > This project is currently under **heavy development**. APIs and internal behaviors are subject to significant changes as we optimize for performance and expand Astro syntax support.
-
-A vibecoded, zero-dependency JS template engine with an Astro-like template syntax. Parses `.astro` templates, compiles them to efficient JavaScript functions, and spits out clean HTML.
 
 ## Features
 
@@ -17,7 +17,7 @@ A vibecoded, zero-dependency JS template engine with an Astro-like template synt
 ## Installation
 
 ```bash
-npm install astro-template-engine
+npm install sikka
 ```
 
 ## Quick Start
@@ -27,7 +27,7 @@ npm install astro-template-engine
 Render a template string directly with props:
 
 ```javascript
-import { Engine } from 'astro-template-engine';
+import { Engine } from 'sikka';
 
 const engine = new Engine();
 
@@ -47,7 +47,7 @@ console.log(html); // <h1>Hello, World!</h1>
 To load templates from the file system, provide `views`, `readFile`, and `resolvePath` in the options:
 
 ```javascript
-import { Engine } from 'astro-template-engine';
+import { Engine } from 'sikka';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -80,7 +80,7 @@ const html = await engine.renderString(template);
 For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. Static content is flushed immediately, while component calls are awaited and yielded as single opaque chunks.
 
 ```javascript
-import { Engine } from 'astro-template-engine';
+import { Engine } from 'sikka';
 
 const engine = new Engine();
 
@@ -106,11 +106,11 @@ Streaming supports:
 
 ## Performance
 
-`astro-template-engine` is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
+Sikka is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
 
 | Engine           | "friends" Benchmark |
 | :--------------- | :------------------ |
-| **Astro (Ours)** | **197ms**           |
+| **Sikka (Ours)** | **197ms**           |
 | Pug              | 209ms               |
 | Eta              | 214ms               |
 
@@ -194,3 +194,7 @@ Registers a global component.
 ### `engine.invalidate(key?): void`
 
 Clears specific or all cache entries.
+
+## License
+
+MIT

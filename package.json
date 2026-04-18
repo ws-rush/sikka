@@ -1,16 +1,45 @@
 {
-  "name": "astro-template-engine",
+  "name": "sikka",
   "version": "0.1.0",
-  "description": "A vibecoded, zero-dependency JS template engine with an Astro-like template syntax",
+  "description": "A zero-dependency, runtime-agnostic template engine with Astro-like syntax.",
+  "keywords": [
+    "template",
+    "engine",
+    "html",
+    "astro",
+    "ssr",
+    "compiler",
+    "render",
+    "sikka"
+  ],
+  "author": "Rasheed Qaied <wusaby.rush@zohomail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ws-rush/sikka/issues"
+  },
+  "homepage": "https://github.com/ws-rush/sikka#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ws-rush/sikka.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.astro-syntax.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "exports": {
     ".": {
       "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/esm/index.d.ts"
     }
   },
+  "types": "./dist/esm/index.d.ts",
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
     "lint": "eslint .",
