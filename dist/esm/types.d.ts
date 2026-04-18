@@ -111,6 +111,8 @@ export type ParseResult = {
     ok: false;
     error: ParseError;
 };
+/** A compiled streaming render function that yields HTML chunks incrementally. */
+export type StreamingRenderFunction = (props: Record<string, unknown>, slots?: Record<string, string>) => AsyncGenerator<string>;
 export interface CompileError {
     message: string;
     /** The import specifier that could not be resolved, if applicable. */
@@ -121,6 +123,14 @@ export interface CompileError {
 export type CompileResult = {
     ok: true;
     fn: RenderFunction;
+    source: string;
+} | {
+    ok: false;
+    error: CompileError;
+};
+export type StreamingCompileResult = {
+    ok: true;
+    fn: StreamingRenderFunction;
     source: string;
 } | {
     ok: false;

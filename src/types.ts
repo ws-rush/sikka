@@ -138,6 +138,14 @@ export interface ParseError {
 
 export type ParseResult = { ok: true; ast: TemplateAST } | { ok: false; error: ParseError };
 
+// ─── Streaming render type ───────────────────────────────────────────────────
+
+/** A compiled streaming render function that yields HTML chunks incrementally. */
+export type StreamingRenderFunction = (
+  props: Record<string, unknown>,
+  slots?: Record<string, string>
+) => AsyncGenerator<string>;
+
 // ─── Compiler result types ────────────────────────────────────────────────────
 
 export interface CompileError {
@@ -150,6 +158,10 @@ export interface CompileError {
 
 export type CompileResult =
   | { ok: true; fn: RenderFunction; source: string }
+  | { ok: false; error: CompileError };
+
+export type StreamingCompileResult =
+  | { ok: true; fn: StreamingRenderFunction; source: string }
   | { ok: false; error: CompileError };
 
 // ─── Cache interface ──────────────────────────────────────────────────────────

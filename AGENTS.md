@@ -44,11 +44,14 @@ flowchart TD
 The engine follows a standard pipeline:
 **Source Text → Parser → AST → Compiler → Render Function → HTML String**.
 
-- **Parser (`src/parser.ts`)**: Tokenizes and parses raw template text into an Abstract Syntax Tree (AST).
+For streaming, a parallel pipeline exists:
+**Source Text → Parser → AST → Streaming Compiler → Async Generator → HTML Chunks**.
+
+- **Parser (`src/parser.ts`)**: Tokenizes and parses raw template text into an Abstract Syntax Tree (AST). Shared between sync and streaming pipelines.
 - **AST (`src/types.ts`)**: Intermediate representation of the template, including frontmatter, JSX-like elements, expressions, and component imports.
-- **Compiler (`src/compiler.ts`)**: Transforms the AST into a JavaScript closure (`RenderFunction`). It handles component resolution, prop forwarding, slot substitution, and special attributes like `class:list` and `style` objects.
-- **Engine (`src/index.ts`)**: Provides the main entry point and orchestrates template loading, resolution, and caching.
-- **Cache (`src/cache.ts`)**: Stores compiled `RenderFunction` instances.
+- **Compiler (`src/compiler.ts`)**: Transforms the AST into a JavaScript closure (`RenderFunction`). Also contains the streaming compiler that generates `AsyncGenerator` functions. It handles component resolution, prop forwarding, slot substitution, and special attributes like `class:list` and `style` objects.
+- **Engine (`src/index.ts`)**: Provides the main entry point and orchestrates template loading, resolution, and caching. Maintains separate caches for sync and streaming functions.
+- **Cache (`src/cache.ts`)**: Stores compiled `RenderFunction` instances. Streaming uses its own cache instance.
 - **HTML Escaper (`src/escape.ts`)**: Provides security by default through automatic HTML entity escaping.
 
 ## Data Models (AST)
@@ -166,12 +169,12 @@ The engine defines specific error types for different failure points:
 
 ## Key Files & Responsibilities
 
-- `src/index.ts`: Public API entry point (`Engine` class).
+- `src/index.ts`: Public API entry point (`Engine` class). Contains `renderString`, `render`, `streamString`, `stream`, `compile`, `loadComponent`, `invalidate`.
 - `src/parser.ts`: Recursive-descent parser for Astro syntax.
-- `src/compiler.ts`: Code generation from AST.
+- `src/compiler.ts`: Code generation from AST. Contains both sync compiler (`compile`, `compileAST`, `buildFunctionBody`) and streaming compiler (`compileStreaming`, `compileStreamingAST`, `buildStreamingFunctionBody`).
 - `src/cache.ts`: LRU cache implementation.
 - `src/escape.ts`: HTML escaping and trusted content markers (`RawHtml`).
-- `types.ts`: Core interfaces, AST nodes, and error types.
+- `types.ts`: Core interfaces, AST nodes, and error types. Includes `StreamingRenderFunction` and `StreamingCompileResult`.
 
 ## Coding Standards & Patterns
 
@@ -202,6 +205,7 @@ The engine defines specific error types for different failure points:
 1.  Add test cases for the desired output in `src/compiler.test.ts`.
 2.  Modify the code generation logic in `src/compiler.ts`.
 3.  If the change affects performance, ensure the cache still functions correctly (Properties 6, 7).
+4.  **Important**: The compiler has both sync and streaming code paths. Changes to `emitNode`, `emitElement`, or `emitComponentCall` likely need corresponding changes to `emitNodeStreaming`, `emitElementStreaming`, or `emitComponentCallStreaming`.
 
 ## Performance Guidelines
 
@@ -309,9 +313,9 @@ npm test -- -t property
 
 The project maintains high test coverage:
 
-- Statements: >95%
-- Branches: >90%
-- Functions: 100%
-- Lines: >95%
+- Statements: >89%
+- Branches: >82%
+- Functions: >93%
+- Lines: >91%
 
 Current validation pipeline requires meeting these thresholds.

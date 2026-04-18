@@ -312,4 +312,166 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
       expect(html).toBe('<div>hello</div>');
     });
   });
+
+  describe('Attribute Edge Cases', () => {
+    it('parses single-quoted attribute values', () => {
+      const html = render("<div class='test'>hi</div>");
+      expect(html).toContain('test');
+    });
+
+    it('parses attribute value with equals sign', () => {
+      const html = render('<div data-x="a=b">hi</div>');
+      expect(html).toContain('a=b');
+    });
+
+    it('parses multiple void elements', () => {
+      const html = render('<br><hr><img src="x.png">');
+      expect(html).toContain('<br />');
+      expect(html).toContain('<hr />');
+      expect(html).toContain('<img src="x.png" />');
+    });
+
+    it('parses DOCTYPE', () => {
+      const html = render('<!DOCTYPE html>');
+      expect(html).toContain('DOCTYPE');
+    });
+
+    it('preserves HTML comments in output', () => {
+      const html = render('<!-- comment --><div>hi</div>');
+      expect(html).toContain('<!-- comment -->');
+      expect(html).toContain('hi');
+    });
+
+    it('renders unquoted attribute value', () => {
+      const html = render('<div data-x=hello>hi</div>');
+      expect(html).toContain('hello');
+    });
+
+    it('renders element with both static and dynamic attrs', () => {
+      const html = render(
+        '---\nconst myAttrs = { id: "x" };\n---\n<div class="a" id="b" {...myAttrs} style="c" style={{ color: "red" }}>hi</div>'
+      );
+      expect(html).toContain('class="a"');
+      expect(html).toContain('style=');
+      expect(html).toContain('hi');
+    });
+
+    it('handles mismatched closing tags', () => {
+      const html = render('<div><span></div>');
+      expect(html).toContain('<div>');
+      expect(html).toContain('<span>');
+    });
+
+    it('handles closing tag with extra whitespace', () => {
+      const html = render('<div>content</div >');
+      expect(html).toBe('<div>content</div>');
+    });
+
+    it('handles opening tag with extra whitespace', () => {
+      const html = render('<div >hi</div>');
+      expect(html).toBe('<div>hi</div>');
+    });
+  });
+
+  describe('Component Edge Cases', () => {
+    it('renders component with text child as slot content', () => {
+      const e = new Engine();
+      e.loadComponent('Comp', '<div><slot /></div>');
+      const html = e.renderString('<Comp>text content</Comp>');
+      expect(html).toBe('<div>text content</div>');
+    });
+
+    it('renders component with expression child as slot content', () => {
+      const e = new Engine();
+      e.loadComponent('Comp', '<div><slot /></div>');
+      const html = e.renderString('---\nconst val = "hi";\n---\n<Comp>{val}</Comp>');
+      expect(html).toBe('<div>hi</div>');
+    });
+
+    it('renders component with boolean prop', () => {
+      const e = new Engine();
+      e.loadComponent('BoolComp', '<div>{Astro.props.active ? "yes" : "no"}</div>');
+      const html = e.renderString('<BoolComp active />');
+      expect(html).toBe('<div>yes</div>');
+    });
+
+    it('renders component receiving class:list prop', () => {
+      const e = new Engine();
+      e.loadComponent('Styled', '<div class:list={Astro.props.items} />');
+      const html = e.renderString('<Styled items={["a", "b"]} />');
+      expect(html).toBe('<div class="a b"></div>');
+    });
+
+    it('renders component receiving style prop', () => {
+      const e = new Engine();
+      e.loadComponent('Styled', '<div style={Astro.props.s} />');
+      const html = e.renderString('<Styled s={{ color: "red" }} />');
+      expect(html).toBe('<div style="color:red"></div>');
+    });
+
+    it('renders nested component calls', () => {
+      const e = new Engine();
+      e.loadComponent('A', '<a>{Astro.props.x}</a>');
+      e.loadComponent('B', '<b><A x={Astro.props.y} /></b>');
+      const html = e.renderString('<B y="val" />');
+      expect(html).toBe('<b><a>val</a></b>');
+    });
+
+    it('renders unknown capitalized tag as literal HTML (self-closing)', () => {
+      const html = render('<Unknown x="1" />');
+      expect(html).toContain('Unknown');
+      expect(html).toContain('x="1"');
+    });
+
+    it('renders unknown capitalized tag with children', () => {
+      const html = render('<UnknownTag x="1">hi</UnknownTag>');
+      expect(html).toContain('UnknownTag');
+      expect(html).toContain('hi');
+    });
+
+    it('renders component in ternary true branch', () => {
+      const e = new Engine();
+      e.loadComponent('A', '<span>A</span>');
+      e.loadComponent('B', '<span>B</span>');
+      const html = e.renderString('---\nconst x = true;\n---\n<div>{x ? <A/> : <B/>}</div>');
+      expect(html).toBe('<div><span>A</span></div>');
+    });
+
+    it('renders component in ternary false branch', () => {
+      const e = new Engine();
+      e.loadComponent('A', '<span>A</span>');
+      e.loadComponent('B', '<span>B</span>');
+      const html = e.renderString('---\nconst x = false;\n---\n<div>{x ? <A/> : <B/>}</div>');
+      expect(html).toBe('<div><span>B</span></div>');
+    });
+  });
+
+  describe('Spread Attribute Edge Cases', () => {
+    it('spreads className through spread attribute', () => {
+      const html = render(
+        '---\nconst myProps = { className: "test" };\n---\n<div {...myProps}>hi</div>'
+      );
+      expect(html).toContain('class="test"');
+    });
+
+    it('spreads class through spread attribute', () => {
+      const html = render(
+        '---\nconst myProps = { class: "test" };\n---\n<div {...myProps}>hi</div>'
+      );
+      expect(html).toContain('class="test"');
+    });
+
+    it('spreads boolean attribute through spread', () => {
+      const html = render('---\nconst myProps = { disabled: true };\n---\n<input {...myProps} />');
+      expect(html).toContain('disabled');
+    });
+
+    it('spreads mixed attributes through spread', () => {
+      const html = render(
+        '---\nconst myProps = { id: "x", title: "t" };\n---\n<div {...myProps}>hi</div>'
+      );
+      expect(html).toContain('id="x"');
+      expect(html).toContain('title="t"');
+    });
+  });
 });

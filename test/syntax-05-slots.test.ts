@@ -228,4 +228,30 @@ describe('Syntax: Slots', () => {
       expect(html).toContain('<body><p>Content</p></body>');
     });
   });
+
+  describe('Slot Attribute Edge Cases', () => {
+    it('renders component with dynamic slot attribute value', () => {
+      const e = new Engine();
+      e.loadComponent('Comp', '<div><slot name="x" /></div>');
+      const html = e.renderString(
+        '---\nconst slotName = "x";\n---\n<Comp><span slot={slotName}>dynamic</span></Comp>'
+      );
+      expect(html).toContain('dynamic');
+    });
+
+    it('renders component with boolean slot attribute', () => {
+      const e = new Engine();
+      e.loadComponent('Comp', '<div><slot /></div>');
+      const html = e.renderString('<Comp><span slot>content</span></Comp>');
+      expect(html).toContain('content');
+    });
+
+    it('renders component used as fallback in slot', () => {
+      const e = new Engine();
+      e.loadComponent('Fallback', '<span>fb</span>');
+      e.loadComponent('Comp', '<div><slot><Fallback /></slot></div>');
+      const html = e.renderString('<Comp />');
+      expect(html).toBe('<div><span>fb</span></div>');
+    });
+  });
 });

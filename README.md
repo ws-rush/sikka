@@ -75,6 +75,35 @@ const template = `
 const html = await engine.renderString(template);
 ```
 
+## Streaming
+
+For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. Static content is flushed immediately, while component calls are awaited and yielded as single opaque chunks.
+
+```javascript
+import { Engine } from 'astro-template-engine';
+
+const engine = new Engine();
+
+// Stream a template string
+const gen = engine.streamString(template, { name: 'World' });
+for await (const chunk of gen) {
+  res.write(chunk); // Send each chunk to the client immediately
+}
+
+// Stream a template file
+const gen = engine.stream('page.astro', { title: 'Home' });
+for await (const chunk of gen) {
+  res.write(chunk);
+}
+```
+
+Streaming supports:
+
+- **Async frontmatter**: `await` expressions in frontmatter are fully supported
+- **Static flushing**: Static HTML is yielded immediately without waiting for dynamic content
+- **Component boundaries**: Component calls are awaited and yielded as single chunks
+- **Independent caching**: Streaming functions are cached separately from sync functions
+
 ## Performance
 
 `astro-template-engine` is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
@@ -141,6 +170,14 @@ Renders a template string and returns the HTML result.
 ### `engine.render(name, props?): string`
 
 Renders a template file from the `views` directory and returns the HTML result.
+
+### `engine.streamString(template, props?): AsyncGenerator<string>`
+
+Streams a template string, yielding HTML chunks as they are produced. Static content is yielded immediately; component calls are awaited and yielded as single opaque chunks.
+
+### `engine.stream(name, props?): AsyncGenerator<string>`
+
+Streams a template file from the `views` directory, yielding HTML chunks as they are produced.
 
 ### `engine.compile(template, config?): RenderFunction`
 

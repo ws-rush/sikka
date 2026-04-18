@@ -1,7 +1,7 @@
 /**
  * Compiler
  */
-import type { TemplateAST, CompileResult, RenderFunction } from './types.js';
+import type { TemplateAST, CompileResult, RenderFunction, StreamingCompileResult } from './types.js';
 interface CompileOptions {
     /** Resolved component render functions keyed by local name. */
     components?: Record<string, RenderFunction>;
@@ -28,5 +28,14 @@ declare function compileSync(ast: TemplateAST, options?: CompileOptions & {
     fileReader?: (path: string) => string;
     basePath?: string;
 }): CompileResult;
+/**
+ * Higher-level streaming compile entry point: resolves component imports then
+ * compiles the AST for streaming.
+ */
+declare function compileStreamingInternal(ast: TemplateAST, options?: CompileOptions & {
+    fileReader?: (path: string) => string;
+    basePath?: string;
+}): StreamingCompileResult;
+export declare const compileStreaming: typeof compileStreamingInternal;
 export {};
 //# sourceMappingURL=compiler.d.ts.map

@@ -285,4 +285,23 @@ describe('Syntax: Dynamic Expressions', () => {
       expect(html).toBe('<span>A</span> <span>B</span>');
     });
   });
+
+  describe('Template Literals', () => {
+    it('parses template literal with interpolation', () => {
+      const html = render('---\nconst x = "world";\n---\n<div>{`hello ${x}`}</div>');
+      expect(html).toBe('<div>hello world</div>');
+    });
+
+    it('parses expression with string literal containing braces', () => {
+      const html = render('<div>{"{"}</div>');
+      expect(html).toBe('<div>{</div>');
+    });
+
+    it('parses nested expressions with elements', () => {
+      const html = render(
+        '---\nconst arr = [1, 2];\n---\n<div>{arr.map(i => <span>{i}</span>)}</div>'
+      );
+      expect(html).toBe('<div><span>1</span><span>2</span></div>');
+    });
+  });
 });

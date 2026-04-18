@@ -79,4 +79,54 @@ describe('Syntax: Error Handling', () => {
     });
     expect(() => engine.render('/views/main.astro')).toThrow(/CompileError/);
   });
+
+  it('throws ParseError for unclosed element at EOF', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<div>unclosed')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for unclosed style', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<style>body{}')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for unclosed slot', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<slot name="x">')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for unclosed string literal in expression', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<div>{"unclosed}</div>')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for missing > after script attributes', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<script type="module"')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for missing close after slot attributes', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<slot name="x"')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for missing > on element opening tag', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<div class="x"')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for missing attribute name', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<div ="val">')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for script with / but no >', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<script type="module"/ var x;')).toThrow(/ParseError/);
+  });
+
+  it('throws ParseError for unclosed attribute value string', () => {
+    const engine = new Engine();
+    expect(() => engine.renderString('<div class="unclosed>hi</div>')).toThrow(/ParseError/);
+  });
 });

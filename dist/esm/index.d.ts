@@ -2,6 +2,7 @@ import type { RenderFunction, EngineOptions } from './types.js';
 export declare class Engine {
     private options;
     private cache;
+    private streamCache;
     private globalComponents;
     constructor(options?: EngineOptions);
     /**
@@ -18,6 +19,23 @@ export declare class Engine {
      * @param props - Data object to pass as `Astro.props`.
      */
     render(name: string, props?: Record<string, unknown>): string;
+    /**
+     * Streams a template string, yielding HTML chunks as they are produced.
+     * Static content is yielded immediately; component calls are awaited and
+     * yielded as single opaque chunks.
+     *
+     * @param template - The template content to stream.
+     * @param props - Data object to pass as `Astro.props`.
+     */
+    streamString(template: string, props?: Record<string, unknown>): AsyncGenerator<string>;
+    /**
+     * Streams a template file from the configured views directory, yielding
+     * HTML chunks as they are produced.
+     *
+     * @param name - The path or name of the template file.
+     * @param props - Data object to pass as `Astro.props`.
+     */
+    stream(name: string, props?: Record<string, unknown>): AsyncGenerator<string>;
     /**
      * Pre-loads and compiles a component for use in other templates.
      */
@@ -47,5 +65,7 @@ export declare class Engine {
     compileToString(str: string, config?: EngineOptions): string;
     private compileString;
     private compileFile;
+    private compileStreamingString;
+    private compileStreamingFile;
 }
 //# sourceMappingURL=index.d.ts.map

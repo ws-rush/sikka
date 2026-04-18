@@ -250,4 +250,39 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<script type="module">import "a";</script>');
     });
   });
+
+  describe('is:raw Edge Cases', () => {
+    it('renders is:raw with nested opening tags', () => {
+      const html = render('<div is:raw><span>text</span></div>');
+      expect(html).toBe('<div><span>text</span></div>');
+    });
+
+    it('renders is:raw with nested same-type elements', () => {
+      const html = render('<div is:raw><div>inner</div></div>');
+      expect(html).toBe('<div><div>inner</div></div>');
+    });
+  });
+
+  describe('class:list Edge Cases', () => {
+    it('handles inline array mutation with push', () => {
+      const html = render(
+        '---\nconst arr = ["a"];\n---\n<div class:list={arr.push("b") && arr} />'
+      );
+      expect(html).toContain('class="a b"');
+    });
+  });
+
+  describe('style Edge Cases', () => {
+    it('uses custom toString when defined', () => {
+      const html = render('<div style={{ toString: () => "color:red" }} />');
+      expect(html).toContain('color:red');
+    });
+  });
+
+  describe('set:text Edge Cases', () => {
+    it('renders set:text with dynamic value (escaped)', () => {
+      const html = render('---\nconst txt = "<b>bold</b>";\n---\n<div set:text={txt} />');
+      expect(html).toBe('<div>&lt;b&gt;bold&lt;/b&gt;</div>');
+    });
+  });
 });
