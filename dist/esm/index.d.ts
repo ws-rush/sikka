@@ -1,10 +1,10 @@
-import type { RenderFunction, EngineOptions } from './types.js';
-export declare class Engine {
+import type { RenderFunction, SikkaOptions } from './types.js';
+export declare class Sikka {
     private options;
     private cache;
     private streamCache;
     private globalComponents;
-    constructor(options?: EngineOptions);
+    constructor(options?: SikkaOptions);
     /**
      * Renders a template string with the provided props.
      *
@@ -55,14 +55,14 @@ export declare class Engine {
      * @param str - The template content.
      * @param config - Optional configuration overrides for this compilation.
      */
-    compile(str: string, config?: EngineOptions): RenderFunction;
+    compile(str: string, config?: SikkaOptions): RenderFunction;
     /**
      * Compiles a template string to its JavaScript function body string.
      *
      * @param str - The template content.
      * @param config - Optional configuration overrides for this compilation.
      */
-    compileToString(str: string, config?: EngineOptions): string;
+    compileToString(str: string, config?: SikkaOptions): string;
     private compileString;
     private compileFile;
     private compileStreamingString;

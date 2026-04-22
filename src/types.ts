@@ -1,4 +1,4 @@
-// ─── Render / Engine types ────────────────────────────────────────────────────
+// ─── Render / Sikka types ────────────────────────────────────────────────────
 
 /** A compiled render function produced by the compiler. */
 export interface RenderFunction {
@@ -10,8 +10,8 @@ export interface RenderFunction {
   renderSync(props: Record<string, unknown>, slots?: Record<string, string>): string;
 }
 
-/** Options accepted by `new Engine()`. */
-export interface EngineOptions {
+/** Options accepted by `new Sikka()`. */
+export interface SikkaOptions {
   /** Directory path for template resolution. */
   views?: string;
   /** Sync function to read file content. */

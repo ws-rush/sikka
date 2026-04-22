@@ -1,7 +1,7 @@
 import { parse } from './parser.js';
 import { compile as internalCompile, compileStreaming as internalCompileStreaming, } from './compiler.js';
 import { createCache } from './cache.js';
-export class Engine {
+export class Sikka {
     options;
     cache;
     streamCache;
@@ -162,7 +162,7 @@ export class Engine {
                 return cached;
         }
         if (!this.options.readFile) {
-            throw new Error('Engine.render() requires options.readFile to be configured');
+            throw new Error('Sikka.render() requires options.readFile to be configured');
         }
         const content = this.options.readFile(fullPath);
         if (content === undefined || content === null) {
@@ -220,7 +220,7 @@ export class Engine {
                 return cached;
         }
         if (!this.options.readFile) {
-            throw new Error('Engine.stream() requires options.readFile to be configured');
+            throw new Error('Sikka.stream() requires options.readFile to be configured');
         }
         const content = this.options.readFile(fullPath);
         if (content === undefined || content === null) {

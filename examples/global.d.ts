@@ -1,4 +1,4 @@
-// Global components registered via engine.loadComponent() at runtime.
+// Global components registered via sikka.loadComponent() at runtime.
 // This file gives TypeScript knowledge of them so .astro templates
 // do not produce "Cannot find name" errors.
 

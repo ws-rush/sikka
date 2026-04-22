@@ -29,7 +29,7 @@ flowchart TD
     J[File Reader\ninjectable] --> A
 
     subgraph Public API
-        K[Engine.render]
+        K[Sikka.render]
         L[compile]
         M[Directives\nset:html, set:text]
     end
@@ -50,7 +50,7 @@ For streaming, a parallel pipeline exists:
 - **Parser (`src/parser.ts`)**: Tokenizes and parses raw template text into an Abstract Syntax Tree (AST). Shared between sync and streaming pipelines.
 - **AST (`src/types.ts`)**: Intermediate representation of the template, including frontmatter, JSX-like elements, expressions, and component imports.
 - **Compiler (`src/compiler.ts`)**: Transforms the AST into a JavaScript closure (`RenderFunction`). Also contains the streaming compiler that generates `AsyncGenerator` functions. It handles component resolution, prop forwarding, slot substitution, and special attributes like `class:list` and `style` objects.
-- **Engine (`src/index.ts`)**: Provides the main entry point and orchestrates template loading, resolution, and caching. Maintains separate caches for sync and streaming functions.
+- **Sikka (`src/index.ts`)**: Provides the main entry point and orchestrates template loading, resolution, and caching. Maintains separate caches for sync and streaming functions.
 - **Cache (`src/cache.ts`)**: Stores compiled `RenderFunction` instances. Streaming uses its own cache instance.
 - **HTML Escaper (`src/escape.ts`)**: Provides security by default through automatic HTML entity escaping.
 
@@ -169,7 +169,7 @@ The engine defines specific error types for different failure points:
 
 ## Key Files & Responsibilities
 
-- `src/index.ts`: Public API entry point (`Engine` class). Contains `renderString`, `render`, `streamString`, `stream`, `compile`, `loadComponent`, `invalidate`.
+- `src/index.ts`: Public API entry point (**`Sikka`** class). Contains `renderString`, `render`, `streamString`, `stream`, `compile`, `loadComponent`, `invalidate`.
 - `src/parser.ts`: Recursive-descent parser for Astro syntax.
 - `src/compiler.ts`: Code generation from AST. Contains both sync compiler (`compile`, `compileAST`, `buildFunctionBody`) and streaming compiler (`compileStreaming`, `compileStreamingAST`, `buildStreamingFunctionBody`).
 - `src/cache.ts`: LRU cache implementation.
@@ -178,7 +178,7 @@ The engine defines specific error types for different failure points:
 
 ## Coding Standards & Patterns
 
-1.  **Runtime-Agnostic Core**: Do NOT import Node.js built-ins (`fs`, `path`, `crypto`) in the core rendering pipeline. Use injectable interfaces (like `readFile` and `resolvePath` in `EngineOptions`) for environment-specific I/O.
+1.  **Runtime-Agnostic Core**: Do NOT import Node.js built-ins (`fs`, `path`, `crypto`) in the core rendering pipeline. Use injectable interfaces (like `readFile` and `resolvePath` in `SikkaOptions`) for environment-specific I/O.
 2.  **Security by Default**: All interpolated expressions MUST be passed through `escapeHtml` unless `autoEscape: false`.
 3.  **Error Handling**: Use the custom error types (`LoadError`, `ParseError`, `CompileError`, `RenderError`) defined in `src/types.ts`.
 4.  **Astro Global**: The global `Astro` object (alias for `props` and `slots`) is available in all templates. Use `Astro.props` and `Astro.slots` to access them.
@@ -248,7 +248,7 @@ Avoid high-overhead operations in the runtime rendering loop.
 
 ## Performance Benchmarking & Profiling
 
-The project includes a dedicated benchmarking suite that relies only on the **Public API** (`Engine.renderString`, etc.), ensuring tests remain valid even if internals change.
+The project includes a dedicated benchmarking suite that relies only on the **Public API** (`Sikka.renderString`, etc.), ensuring tests remain valid even if internals change.
 
 ### 1. Running Benchmarks
 

@@ -1,9 +1,9 @@
 import { Bench } from 'tinybench';
-import { Engine } from '../dist/esm/index.js';
+import { Sikka } from '../dist/esm/index.js';
 import fs from 'node:fs';
 
 // Initialize engine with basic config
-const engine = new Engine({
+const sikka = new Sikka({
   cache: true,
   readFile: (p) => fs.readFileSync(p, 'utf-8'),
 });
@@ -16,16 +16,16 @@ const bench = new Bench({ time: 1000 });
 
 bench
   .add('Simple Rendering', () => {
-    engine.renderString('<h1>Hello {Astro.props.name}</h1>', { name: 'World' });
+    sikka.renderString('<h1>Hello {Astro.props.name}</h1>', { name: 'World' });
   })
   .add('Conditionals (if/else)', () => {
-    engine.renderString('{Astro.props.show ? <p>True</p> : <p>False</p>}', { show: true });
+    sikka.renderString('{Astro.props.show ? <p>True</p> : <p>False</p>}', { show: true });
   })
   .add('Loop Rendering (Friends)', () => {
-    engine.renderString(friendsTemplate, friendsData);
+    sikka.renderString(friendsTemplate, friendsData);
   })
   .add('Nested Loops', () => {
-    engine.renderString(
+    sikka.renderString(
       '<ul>{Astro.props.items.map(i => <li>{i.subs.map(s => <span>{s}</span>)}</li>)}</ul>',
       {
         items: Array.from({ length: 10 }, (_) => ({ subs: [1, 2, 3] })),

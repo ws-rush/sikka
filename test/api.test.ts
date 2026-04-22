@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Engine } from '../src/index.js';
+import { Sikka } from '../src/index.js';
 import {
   renderStream,
   renderStreamChunks,
@@ -8,36 +8,36 @@ import {
   collectHtml,
 } from './helpers.js';
 
-describe('Engine', () => {
+describe('Sikka', () => {
   describe('constructor', () => {
     it('creates engine with default options', () => {
-      const engine = new Engine();
-      expect(engine).toBeInstanceOf(Engine);
+      const sikka = new Sikka();
+      expect(sikka).toBeInstanceOf(Sikka);
     });
 
     it('enables caching with cache: true', () => {
-      const engine = new Engine({ cache: true });
-      const fn1 = engine.compile('<div>hi</div>');
-      const fn2 = engine.compile('<div>hi</div>');
+      const sikka = new Sikka({ cache: true });
+      const fn1 = sikka.compile('<div>hi</div>');
+      const fn2 = sikka.compile('<div>hi</div>');
       expect(fn1).toBe(fn2);
     });
 
     it('disables caching with cache: false', () => {
-      const engine = new Engine({ cache: false });
-      const fn1 = engine.compile('<div>hi</div>');
-      const fn2 = engine.compile('<div>hi</div>');
+      const sikka = new Sikka({ cache: false });
+      const fn1 = sikka.compile('<div>hi</div>');
+      const fn2 = sikka.compile('<div>hi</div>');
       expect(fn1).not.toBe(fn2);
     });
 
     it('triggers LRU eviction with cacheSize', () => {
-      const engine = new Engine({ cache: true, cacheSize: 2 });
-      const fnA = engine.compile('aaa');
-      engine.compile('bbb'); // fills cache to 2
-      const fnC = engine.compile('ccc'); // evicts 'aaa' (LRU)
-      const fnA2 = engine.compile('aaa'); // new reference since 'aaa' was evicted
+      const sikka = new Sikka({ cache: true, cacheSize: 2 });
+      const fnA = sikka.compile('aaa');
+      sikka.compile('bbb'); // fills cache to 2
+      const fnC = sikka.compile('ccc'); // evicts 'aaa' (LRU)
+      const fnA2 = sikka.compile('aaa'); // new reference since 'aaa' was evicted
       expect(fnA2).not.toBe(fnA);
       // Verify 'ccc' is still cached (it was just inserted)
-      const fnC2 = engine.compile('ccc');
+      const fnC2 = sikka.compile('ccc');
       expect(fnC2).toBe(fnC);
     });
 
@@ -52,12 +52,12 @@ describe('Engine', () => {
         set: (_k: string, _fn: unknown) => {
           setCount++;
         },
-        delete: (_k: string) => {},
-        clear: () => {},
+        delete: (_k: string) => { },
+        clear: () => { },
       };
-      const engine = new Engine({ cache: customCache });
-      engine.compile('<div>a</div>');
-      engine.compile('<div>a</div>');
+      const sikka = new Sikka({ cache: customCache });
+      sikka.compile('<div>a</div>');
+      sikka.compile('<div>a</div>');
       expect(getCount).toBe(2);
       expect(setCount).toBe(2);
     });
@@ -65,8 +65,8 @@ describe('Engine', () => {
 
   describe('renderString', () => {
     it('renders a basic template with props', () => {
-      const engine = new Engine();
-      const html = engine.renderString(
+      const sikka = new Sikka();
+      const html = sikka.renderString(
         '---\nconst { name } = Astro.props;\n---\n<h1>Hello, {name}!</h1>',
         { name: 'World' }
       );
@@ -74,90 +74,90 @@ describe('Engine', () => {
     });
 
     it('renders without props', () => {
-      const engine = new Engine();
-      const html = engine.renderString('<div>static</div>');
+      const sikka = new Sikka();
+      const html = sikka.renderString('<div>static</div>');
       expect(html).toBe('<div>static</div>');
     });
 
     it('returns empty string for empty template', () => {
-      const engine = new Engine();
-      expect(engine.renderString('')).toBe('');
+      const sikka = new Sikka();
+      expect(sikka.renderString('')).toBe('');
     });
 
     it('preserves whitespace-only template', () => {
-      const engine = new Engine();
-      expect(engine.renderString('   ')).toBe('   ');
+      const sikka = new Sikka();
+      expect(sikka.renderString('   ')).toBe('   ');
     });
   });
 
   describe('render', () => {
     it('renders a file via readFile and views', () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           if (p === '/views/page.astro') return '<div>page</div>';
           return null as unknown as string;
         },
       });
-      expect(engine.render('page.astro')).toBe('<div>page</div>');
+      expect(sikka.render('page.astro')).toBe('<div>page</div>');
     });
 
     it('resolves relative paths with views prefix', () => {
       let readPath = '';
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/templates',
         readFile: (p) => {
           readPath = p;
           return '<span>ok</span>';
         },
       });
-      engine.render('sub/page.astro');
+      sikka.render('sub/page.astro');
       expect(readPath).toBe('/templates/sub/page.astro');
     });
 
     it('passes absolute paths through without views prefix', () => {
       let readPath = '';
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           readPath = p;
           return '<div>abs</div>';
         },
       });
-      engine.render('/absolute/page.astro');
+      sikka.render('/absolute/page.astro');
       expect(readPath).toBe('/absolute/page.astro');
     });
 
     it('passes protocol URLs through without views prefix', () => {
       let readPath = '';
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           readPath = p;
           return '<div>proto</div>';
         },
       });
-      engine.render('file:///test.astro');
+      sikka.render('file:///test.astro');
       expect(readPath).toBe('file:///test.astro');
     });
 
     it('throws if readFile is not configured', () => {
-      const engine = new Engine();
-      expect(() => engine.render('test.astro')).toThrow(
-        'Engine.render() requires options.readFile to be configured'
+      const sikka = new Sikka();
+      expect(() => sikka.render('test.astro')).toThrow(
+        'Sikka.render() requires options.readFile to be configured'
       );
     });
 
     it('throws if file is not found', () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         readFile: () => null as unknown as string,
       });
-      expect(() => engine.render('missing.astro')).toThrow();
+      expect(() => sikka.render('missing.astro')).toThrow();
     });
 
     it('caches compiled file templates', () => {
       let readCount = 0;
-      const e = new Engine({
+      const e = new Sikka({
         cache: true,
         views: '/v',
         readFile: () => {
@@ -172,7 +172,7 @@ describe('Engine', () => {
 
     it('re-reads file after cache invalidation', () => {
       let readCount = 0;
-      const e = new Engine({
+      const e = new Sikka({
         cache: true,
         views: '/v',
         readFile: () => {
@@ -187,7 +187,7 @@ describe('Engine', () => {
     });
 
     it('throws ParseError for malformed file content', () => {
-      const e = new Engine({
+      const e = new Sikka({
         views: '/v',
         readFile: () => '---\nunclosed',
       });
@@ -195,7 +195,7 @@ describe('Engine', () => {
     });
 
     it('throws CompileError for invalid file content', () => {
-      const e = new Engine({
+      const e = new Sikka({
         views: '/v',
         readFile: () => '<div set:html="a" set:text="b" />',
       });
@@ -203,7 +203,7 @@ describe('Engine', () => {
     });
 
     it('resolves file-based component imports through render', () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro')
             return '---\nimport Comp from "./comp.astro";\n---\n<Comp x="1" />';
@@ -216,7 +216,7 @@ describe('Engine', () => {
     });
 
     it('resolves nested file-based component imports', () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro') return '---\nimport A from "./a.astro";\n---\n<A />';
           if (p === '/v/a.astro') return '---\nimport B from "./b.astro";\n---\n<B />';
@@ -229,7 +229,7 @@ describe('Engine', () => {
     });
 
     it('throws for circular file-based component imports', () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/a.astro') return '---\nimport B from "./b.astro";\n---\n<B />';
           if (p === '/v/b.astro') return '---\nimport A from "./a.astro";\n---\n<A />';
@@ -240,7 +240,7 @@ describe('Engine', () => {
     });
 
     it('throws for missing component import file', () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro')
             return '---\nimport Missing from "./missing.astro";\n---\n<Missing />';
@@ -253,38 +253,38 @@ describe('Engine', () => {
 
   describe('compile', () => {
     it('returns a render function with renderSync', () => {
-      const engine = new Engine();
-      const fn = engine.compile('<div>{Astro.props.x}</div>');
+      const sikka = new Sikka();
+      const fn = sikka.compile('<div>{Astro.props.x}</div>');
       expect(typeof fn).toBe('function');
       expect(typeof fn.renderSync).toBe('function');
     });
 
     it('compiled function produces same output as renderString', () => {
-      const engine = new Engine();
+      const sikka = new Sikka();
       const template = '---\nconst { name } = Astro.props;\n---\n<p>{name}</p>';
-      const direct = engine.renderString(template, { name: 'test' });
-      const fn = engine.compile(template);
+      const direct = sikka.renderString(template, { name: 'test' });
+      const fn = sikka.compile(template);
       const compiled = fn.renderSync({ name: 'test' }, {});
       expect(direct).toBe(compiled);
     });
 
     it('returns same reference on cache hit', () => {
-      const engine = new Engine({ cache: true });
-      const fn1 = engine.compile('<div>cached</div>');
-      const fn2 = engine.compile('<div>cached</div>');
+      const sikka = new Sikka({ cache: true });
+      const fn1 = sikka.compile('<div>cached</div>');
+      const fn2 = sikka.compile('<div>cached</div>');
       expect(fn1).toBe(fn2);
     });
 
     it('bypasses cache when config override is provided', () => {
-      const engine = new Engine({ cache: true });
-      const fn1 = engine.compile('<div>bypass</div>');
-      const fn2 = engine.compile('<div>bypass</div>', { autoEscape: false });
+      const sikka = new Sikka({ cache: true });
+      const fn1 = sikka.compile('<div>bypass</div>');
+      const fn2 = sikka.compile('<div>bypass</div>', { autoEscape: false });
       expect(fn1).not.toBe(fn2);
     });
 
     it('render method returns same as renderSync', async () => {
-      const engine = new Engine();
-      const fn = engine.compile('---\nconst { name } = Astro.props;\n---\n<p>{name}</p>');
+      const sikka = new Sikka();
+      const fn = sikka.compile('---\nconst { name } = Astro.props;\n---\n<p>{name}</p>');
       const sync = fn.renderSync({ name: 'test' }, {});
       const async_ = await fn.render({ name: 'test' }, {});
       expect(async_).toBe(sync);
@@ -293,52 +293,52 @@ describe('Engine', () => {
 
   describe('compileToString', () => {
     it('returns a JavaScript source string', () => {
-      const engine = new Engine();
-      const src = engine.compileToString('<div>{name}</div>');
+      const sikka = new Sikka();
+      const src = sikka.compileToString('<div>{name}</div>');
       expect(typeof src).toBe('string');
       expect(src).toContain('__out');
       expect(src).toContain('return');
     });
 
     it('does not throw for valid template with expression', () => {
-      const engine = new Engine();
-      expect(() => engine.compileToString('---\n---\n{x}')).not.toThrow();
+      const sikka = new Sikka();
+      expect(() => sikka.compileToString('---\n---\n{x}')).not.toThrow();
     });
 
     it('creates Astro object only when used in template', () => {
-      const engine = new Engine();
-      const src1 = engine.compileToString('<div>static</div>');
+      const sikka = new Sikka();
+      const src1 = sikka.compileToString('<div>static</div>');
       expect(src1).not.toContain('Astro');
-      const src2 = engine.compileToString('---\nconst { x } = Astro.props;\n---\n<div>{x}</div>');
+      const src2 = sikka.compileToString('---\nconst { x } = Astro.props;\n---\n<div>{x}</div>');
       expect(src2).toContain('Astro');
     });
 
     it('resolves component imports from frontmatter', () => {
-      const engine = new Engine();
-      const src = engine.compileToString('import Foo from "./foo.astro";\n<Foo />');
+      const sikka = new Sikka();
+      const src = sikka.compileToString('import Foo from "./foo.astro";\n<Foo />');
       expect(src).toContain('__components');
     });
   });
 
   describe('loadComponent', () => {
     it('registers a component usable in templates', () => {
-      const engine = new Engine();
-      engine.loadComponent('Header', '<header>{Astro.props.title}</header>');
-      const html = engine.renderString('<Header title="Test" />');
+      const sikka = new Sikka();
+      sikka.loadComponent('Header', '<header>{Astro.props.title}</header>');
+      const html = sikka.renderString('<Header title="Test" />');
       expect(html).toBe('<header>Test</header>');
     });
 
     it('component receives slots', () => {
-      const engine = new Engine();
-      engine.loadComponent('Card', '<div class="card"><slot /></div>');
-      const html = engine.renderString('<Card><p>content</p></Card>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Card', '<div class="card"><slot /></div>');
+      const html = sikka.renderString('<Card><p>content</p></Card>');
       expect(html).toBe('<div class="card"><p>content</p></div>');
     });
 
     it('component can be used multiple times', () => {
-      const engine = new Engine();
-      engine.loadComponent('Item', '<li>{Astro.props.text}</li>');
-      const html = engine.renderString(
+      const sikka = new Sikka();
+      sikka.loadComponent('Item', '<li>{Astro.props.text}</li>');
+      const html = sikka.renderString(
         '<ul><Item text="a" /><Item text="b" /><Item text="c" /></ul>'
       );
       expect(html).toBe('<ul><li>a</li><li>b</li><li>c</li></ul>');
@@ -347,43 +347,43 @@ describe('Engine', () => {
 
   describe('registerComponent', () => {
     it('registers a pre-compiled render function', () => {
-      const engine = new Engine();
-      const fn = engine.compile('<span>{Astro.props.text}</span>');
-      engine.registerComponent('Label', fn);
-      const html = engine.renderString('<Label text="hi" />');
+      const sikka = new Sikka();
+      const fn = sikka.compile('<span>{Astro.props.text}</span>');
+      sikka.registerComponent('Label', fn);
+      const html = sikka.renderString('<Label text="hi" />');
       expect(html).toBe('<span>hi</span>');
     });
   });
 
   describe('invalidate', () => {
     it('removes a specific cache entry', () => {
-      const engine = new Engine({ cache: true });
-      const fn1 = engine.compile('<div>x</div>');
-      engine.invalidate('<div>x</div>');
-      const fn2 = engine.compile('<div>x</div>');
+      const sikka = new Sikka({ cache: true });
+      const fn1 = sikka.compile('<div>x</div>');
+      sikka.invalidate('<div>x</div>');
+      const fn2 = sikka.compile('<div>x</div>');
       expect(fn1).not.toBe(fn2);
     });
 
     it('clears all cache when called without arguments', () => {
-      const engine = new Engine({ cache: true });
-      const fn1 = engine.compile('<div>a</div>');
-      const fn2 = engine.compile('<div>b</div>');
-      engine.invalidate();
-      const fn1b = engine.compile('<div>a</div>');
-      const fn2b = engine.compile('<div>b</div>');
+      const sikka = new Sikka({ cache: true });
+      const fn1 = sikka.compile('<div>a</div>');
+      const fn2 = sikka.compile('<div>b</div>');
+      sikka.invalidate();
+      const fn1b = sikka.compile('<div>a</div>');
+      const fn2b = sikka.compile('<div>b</div>');
       expect(fn1).not.toBe(fn1b);
       expect(fn2).not.toBe(fn2b);
     });
 
     it('does not throw when invalidating non-existent key', () => {
-      const engine = new Engine({ cache: true });
-      expect(() => engine.invalidate('nonexistent')).not.toThrow();
+      const sikka = new Sikka({ cache: true });
+      expect(() => sikka.invalidate('nonexistent')).not.toThrow();
     });
 
     it('does not throw when cache is disabled', () => {
-      const engine = new Engine({ cache: false });
-      expect(() => engine.invalidate('x')).not.toThrow();
-      expect(() => engine.invalidate()).not.toThrow();
+      const sikka = new Sikka({ cache: false });
+      expect(() => sikka.invalidate('x')).not.toThrow();
+      expect(() => sikka.invalidate()).not.toThrow();
     });
   });
 
@@ -391,8 +391,8 @@ describe('Engine', () => {
 
   describe('option: varName', () => {
     it('changes the global variable name', () => {
-      const engine = new Engine({ varName: 'Ctx' });
-      const html = engine.renderString('---\nconst { name } = Ctx.props;\n---\n<div>{name}</div>', {
+      const sikka = new Sikka({ varName: 'Ctx' });
+      const html = sikka.renderString('---\nconst { name } = Ctx.props;\n---\n<div>{name}</div>', {
         name: 'X',
       });
       expect(html).toBe('<div>X</div>');
@@ -401,27 +401,27 @@ describe('Engine', () => {
 
   describe('option: autoEscape', () => {
     it('disables HTML escaping when false', () => {
-      const engine = new Engine({ autoEscape: false });
-      const html = engine.renderString('---\nconst val = "<b>hi</b>";\n---\n<div>{val}</div>');
+      const sikka = new Sikka({ autoEscape: false });
+      const html = sikka.renderString('---\nconst val = "<b>hi</b>";\n---\n<div>{val}</div>');
       expect(html).toBe('<div><b>hi</b></div>');
     });
   });
 
   describe('option: autoFilter + filterFunction', () => {
     it('applies a custom filter to all expressions', () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         autoFilter: true,
         filterFunction: (v: unknown) => (typeof v === 'string' ? v.toUpperCase() : v),
       });
-      const html = engine.renderString('<div>{"hello"}</div>');
+      const html = sikka.renderString('<div>{"hello"}</div>');
       expect(html).toBe('<div>HELLO</div>');
     });
   });
 
   describe('option: aggregateAssets', () => {
     it('suppresses script and style output when true', () => {
-      const engine = new Engine({ aggregateAssets: true });
-      const html = engine.renderString(
+      const sikka = new Sikka({ aggregateAssets: true });
+      const html = sikka.renderString(
         '<script>var x=1;</script><style>body{}</style><div>hi</div>'
       );
       expect(html).toBe('<div>hi</div>');
@@ -430,9 +430,9 @@ describe('Engine', () => {
 
   describe('option: debug', () => {
     it('wraps runtime errors with context', () => {
-      const engine = new Engine({ debug: true });
+      const sikka = new Sikka({ debug: true });
       expect(() =>
-        engine.renderString('---\n---\n{(() => { throw new Error("boom"); })()}')
+        sikka.renderString('---\n---\n{(() => { throw new Error("boom"); })()}')
       ).toThrow(/Runtime Error:/);
     });
   });
@@ -490,7 +490,7 @@ describe('Engine', () => {
     });
 
     it('produces same output as renderString for complex template', async () => {
-      const engine = new Engine();
+      const sikka = new Sikka();
       const template = `---
 const { title, items } = Astro.props;
 ---
@@ -502,7 +502,7 @@ const { title, items } = Astro.props;
   </body>
 </html>`;
       const props = { title: 'Test', items: ['x', 'y'] };
-      const sync = engine.renderString(template, props);
+      const sync = sikka.renderString(template, props);
       const stream = await renderStream(template, props);
       expect(stream).toBe(sync);
     });
@@ -513,9 +513,9 @@ const { title, items } = Astro.props;
     });
 
     it('separates static content from component call', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Header', '<header>{Astro.props.title}</header>');
-      const gen = engine.streamString('<div><Header title="Hi" /></div>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Header', '<header>{Astro.props.title}</header>');
+      const gen = sikka.streamString('<div><Header title="Hi" /></div>');
       const chunks: string[] = [];
       for await (const chunk of gen) chunks.push(chunk);
       expect(chunks.length).toBeGreaterThanOrEqual(2);
@@ -523,63 +523,63 @@ const { title, items } = Astro.props;
     });
 
     it('streams multiple components', async () => {
-      const engine = new Engine();
-      engine.loadComponent('A', '<a/>');
-      engine.loadComponent('B', '<b/>');
-      const html = await collectStream(engine, '<div><A /><B /></div>');
+      const sikka = new Sikka();
+      sikka.loadComponent('A', '<a/>');
+      sikka.loadComponent('B', '<b/>');
+      const html = await collectStream(sikka, '<div><A /><B /></div>');
       expect(html).toBe('<div><a></a><b></b></div>');
     });
 
     it('caches streaming functions', async () => {
-      const engine = new Engine({ cache: true });
-      const html1 = await collectHtml(engine.streamString('<div>hi</div>'));
-      const html2 = await collectHtml(engine.streamString('<div>hi</div>'));
+      const sikka = new Sikka({ cache: true });
+      const html1 = await collectHtml(sikka.streamString('<div>hi</div>'));
+      const html2 = await collectHtml(sikka.streamString('<div>hi</div>'));
       expect(html1).toBe(html2);
       expect(html1).toBe('<div>hi</div>');
     });
 
     it('invalidates streaming cache', async () => {
-      const engine = new Engine({ cache: true });
-      const html1 = await collectHtml(engine.streamString('<div>x</div>'));
-      engine.invalidate('<div>x</div>');
-      const html2 = await collectHtml(engine.streamString('<div>x</div>'));
+      const sikka = new Sikka({ cache: true });
+      const html1 = await collectHtml(sikka.streamString('<div>x</div>'));
+      sikka.invalidate('<div>x</div>');
+      const html2 = await collectHtml(sikka.streamString('<div>x</div>'));
       expect(html1).toBe(html2);
       expect(html1).toBe('<div>x</div>');
     });
 
     it('sync and streaming caches are independent', async () => {
-      const engine = new Engine({ cache: true });
-      const syncHtml = engine.renderString('<div>test</div>');
-      engine.invalidate('<div>test</div>');
-      const syncHtml2 = engine.renderString('<div>test</div>');
+      const sikka = new Sikka({ cache: true });
+      const syncHtml = sikka.renderString('<div>test</div>');
+      sikka.invalidate('<div>test</div>');
+      const syncHtml2 = sikka.renderString('<div>test</div>');
       expect(syncHtml).toBe(syncHtml2);
-      const streamHtml = await collectHtml(engine.streamString('<div>test</div>'));
+      const streamHtml = await collectHtml(sikka.streamString('<div>test</div>'));
       expect(streamHtml).toBe(syncHtml);
     });
 
     it('clears all caches when invalidate called without key', async () => {
-      const engine = new Engine({ cache: true });
+      const sikka = new Sikka({ cache: true });
       await renderStream('<div>a</div>');
       await renderStream('<div>b</div>');
-      engine.invalidate();
+      sikka.invalidate();
       const html = await renderStream('<div>a</div>');
       expect(html).toBe('<div>a</div>');
     });
 
     it('throws ParseError for invalid template', () => {
-      const engine = new Engine();
-      expect(() => engine.streamString('---\nunclosed')).toThrow(/ParseError/);
+      const sikka = new Sikka();
+      expect(() => sikka.streamString('---\nunclosed')).toThrow(/ParseError/);
     });
 
     it('covers streaming with cache: false', async () => {
-      const engine = new Engine({ cache: false });
-      const html = await collectStream(engine, '<div>no cache</div>');
+      const sikka = new Sikka({ cache: false });
+      const html = await collectStream(sikka, '<div>no cache</div>');
       expect(html).toBe('<div>no cache</div>');
     });
 
     it('propagates runtime errors with debug option', async () => {
-      const engine = new Engine({ debug: true });
-      const gen = engine.streamString('---\n---\n{(() => { throw new Error("boom"); })()}');
+      const sikka = new Sikka({ debug: true });
+      const gen = sikka.streamString('---\n---\n{(() => { throw new Error("boom"); })()}');
       await expect(consume(gen)).rejects.toThrow(/boom/);
     });
   });
@@ -588,18 +588,18 @@ const { title, items } = Astro.props;
 
   describe('streamString with options', () => {
     it('respects autoEscape: false', async () => {
-      const engine = new Engine({ autoEscape: false });
+      const sikka = new Sikka({ autoEscape: false });
       const html = await collectStream(
-        engine,
+        sikka,
         '---\nconst val = "<b>hi</b>";\n---\n<div>{val}</div>'
       );
       expect(html).toBe('<div><b>hi</b></div>');
     });
 
     it('respects varName option', async () => {
-      const engine = new Engine({ varName: 'Ctx' });
+      const sikka = new Sikka({ varName: 'Ctx' });
       const html = await collectStream(
-        engine,
+        sikka,
         '---\nconst { name } = Ctx.props;\n---\n<div>{name}</div>',
         { name: 'X' }
       );
@@ -607,20 +607,20 @@ const { title, items } = Astro.props;
     });
 
     it('respects aggregateAssets option', async () => {
-      const engine = new Engine({ aggregateAssets: true });
+      const sikka = new Sikka({ aggregateAssets: true });
       const html = await collectStream(
-        engine,
+        sikka,
         '<script>var x=1;</script><style>body{}</style><div>hi</div>'
       );
       expect(html).toBe('<div>hi</div>');
     });
 
     it('respects autoFilter + filterFunction', async () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         autoFilter: true,
         filterFunction: (v: unknown) => (typeof v === 'string' ? v.toUpperCase() : v),
       });
-      const html = await collectStream(engine, '<div>{"hello"}</div>');
+      const html = await collectStream(sikka, '<div>{"hello"}</div>');
       expect(html).toBe('<div>HELLO</div>');
     });
   });
@@ -629,19 +629,19 @@ const { title, items } = Astro.props;
 
   describe('stream', () => {
     it('streams a template from file', async () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           if (p === '/views/page.astro') return '<div>page</div>';
           return null as unknown as string;
         },
       });
-      const html = await collectHtml(engine.stream('page.astro'));
+      const html = await collectHtml(sikka.stream('page.astro'));
       expect(html).toBe('<div>page</div>');
     });
 
     it('streams a file with components', async () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           if (p === '/views/main.astro')
@@ -651,27 +651,27 @@ const { title, items } = Astro.props;
         },
         cache: true,
       });
-      const html = await collectHtml(engine.stream('main.astro'));
+      const html = await collectHtml(sikka.stream('main.astro'));
       expect(html).toBe('<div><span>1</span></div>');
     });
 
     it('throws if readFile is not configured', () => {
-      const engine = new Engine();
-      expect(() => engine.stream('test.astro')).toThrow(
-        'Engine.stream() requires options.readFile to be configured'
+      const sikka = new Sikka();
+      expect(() => sikka.stream('test.astro')).toThrow(
+        'Sikka.stream() requires options.readFile to be configured'
       );
     });
 
     it('throws if file is not found', () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         readFile: () => null as unknown as string,
       });
-      expect(() => engine.stream('missing.astro')).toThrow();
+      expect(() => sikka.stream('missing.astro')).toThrow();
     });
 
     it('caches streaming file templates', async () => {
       let readCount = 0;
-      const engine = new Engine({
+      const sikka = new Sikka({
         cache: true,
         views: '/v',
         readFile: () => {
@@ -679,14 +679,14 @@ const { title, items } = Astro.props;
           return '<div>cached</div>';
         },
       });
-      await consume(engine.stream('test.astro'));
-      await consume(engine.stream('test.astro'));
+      await consume(sikka.stream('test.astro'));
+      await consume(sikka.stream('test.astro'));
       expect(readCount).toBe(1);
     });
 
     it('re-reads file after cache invalidation', async () => {
       let readCount = 0;
-      const engine = new Engine({
+      const sikka = new Sikka({
         cache: true,
         views: '/v',
         readFile: () => {
@@ -694,48 +694,48 @@ const { title, items } = Astro.props;
           return '<div>file</div>';
         },
       });
-      await consume(engine.stream('test.astro'));
-      engine.invalidate('/v/test.astro');
-      await consume(engine.stream('test.astro'));
+      await consume(sikka.stream('test.astro'));
+      sikka.invalidate('/v/test.astro');
+      await consume(sikka.stream('test.astro'));
       expect(readCount).toBe(2);
     });
 
     it('throws ParseError for malformed file content', () => {
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/v',
         readFile: () => '---\nunclosed',
       });
-      expect(() => engine.stream('bad.astro')).toThrow(/ParseError/);
+      expect(() => sikka.stream('bad.astro')).toThrow(/ParseError/);
     });
 
     it('resolves absolute paths without views prefix', async () => {
       let readPath = '';
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           readPath = p;
           return '<div>abs</div>';
         },
       });
-      await consume(engine.stream('/absolute/page.astro'));
+      await consume(sikka.stream('/absolute/page.astro'));
       expect(readPath).toBe('/absolute/page.astro');
     });
 
     it('covers streaming file with protocol URL', async () => {
       let readPath = '';
-      const engine = new Engine({
+      const sikka = new Sikka({
         views: '/views',
         readFile: (p) => {
           readPath = p;
           return '<div>proto</div>';
         },
       });
-      await consume(engine.stream('file:///test.astro'));
+      await consume(sikka.stream('file:///test.astro'));
       expect(readPath).toBe('file:///test.astro');
     });
 
     it('resolves file-based component imports through stream', async () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro')
             return '---\nimport Comp from "./comp.astro";\n---\n<Comp x="1" />';
@@ -748,7 +748,7 @@ const { title, items } = Astro.props;
     });
 
     it('resolves nested file-based component imports', async () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro') return '---\nimport A from "./a.astro";\n---\n<A />';
           if (p === '/v/a.astro') return '---\nimport B from "./b.astro";\n---\n<B />';
@@ -761,7 +761,7 @@ const { title, items } = Astro.props;
     });
 
     it('throws for circular file-based component imports', () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/a.astro') return '---\nimport B from "./b.astro";\n---\n<B />';
           if (p === '/v/b.astro') return '---\nimport A from "./a.astro";\n---\n<A />';
@@ -772,7 +772,7 @@ const { title, items } = Astro.props;
     });
 
     it('throws for missing component import file', () => {
-      const e = new Engine({
+      const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro')
             return '---\nimport Missing from "./missing.astro";\n---\n<Missing />';
@@ -1031,42 +1031,42 @@ const val = await new Promise(r => setTimeout(() => r("delayed"), 10));
     });
 
     it('renders component with slot content', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Card', '<div class="card"><slot /></div>');
-      const html = await collectStream(engine, '<Card><p>hello</p></Card>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Card', '<div class="card"><slot /></div>');
+      const html = await collectStream(sikka, '<Card><p>hello</p></Card>');
       expect(html).toBe('<div class="card"><p>hello</p></div>');
     });
 
     it('renders component with named slots', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Layout', '<div><slot name="header" /><main><slot /></main></div>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Layout', '<div><slot name="header" /><main><slot /></main></div>');
       const html = await collectStream(
-        engine,
+        sikka,
         '<Layout><h1 slot="header">Title</h1><p>Body</p></Layout>'
       );
       expect(html).toBe('<div><h1>Title</h1><main><p>Body</p></main></div>');
     });
 
     it('renders component with fallback in slot', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Comp', '<div><slot>fallback</slot></div>');
-      const html = await collectStream(engine, '<Comp />');
+      const sikka = new Sikka();
+      sikka.loadComponent('Comp', '<div><slot>fallback</slot></div>');
+      const html = await collectStream(sikka, '<Comp />');
       expect(html).toBe('<div>fallback</div>');
     });
 
     it('renders component used as fallback in slot', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Fallback', '<span>fb</span>');
-      engine.loadComponent('Comp', '<div><slot><Fallback /></slot></div>');
-      const html = await collectStream(engine, '<Comp />');
+      const sikka = new Sikka();
+      sikka.loadComponent('Fallback', '<span>fb</span>');
+      sikka.loadComponent('Comp', '<div><slot><Fallback /></slot></div>');
+      const html = await collectStream(sikka, '<Comp />');
       expect(html).toBe('<div><span>fb</span></div>');
     });
 
     it('renders component with dynamic slot attribute', async () => {
-      const engine = new Engine();
-      engine.loadComponent('SlotComp', '<div><slot name="a" /><slot /></div>');
+      const sikka = new Sikka();
+      sikka.loadComponent('SlotComp', '<div><slot name="a" /><slot /></div>');
       const html = await collectStream(
-        engine,
+        sikka,
         '---\nconst s = "a";\n---\n<SlotComp><span slot={s}>named</span><p>default</p></SlotComp>'
       );
       expect(html).toContain('named');
@@ -1074,47 +1074,47 @@ const val = await new Promise(r => setTimeout(() => r("delayed"), 10));
     });
 
     it('renders component with spread props', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Btn', '<button>{Astro.props.label}</button>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Btn', '<button>{Astro.props.label}</button>');
       const html = await collectStream(
-        engine,
+        sikka,
         '---\nconst p = { label: "Click" };\n---\n<Btn {...p} />'
       );
       expect(html).toBe('<button>Click</button>');
     });
 
     it('renders component with string prop', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Tag', '<span>{Astro.props.text}</span>');
-      const html = await collectStream(engine, '<Tag text="hello" />');
+      const sikka = new Sikka();
+      sikka.loadComponent('Tag', '<span>{Astro.props.text}</span>');
+      const html = await collectStream(sikka, '<Tag text="hello" />');
       expect(html).toBe('<span>hello</span>');
     });
 
     it('renders component with boolean prop', async () => {
-      const engine = new Engine();
-      engine.loadComponent('BoolComp', '<div>{Astro.props.active ? "yes" : "no"}</div>');
-      const html = await collectStream(engine, '<BoolComp active />');
+      const sikka = new Sikka();
+      sikka.loadComponent('BoolComp', '<div>{Astro.props.active ? "yes" : "no"}</div>');
+      const html = await collectStream(sikka, '<BoolComp active />');
       expect(html).toBe('<div>yes</div>');
     });
 
     it('renders component with class:list prop', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Styled', '<div class:list={Astro.props.classes} />');
-      const html = await collectStream(engine, '<Styled classes={["x", "y"]} />');
+      const sikka = new Sikka();
+      sikka.loadComponent('Styled', '<div class:list={Astro.props.classes} />');
+      const html = await collectStream(sikka, '<Styled classes={["x", "y"]} />');
       expect(html).toBe('<div class="x y"></div>');
     });
 
     it('renders component with text child as slot content', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Wrap', '<div><slot /></div>');
-      const html = await collectStream(engine, '<Wrap>just text</Wrap>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Wrap', '<div><slot /></div>');
+      const html = await collectStream(sikka, '<Wrap>just text</Wrap>');
       expect(html).toBe('<div>just text</div>');
     });
 
     it('renders component with expression child as slot content', async () => {
-      const engine = new Engine();
-      engine.loadComponent('Wrap', '<div><slot /></div>');
-      const html = await collectStream(engine, '---\nconst val = "expr";\n---\n<Wrap>{val}</Wrap>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Wrap', '<div><slot /></div>');
+      const html = await collectStream(sikka, '---\nconst val = "expr";\n---\n<Wrap>{val}</Wrap>');
       expect(html).toBe('<div>expr</div>');
     });
 
@@ -1131,30 +1131,30 @@ const val = await new Promise(r => setTimeout(() => r("delayed"), 10));
     });
 
     it('renders nested component calls', async () => {
-      const engine = new Engine();
-      engine.loadComponent('A', '<a>{Astro.props.x}</a>');
-      engine.loadComponent('B', '<b><A x={Astro.props.y} /></b>');
-      const html = await collectStream(engine, '<B y="val" />');
+      const sikka = new Sikka();
+      sikka.loadComponent('A', '<a>{Astro.props.x}</a>');
+      sikka.loadComponent('B', '<b><A x={Astro.props.y} /></b>');
+      const html = await collectStream(sikka, '<B y="val" />');
       expect(html).toBe('<b><a>val</a></b>');
     });
 
     it('renders component in ternary true branch', async () => {
-      const engine = new Engine();
-      engine.loadComponent('A', '<span>A</span>');
-      engine.loadComponent('B', '<span>B</span>');
+      const sikka = new Sikka();
+      sikka.loadComponent('A', '<span>A</span>');
+      sikka.loadComponent('B', '<span>B</span>');
       const html = await collectStream(
-        engine,
+        sikka,
         '---\nconst x = true;\n---\n<div>{x ? <A/> : <B/>}</div>'
       );
       expect(html).toBe('<div><span>A</span></div>');
     });
 
     it('renders component in ternary false branch', async () => {
-      const engine = new Engine();
-      engine.loadComponent('A', '<span>A</span>');
-      engine.loadComponent('B', '<span>B</span>');
+      const sikka = new Sikka();
+      sikka.loadComponent('A', '<span>A</span>');
+      sikka.loadComponent('B', '<span>B</span>');
       const html = await collectStream(
-        engine,
+        sikka,
         '---\nconst x = false;\n---\n<div>{x ? <A/> : <B/>}</div>'
       );
       expect(html).toBe('<div><span>B</span></div>');

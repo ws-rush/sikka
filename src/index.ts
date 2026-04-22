@@ -1,4 +1,4 @@
-import type { RenderFunction, EngineOptions, StreamingRenderFunction } from './types.js';
+import type { RenderFunction, SikkaOptions, StreamingRenderFunction } from './types.js';
 import { parse } from './parser.js';
 import {
   compile as internalCompile,
@@ -6,12 +6,12 @@ import {
 } from './compiler.js';
 import { createCache } from './cache.js';
 
-export class Engine {
+export class Sikka {
   private cache: ReturnType<typeof createCache> | null;
   private streamCache: ReturnType<typeof createCache> | null;
   private globalComponents: Record<string, RenderFunction> = {};
 
-  constructor(private options: EngineOptions = {}) {
+  constructor(private options: SikkaOptions = {}) {
     if (options.cache === true || (options.cache === undefined && options.cacheSize)) {
       this.cache = createCache(options.cacheSize);
       this.streamCache = createCache(options.cacheSize);
@@ -112,7 +112,7 @@ export class Engine {
    * @param str - The template content.
    * @param config - Optional configuration overrides for this compilation.
    */
-  compile(str: string, config?: EngineOptions): RenderFunction {
+  compile(str: string, config?: SikkaOptions): RenderFunction {
     return this.compileString(str, '', config);
   }
 
@@ -122,7 +122,7 @@ export class Engine {
    * @param str - The template content.
    * @param config - Optional configuration overrides for this compilation.
    */
-  compileToString(str: string, config?: EngineOptions): string {
+  compileToString(str: string, config?: SikkaOptions): string {
     const parseResult = parse(str);
     if (!parseResult.ok) {
       throw new Error(`ParseError: ${parseResult.error.message}`);
@@ -140,7 +140,7 @@ export class Engine {
   private compileString(
     template: string,
     basePath: string = '',
-    config?: EngineOptions
+    config?: SikkaOptions
   ): RenderFunction {
     const options = config || this.options;
     if (this.cache && !config) {
@@ -183,7 +183,7 @@ export class Engine {
     }
 
     if (!this.options.readFile) {
-      throw new Error('Engine.render() requires options.readFile to be configured');
+      throw new Error('Sikka.render() requires options.readFile to be configured');
     }
 
     const content = this.options.readFile(fullPath);
@@ -254,7 +254,7 @@ export class Engine {
     }
 
     if (!this.options.readFile) {
-      throw new Error('Engine.stream() requires options.readFile to be configured');
+      throw new Error('Sikka.stream() requires options.readFile to be configured');
     }
 
     const content = this.options.readFile(fullPath);

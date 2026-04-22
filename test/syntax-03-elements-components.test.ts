@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Engine } from '../src/index.js';
+import { Sikka } from '../src/index.js';
 import { render } from './helpers.js';
 
 describe('Syntax: Elements, Components, Fragments & Spreading', () => {
@@ -25,9 +25,9 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     });
 
     it('renders Fragment with slot attribute', () => {
-      const engine = new Engine();
-      engine.loadComponent('Comp', '<div><slot name="x" /></div>');
-      const html = engine.renderString('<Comp><Fragment slot="x">content</Fragment></Comp>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Comp', '<div><slot name="x" /></div>');
+      const html = sikka.renderString('<Comp><Fragment slot="x">content</Fragment></Comp>');
       expect(html).toBe('<div>content</div>');
     });
 
@@ -53,9 +53,9 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     });
 
     it('renders mixed native tags and components in fragment', () => {
-      const engine = new Engine();
-      engine.loadComponent('Header', '<header>h</header>');
-      const html = engine.renderString('<><div/><Header/></>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Header', '<header>h</header>');
+      const html = sikka.renderString('<><div/><Header/></>');
       expect(html).toBe('<div></div><header>h</header>');
     });
 
@@ -113,9 +113,9 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     });
 
     it('spreads props on components', () => {
-      const engine = new Engine();
-      engine.loadComponent('Btn', '<button class={Astro.props.cls}>{Astro.props.label}</button>');
-      const html = engine.renderString(
+      const sikka = new Sikka();
+      sikka.loadComponent('Btn', '<button class={Astro.props.cls}>{Astro.props.label}</button>');
+      const html = sikka.renderString(
         '---\nconst p = { cls: "primary", label: "Click" };\n---\n<Btn {...p} />'
       );
       expect(html).toBe('<button class="primary">Click</button>');
@@ -254,28 +254,28 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
 
   describe('Components — Edge Cases', () => {
     it('renders deeply nested components (3 levels)', () => {
-      const engine = new Engine();
-      engine.loadComponent('A', '<a>{Astro.props.x}</a>');
-      engine.loadComponent('B', '<b><A x={Astro.props.y} /></b>');
-      engine.loadComponent('C', '<c><B y={Astro.props.z} /></c>');
-      const html = engine.renderString('<C z="deep" />');
+      const sikka = new Sikka();
+      sikka.loadComponent('A', '<a>{Astro.props.x}</a>');
+      sikka.loadComponent('B', '<b><A x={Astro.props.y} /></b>');
+      sikka.loadComponent('C', '<c><B y={Astro.props.z} /></c>');
+      const html = sikka.renderString('<C z="deep" />');
       expect(html).toBe('<c><b><a>deep</a></b></c>');
     });
 
     it('discards children when component has no slot', () => {
-      const engine = new Engine();
-      engine.loadComponent('NoSlot', '<div>no slot here</div>');
-      const html = engine.renderString('<NoSlot>discarded</NoSlot>');
+      const sikka = new Sikka();
+      sikka.loadComponent('NoSlot', '<div>no slot here</div>');
+      const html = sikka.renderString('<NoSlot>discarded</NoSlot>');
       expect(html).toBe('<div>no slot here</div>');
     });
 
     it('receives both props and slots simultaneously', () => {
-      const engine = new Engine();
-      engine.loadComponent(
+      const sikka = new Sikka();
+      sikka.loadComponent(
         'Layout',
         '<html><head><slot name="head" /></head><body><slot /></body></html>'
       );
-      const html = engine.renderString(
+      const html = sikka.renderString(
         '<Layout><title>My Page</title><div slot="head"><meta /></div><p>Content</p></Layout>'
       );
       expect(html).toContain('<title>My Page</title>');
@@ -298,17 +298,17 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     });
 
     it('renders self-closing component', () => {
-      const engine = new Engine();
-      engine.loadComponent('Header', '<header />');
-      const html = engine.renderString('<Header/>');
+      const sikka = new Sikka();
+      sikka.loadComponent('Header', '<header />');
+      const html = sikka.renderString('<Header/>');
       // 'header' is not a void element, so it renders with open/close tags
       expect(html).toBe('<header></header>');
     });
 
     it('renders fallback slot with expression', () => {
-      const engine = new Engine();
-      engine.loadComponent('Fb', '<div><slot>{Astro.props.defaultText}</slot></div>');
-      const html = engine.renderString('<Fb defaultText="hello" />');
+      const sikka = new Sikka();
+      sikka.loadComponent('Fb', '<div><slot>{Astro.props.defaultText}</slot></div>');
+      const html = sikka.renderString('<Fb defaultText="hello" />');
       expect(html).toBe('<div>hello</div>');
     });
   });
@@ -375,42 +375,42 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
 
   describe('Component Edge Cases', () => {
     it('renders component with text child as slot content', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('Comp', '<div><slot /></div>');
       const html = e.renderString('<Comp>text content</Comp>');
       expect(html).toBe('<div>text content</div>');
     });
 
     it('renders component with expression child as slot content', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('Comp', '<div><slot /></div>');
       const html = e.renderString('---\nconst val = "hi";\n---\n<Comp>{val}</Comp>');
       expect(html).toBe('<div>hi</div>');
     });
 
     it('renders component with boolean prop', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('BoolComp', '<div>{Astro.props.active ? "yes" : "no"}</div>');
       const html = e.renderString('<BoolComp active />');
       expect(html).toBe('<div>yes</div>');
     });
 
     it('renders component receiving class:list prop', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('Styled', '<div class:list={Astro.props.items} />');
       const html = e.renderString('<Styled items={["a", "b"]} />');
       expect(html).toBe('<div class="a b"></div>');
     });
 
     it('renders component receiving style prop', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('Styled', '<div style={Astro.props.s} />');
       const html = e.renderString('<Styled s={{ color: "red" }} />');
       expect(html).toBe('<div style="color:red"></div>');
     });
 
     it('renders nested component calls', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('A', '<a>{Astro.props.x}</a>');
       e.loadComponent('B', '<b><A x={Astro.props.y} /></b>');
       const html = e.renderString('<B y="val" />');
@@ -430,7 +430,7 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     });
 
     it('renders component in ternary true branch', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('A', '<span>A</span>');
       e.loadComponent('B', '<span>B</span>');
       const html = e.renderString('---\nconst x = true;\n---\n<div>{x ? <A/> : <B/>}</div>');
@@ -438,7 +438,7 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     });
 
     it('renders component in ternary false branch', () => {
-      const e = new Engine();
+      const e = new Sikka();
       e.loadComponent('A', '<span>A</span>');
       e.loadComponent('B', '<span>B</span>');
       const html = e.renderString('---\nconst x = false;\n---\n<div>{x ? <A/> : <B/>}</div>');

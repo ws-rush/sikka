@@ -4,8 +4,8 @@ export interface RenderFunction {
     render(props: Record<string, unknown>, slots?: Record<string, string | AsyncIterable<string>>): Promise<string>;
     renderSync(props: Record<string, unknown>, slots?: Record<string, string>): string;
 }
-/** Options accepted by `new Engine()`. */
-export interface EngineOptions {
+/** Options accepted by `new Sikka()`. */
+export interface SikkaOptions {
     /** Directory path for template resolution. */
     views?: string;
     /** Sync function to read file content. */

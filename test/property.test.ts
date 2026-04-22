@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { Engine } from '../src/index.js';
+import { Sikka } from '../src/index.js';
 
 // Strings that are safe to embed in template bodies
 const safeText = fc
@@ -22,9 +22,9 @@ describe('Property-Based Tests', () => {
     fc.assert(
       fc.property(safeText, (str) => {
         const template = `---\n---\n<div>${str}</div>`;
-        const engine = new Engine();
-        const html1 = engine.renderString(template);
-        const html2 = engine.renderString(template);
+        const sikka = new Sikka();
+        const html1 = sikka.renderString(template);
+        const html2 = sikka.renderString(template);
         expect(html1).toBe(html2);
       })
     );
@@ -34,35 +34,35 @@ describe('Property-Based Tests', () => {
     fc.assert(
       fc.property(safeText, (str) => {
         const template = `<div>${str}</div>`;
-        const engine = new Engine({ cache: true });
-        const fn1 = engine.compile(template);
-        const fn2 = engine.compile(template);
+        const sikka = new Sikka({ cache: true });
+        const fn1 = sikka.compile(template);
+        const fn2 = sikka.compile(template);
         expect(fn1).toBe(fn2);
       })
     );
   });
 
   it('cache bypass: compile with config returns new reference', () => {
-    const engine = new Engine({ cache: true });
+    const sikka = new Sikka({ cache: true });
     const template = '<div>test</div>';
-    const fn1 = engine.compile(template);
-    const fn2 = engine.compile(template, { autoEscape: false });
+    const fn1 = sikka.compile(template);
+    const fn2 = sikka.compile(template, { autoEscape: false });
     expect(fn1).not.toBe(fn2);
   });
 
   it('null-safety: renderString with no props matches empty object', () => {
-    const engine = new Engine();
+    const sikka = new Sikka();
     const template = '<div>static content</div>';
-    expect(engine.renderString(template)).toBe(engine.renderString(template, {}));
+    expect(sikka.renderString(template)).toBe(sikka.renderString(template, {}));
   });
 
   it('empty frontmatter equivalence: body renders same with or without --- fences', () => {
     fc.assert(
       fc.property(safeText, (str) => {
         const body = `<span>${str}</span>`;
-        const engine = new Engine();
-        const withFM = engine.renderString(`---\n---\n${body}`);
-        const withoutFM = engine.renderString(body);
+        const sikka = new Sikka();
+        const withFM = sikka.renderString(`---\n---\n${body}`);
+        const withoutFM = sikka.renderString(body);
         expect(withFM).toBe(withoutFM);
       })
     );
@@ -71,8 +71,8 @@ describe('Property-Based Tests', () => {
   it('prop reflection: rendered output contains expected text for string props', () => {
     fc.assert(
       fc.property(alphaNum, (propVal) => {
-        const engine = new Engine();
-        const html = engine.renderString(
+        const sikka = new Sikka();
+        const html = sikka.renderString(
           '---\nconst { name } = Astro.props;\n---\n<div>{name}</div>',
           { name: propVal }
         );
@@ -85,10 +85,10 @@ describe('Property-Based Tests', () => {
     fc.assert(
       fc.property(alphaNum, alphaNum, (valA, valB) => {
         fc.pre(valA !== valB);
-        const engine = new Engine();
-        engine.loadComponent('Item', '<span>{Astro.props.text}</span>');
-        const htmlA = engine.renderString(`<Item text="${valA}" />`);
-        const htmlB = engine.renderString(`<Item text="${valB}" />`);
+        const sikka = new Sikka();
+        sikka.loadComponent('Item', '<span>{Astro.props.text}</span>');
+        const htmlA = sikka.renderString(`<Item text="${valA}" />`);
+        const htmlB = sikka.renderString(`<Item text="${valB}" />`);
         expect(htmlA).not.toBe(htmlB);
       })
     );

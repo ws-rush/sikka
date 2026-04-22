@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from './helpers.js';
-import { Engine } from '../src/index.js';
+import { Sikka } from '../src/index.js';
 
 describe('Syntax: Astro Global', () => {
   describe('Astro.props', () => {
@@ -30,12 +30,12 @@ describe('Syntax: Astro Global', () => {
     });
 
     it('accesses implicit boolean prop as truthy', () => {
-      const engine = new Engine();
-      engine.loadComponent(
+      const sikka = new Sikka();
+      sikka.loadComponent(
         'Comp',
         '---\nconst isTrue = Astro.props.active;\n---\n<div>{isTrue ? "yes" : "no"}</div>'
       );
-      const html = engine.renderString('<Comp active />');
+      const html = sikka.renderString('<Comp active />');
       expect(html).toBe('<div>yes</div>');
     });
 

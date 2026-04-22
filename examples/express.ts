@@ -1,5 +1,5 @@
 import express from 'express';
-import { Engine } from 'sikka';
+import { Sikka } from 'sikka';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,14 +20,14 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const engine = new Engine({
+const sikka = new Sikka({
   views: resolve(__dirname, 'views'),
   readFile: (p: string) => readFileSync(p, 'utf-8'),
 });
 
 // Register Card as a global component
 const cardTemplate = readFileSync(resolve(__dirname, 'components', 'Card.astro'), 'utf-8');
-engine.loadComponent('Card', cardTemplate);
+sikka.loadComponent('Card', cardTemplate);
 
 const app = express();
 
@@ -45,31 +45,31 @@ app.use((req, _res, next) => {
 // ── Routes ─────────────────────────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
-  res.send(engine.render('index.astro'));
+  res.send(sikka.render('index.astro'));
 });
 
 app.get('/about', (_req, res) => {
-  res.send(engine.render('about.astro', { team }));
+  res.send(sikka.render('about.astro', { team }));
 });
 
 app.get('/users', (_req, res) => {
-  res.send(engine.render('users.astro', { users }));
+  res.send(sikka.render('users.astro', { users }));
 });
 
 app.get('/users/:id', (req, res) => {
   const user = findUser(parseInt(req.params.id));
   if (!user) return res.status(404).send('Not found');
-  res.send(engine.render('user-detail.astro', { user }));
+  res.send(sikka.render('user-detail.astro', { user }));
 });
 
 app.get('/about/:index', (req, res) => {
   const member = findTeamMember(parseInt(req.params.index));
   if (!member) return res.status(404).send('Not found');
-  res.send(engine.render('team-detail.astro', { member }));
+  res.send(sikka.render('team-detail.astro', { member }));
 });
 
 app.get('/stream', async (_req, res) => {
-  const gen = engine.streamString(streamTemplate, { items: streamItems });
+  const gen = sikka.streamString(streamTemplate, { items: streamItems });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Transfer-Encoding', 'chunked');
@@ -81,7 +81,7 @@ app.get('/stream', async (_req, res) => {
 });
 
 app.get('/todos', (_req, res) => {
-  res.send(engine.render('todos.astro', { todos }));
+  res.send(sikka.render('todos.astro', { todos }));
 });
 
 app.post('/todos', (req, res) => {

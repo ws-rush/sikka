@@ -27,9 +27,9 @@ npm install sikka
 Render a template string directly with props:
 
 ```javascript
-import { Engine } from 'sikka';
+import { Sikka } from 'sikka';
 
-const engine = new Engine();
+const sikka = new Sikka();
 
 const template = `
 ---
@@ -38,7 +38,7 @@ const { name } = Astro.props;
 <h1>Hello, {name}!</h1>
 `;
 
-const html = await engine.renderString(template, { name: 'World' });
+const html = await sikka.renderString(template, { name: 'World' });
 console.log(html); // <h1>Hello, World!</h1>
 ```
 
@@ -47,17 +47,17 @@ console.log(html); // <h1>Hello, World!</h1>
 To load templates from the file system, provide `views`, `readFile`, and `resolvePath` in the options:
 
 ```javascript
-import { Engine } from 'sikka';
+import { Sikka } from 'sikka';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const engine = new Engine({
+const sikka = new Sikka({
   views: path.join(process.cwd(), 'templates'),
   readFile: (p) => readFile(p, 'utf-8'),
   resolvePath: (base, specifier) => path.resolve(path.dirname(base), specifier),
 });
 
-const html = await engine.render('index.astro', { title: 'Home' });
+const html = await sikka.render('index.astro', { title: 'Home' });
 ```
 
 ### Component System
@@ -65,14 +65,14 @@ const html = await engine.render('index.astro', { title: 'Home' });
 You can register components globally using `loadComponent`:
 
 ```javascript
-engine.loadComponent('Header', '<header><h1>{Astro.props.title}</h1></header>');
+sikka.loadComponent('Header', '<header><h1>{Astro.props.title}</h1></header>');
 
 const template = `
 <Header title="My Website" />
 <main><slot /></main>
 `;
 
-const html = await engine.renderString(template);
+const html = await sikka.renderString(template);
 ```
 
 ## Streaming
@@ -80,18 +80,18 @@ const html = await engine.renderString(template);
 For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. Static content is flushed immediately, while component calls are awaited and yielded as single opaque chunks.
 
 ```javascript
-import { Engine } from 'sikka';
+import { Sikka } from 'sikka';
 
-const engine = new Engine();
+const sikka = new Sikka();
 
 // Stream a template string
-const gen = engine.streamString(template, { name: 'World' });
+const gen = sikka.streamString(template, { name: 'World' });
 for await (const chunk of gen) {
   res.write(chunk); // Send each chunk to the client immediately
 }
 
 // Stream a template file
-const gen = engine.stream('page.astro', { title: 'Home' });
+const gen = sikka.stream('page.astro', { title: 'Home' });
 for await (const chunk of gen) {
   res.write(chunk);
 }
@@ -108,7 +108,7 @@ Streaming supports:
 
 Sikka is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
 
-| Engine           | "friends" Benchmark |
+| Sikka           | "friends" Benchmark |
 | :--------------- | :------------------ |
 | **Sikka (Ours)** | **197ms**           |
 | Pug              | 209ms               |
@@ -147,7 +147,7 @@ It achieves this through:
 
 ## Public API Reference
 
-### `new Engine(options)`
+### `new Sikka(options)`
 
 Creates a configured engine instance.
 
@@ -163,41 +163,41 @@ Creates a configured engine instance.
 - `autoFilter`: Enable automatic value filtering.
 - `filterFunction`: Custom filter for interpolated values.
 
-### `engine.renderString(template, props?): string`
+### `sikka.renderString(template, props?): string`
 
 Renders a template string and returns the HTML result.
 
-### `engine.render(name, props?): string`
+### `sikka.render(name, props?): string`
 
 Renders a template file from the `views` directory and returns the HTML result.
 
-### `engine.streamString(template, props?): AsyncGenerator<string>`
+### `sikka.streamString(template, props?): AsyncGenerator<string>`
 
 Streams a template string, yielding HTML chunks as they are produced. Static content is yielded immediately; component calls are awaited and yielded as single opaque chunks.
 
-### `engine.stream(name, props?): AsyncGenerator<string>`
+### `sikka.stream(name, props?): AsyncGenerator<string>`
 
 Streams a template file from the `views` directory, yielding HTML chunks as they are produced.
 
-### `engine.compile(template, config?): RenderFunction`
+### `sikka.compile(template, config?): RenderFunction`
 
 Compiles a template string into a render function.
 
-### `engine.compileToString(template, config?): string`
+### `sikka.compileToString(template, config?): string`
 
 Compiles a template string into its JavaScript source body.
 
-### `engine.loadComponent(name, template): void`
+### `sikka.loadComponent(name, template): void`
 
 Registers a global component.
 
-### `engine.invalidate(key?): void`
+### `sikka.invalidate(key?): void`
 
 Clears specific or all cache entries.
 
 ## TypeScript: Global Components
 
-Components registered via `engine.loadComponent()` are available everywhere at runtime, but TypeScript doesn't know about them — you'll get `Cannot find name 'Card'` errors in `.astro` templates. Fix this by adding a declaration file:
+Components registered via `sikka.loadComponent()` are available everywhere at runtime, but TypeScript doesn't know about them — you'll get `Cannot find name 'Card'` errors in `.astro` templates. Fix this by adding a declaration file:
 
 ```typescript
 declare function Card(props: { title: string; description: string; href: string }): void;

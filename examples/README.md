@@ -21,16 +21,16 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Route         | Feature                                                                                |
 | ------------- | -------------------------------------------------------------------------------------- |
-| `GET /`       | File-based rendering with `engine.render()` — Layout & Header imported via frontmatter |
-| `GET /about`  | Global component via `engine.loadComponent()` — Card component                         |
+| `GET /`       | File-based rendering with `sikka.render()` — Layout & Header imported via frontmatter |
+| `GET /about`  | Global component via `sikka.loadComponent()` — Card component                         |
 | `GET /users`  | Dynamic data with loops — rendering a list of Cards from props                         |
 | `GET /todos`  | Full CRUD with HTML forms and method override (`_method` hidden field)                 |
-| `GET /stream` | Streaming response with `engine.streamString()` — chunks flushed incrementally         |
+| `GET /stream` | Streaming response with `sikka.streamString()` — chunks flushed incrementally         |
 
 ## Features Used
 
 - **Frontmatter imports**: `Layout.astro` and `Header.astro` are imported in template frontmatter
-- **Global components**: `Card.astro` is registered via `engine.loadComponent()`
+- **Global components**: `Card.astro` is registered via `sikka.loadComponent()`
 - **Slots**: Default slot in Layout, named slot (`actions`) in Header
 - **Props**: All components accept and render props
 - **Loops**: Dynamic lists with `.map()` in templates
@@ -45,7 +45,7 @@ examples/
 ├── express.ts           # Express entrypoint
 ├── hono.ts              # Hono entrypoint
 ├── data.ts              # Shared data store (todos, users, team)
-├── views/               # Page templates (loaded via engine.render)
+├── views/               # Page templates (loaded via sikka.render)
 │   ├── index.astro
 │   ├── about.astro
 │   ├── users.astro

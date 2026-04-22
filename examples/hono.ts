@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { stream } from 'hono/streaming';
-import { Engine } from 'sikka';
+import { Sikka } from 'sikka';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,14 +23,14 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const engine = new Engine({
+const sikka = new Sikka({
   views: resolve(__dirname, 'views'),
   readFile: (p: string) => readFileSync(p, 'utf-8'),
 });
 
 // Register Card as a global component
 const cardTemplate = readFileSync(resolve(__dirname, 'components', 'Card.astro'), 'utf-8');
-engine.loadComponent('Card', cardTemplate);
+sikka.loadComponent('Card', cardTemplate);
 
 // ── App setup ──────────────────────────────────────────────────────────────
 
@@ -56,26 +56,26 @@ app.use('/todos/*', async (c, next) => {
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 
-app.get('/', (c) => c.html(engine.render('index.astro')));
+app.get('/', (c) => c.html(sikka.render('index.astro')));
 
-app.get('/about', (c) => c.html(engine.render('about.astro', { team })));
+app.get('/about', (c) => c.html(sikka.render('about.astro', { team })));
 
-app.get('/users', (c) => c.html(engine.render('users.astro', { users })));
+app.get('/users', (c) => c.html(sikka.render('users.astro', { users })));
 
 app.get('/users/:id', (c) => {
   const user = findUser(parseInt(c.req.param('id')));
   if (!user) return c.notFound();
-  return c.html(engine.render('user-detail.astro', { user }));
+  return c.html(sikka.render('user-detail.astro', { user }));
 });
 
 app.get('/about/:index', (c) => {
   const member = findTeamMember(parseInt(c.req.param('index')));
   if (!member) return c.notFound();
-  return c.html(engine.render('team-detail.astro', { member }));
+  return c.html(sikka.render('team-detail.astro', { member }));
 });
 
 app.get('/stream', async (c) => {
-  const gen = engine.streamString(streamTemplate, { items: streamItems });
+  const gen = sikka.streamString(streamTemplate, { items: streamItems });
   return stream(c, async (s) => {
     for await (const chunk of gen) {
       await s.write(chunk);
@@ -83,7 +83,7 @@ app.get('/stream', async (c) => {
   });
 });
 
-app.get('/todos', (c) => c.html(engine.render('todos.astro', { todos })));
+app.get('/todos', (c) => c.html(sikka.render('todos.astro', { todos })));
 
 app.post('/todos', async (c) => {
   const body = c.get('body') || (await c.req.parseBody());
