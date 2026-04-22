@@ -1,0 +1,20 @@
+---
+import Layout from '../components/Layout.astro';
+import Header from '../components/Header.astro';
+const navItems = [
+  { label: 'Home', href: '/' },
+  { label: 'About', href: '/about' },
+  { label: 'Users', href: '/users' },
+  { label: 'Todos', href: '/todos' },
+  { label: 'Stream', href: '/stream' },
+];
+const { member } = Astro.props;
+---
+<Layout title={`${member.name} - Sikka Example`}>
+  <Header navItems={navItems} />
+  <h1>{member.name}</h1>
+  <div class="card">
+    <p><strong>Role:</strong> {member.role}</p>
+  </div>
+  <a href="/about">← Back to About</a>
+</Layout>

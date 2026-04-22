@@ -1,0 +1,19 @@
+---
+import Layout from '../components/Layout.astro';
+import Header from '../components/Header.astro';
+const navItems = [
+  { label: 'Home', href: '/' },
+  { label: 'About', href: '/about' },
+  { label: 'Users', href: '/users' },
+  { label: 'Todos', href: '/todos' },
+  { label: 'Stream', href: '/stream' },
+];
+const { users } = Astro.props;
+---
+<Layout title="Users - Sikka Example">
+  <Header navItems={navItems} />
+  <h1>Users</h1>
+  {users.map((user) => (
+    <Card title={user.name} description={user.email} href={`/users/${user.id}`} />
+  ))}
+</Layout>

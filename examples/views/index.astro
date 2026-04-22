@@ -1,0 +1,23 @@
+---
+import Layout from '../components/Layout.astro';
+import Header from '../components/Header.astro';
+const navItems = [
+  { label: 'Home', href: '/' },
+  { label: 'About', href: '/about' },
+  { label: 'Users', href: '/users' },
+  { label: 'Todos', href: '/todos' },
+  { label: 'Stream', href: '/stream' },
+];
+---
+<Layout title="Sikka Example">
+  <Header navItems={navItems} />
+  <h1>Welcome to Sikka</h1>
+  <p>A zero-dependency, runtime-agnostic template engine with Astro-like syntax.</p>
+  <p>Explore the examples:</p>
+  <ul>
+    <li><a href="/about">About (file-based rendering with components)</a></li>
+    <li><a href="/users">Users (dynamic data with loops)</a></li>
+    <li><a href="/todos">Todos (CRUD with HTML forms)</a></li>
+    <li><a href="/stream">Stream (streaming response)</a></li>
+  </ul>
+</Layout>

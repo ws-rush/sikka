@@ -1,0 +1,7 @@
+---
+const { navItems = [] } = Astro.props;
+---
+<nav>
+  {navItems.map((item) => <a href={item.href}>{item.label}</a>)}
+  <slot name="actions" />
+</nav>

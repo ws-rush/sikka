@@ -1,0 +1,42 @@
+---
+import Layout from '../components/Layout.astro';
+import Header from '../components/Header.astro';
+const navItems = [
+  { label: 'Home', href: '/' },
+  { label: 'About', href: '/about' },
+  { label: 'Users', href: '/users' },
+  { label: 'Todos', href: '/todos' },
+  { label: 'Stream', href: '/stream' },
+];
+const { todos } = Astro.props;
+---
+<Layout title="Todos - Sikka Example">
+  <Header navItems={navItems} />
+  <h1>Todos</h1>
+  <form method="POST" action="/todos">
+    <input type="text" name="text" placeholder="Add a todo..." required />
+    <button type="submit">Add</button>
+  </form>
+  <div>
+    {todos.map((todo) => (
+      <div class:list={['todo', { done: todo.done }]}>
+        <form method="POST" action={`/todos/${todo.id}`}>
+          <input type="hidden" name="_method" value="PUT" />
+          <button type="submit" name="action" value="toggle">
+            {todo.done ? '☑' : '☐'}
+          </button>
+        </form>
+        <span>{todo.text}</span>
+        <form method="POST" action={`/todos/${todo.id}`}>
+          <input type="hidden" name="_method" value="PUT" />
+          <input type="text" name="text" value={todo.text} />
+          <button type="submit" name="action" value="edit">Save</button>
+        </form>
+        <form method="POST" action={`/todos/${todo.id}`}>
+          <input type="hidden" name="_method" value="DELETE" />
+          <button type="submit" class="delete">Delete</button>
+        </form>
+      </div>
+    ))}
+  </div>
+</Layout>

@@ -1,0 +1,21 @@
+{
+  "name": "sikka-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:express": "tsx watch express.ts",
+    "dev:hono": "tsx watch hono.ts",
+    "start:express": "tsx express.ts",
+    "start:hono": "tsx hono.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.14",
+    "express": "^5.1.0",
+    "hono": "^4.7.0",
+    "sikka": "file:..",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0"
+  }
+}

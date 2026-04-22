@@ -1,0 +1,21 @@
+---
+import Layout from '../components/Layout.astro';
+import Header from '../components/Header.astro';
+const navItems = [
+  { label: 'Home', href: '/' },
+  { label: 'About', href: '/about' },
+  { label: 'Users', href: '/users' },
+  { label: 'Todos', href: '/todos' },
+  { label: 'Stream', href: '/stream' },
+];
+const { team } = Astro.props;
+---
+<Layout title="About - Sikka Example">
+  <Header navItems={navItems} />
+  <h1>About</h1>
+  <p>This example demonstrates Sikka's template engine integrated with a web framework.</p>
+  <h2>Team</h2>
+  {team.map((member, i) => (
+    <Card title={member.name} description={member.role} href={`/about/${i}`} />
+  ))}
+</Layout>

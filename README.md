@@ -195,6 +195,16 @@ Registers a global component.
 
 Clears specific or all cache entries.
 
+## TypeScript: Global Components
+
+Components registered via `engine.loadComponent()` are available everywhere at runtime, but TypeScript doesn't know about them — you'll get `Cannot find name 'Card'` errors in `.astro` templates. Fix this by adding a declaration file:
+
+```typescript
+declare function Card(props: { title: string; description: string; href: string }): void;
+```
+
+Place this file anywhere in your project. TypeScript picks it up automatically. Add one `declare function` per globally-registered component with its expected props. This is purely a type hint — it has no effect on runtime behavior.
+
 ## License
 
 MIT
