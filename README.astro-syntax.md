@@ -4,29 +4,58 @@
 
 ### Component Script (Frontmatter)
 
+Frontmatter in Sikka should be treated as a **small template setup area**.
+
+Good uses:
+
+- destructure `Astro.props`
+- define small constants
+- import other `.astro` components
+- write tiny template-local helpers
+
+Not recommended:
+
+- service/database logic
+- heavy data processing
+- arbitrary runtime module orchestration
+- browser runtime code
+
+If you need data processing, do it in the controller / route handler and pass the result as props. If you need browser-side runtime behavior, use a `<script>` tag.
+
 ```astro
 ---
-// 1. TypeScript interface declarations for Props
-export interface Props { title: string; }
-// 2. Exporting standard types
-export type User = { id: string };
-// 3. Hoisting functions vs const functions
-function hoisted() { return "A"; }
-const notHoisted = () => "B";
-// 4. Exporting layout props
-export const layoutProps = { theme: "dark" };
-// 5. Using Node process
-const apiKey = process.env.SECRET_KEY;
-// 6. Declaring global variables
-declare global { var customVar: number; }
-// 7. Reading file system (Node APIs)
-import fs from 'node:fs';
-const file = fs.readFileSync('data.json', 'utf8');
-// 8. Throwing errors intentionally
-if (!data) throw new Error("404");
-// 9. Mutating globalThis
-globalThis.cachedData = data;
+import Layout from '../components/Layout.astro';
+import Card from '../components/Card.astro';
+
+const { title, cards } = Astro.props;
+const pageTitle = `${title} | Users`;
 ---
+```
+
+### Frontmatter Import Limitation
+
+Sikka frontmatter imports are intended for **`.astro` component imports** used by the template. Do not treat frontmatter as a full general-purpose import system for application logic.
+
+Recommended pattern:
+
+```ts
+// route handler / controller
+const users = await userService.list();
+const cards = users.map((user) => ({
+  title: user.name,
+  description: user.email,
+  href: `/users/${user.id}`,
+}));
+
+return sikka.render('users.astro', { title: 'Users', cards });
+```
+
+```astro
+---
+import Card from '../components/Card.astro';
+const { cards } = Astro.props;
+---
+{cards.map((card) => <Card {...card} />)}
 ```
 
 ### Component Template

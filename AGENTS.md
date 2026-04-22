@@ -182,7 +182,10 @@ The engine defines specific error types for different failure points:
 2.  **Security by Default**: All interpolated expressions MUST be passed through `escapeHtml` unless `autoEscape: false`.
 3.  **Error Handling**: Use the custom error types (`LoadError`, `ParseError`, `CompileError`, `RenderError`) defined in `src/types.ts`.
 4.  **Astro Global**: The global `Astro` object (alias for `props` and `slots`) is available in all templates. Use `Astro.props` and `Astro.slots` to access them.
-5.  **Verification Flow**: Always run the mandatory validation pipeline (`format`, `lint`, `knip`, `typecheck`, `test`, `test:coverage`) after any code change. If all pass, update documentation (`README.md`, `AGENTS.md`) to reflect current project state.
+5.  **Frontmatter Scope**: Treat frontmatter as a light template-setup area only. Prefer prop destructuring, small constants, and `.astro` component imports. Heavy processing, business logic, and data orchestration belong in controllers / route handlers and should be passed into templates as props.
+6.  **Import Limitation**: Frontmatter imports should be treated as `.astro` component imports for composition, not as a general application-runtime import system. Browser runtime behavior should be implemented with `<script>` tags.
+7.  **Editor Tooling Limitation**: Components registered with `sikka.loadComponent()` are global at runtime, but `.astro` editor/language-server tooling may still require explicit frontmatter imports for static analysis. Ambient `declare function` hints may help plain TypeScript, but are not sufficient for all `.astro` tooling.
+8.  **Verification Flow**: Always run the mandatory validation pipeline (`format`, `lint`, `knip`, `typecheck`, `test`, `test:coverage`) after any code change. If all pass, update documentation (`README.md`, `AGENTS.md`) to reflect current project state.
 
 ## Common Agent Tasks
 

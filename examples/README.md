@@ -29,8 +29,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Features Used
 
-- **Frontmatter imports**: `Layout.astro` and `Header.astro` are imported in template frontmatter
-- **Global components**: `Card.astro` is registered via `sikka.loadComponent()`
+- **Frontmatter imports**: frontmatter is meant for light setup and `.astro` component imports such as `Layout.astro` and `Header.astro`
+- **Global components**: `Card.astro` is registered via `sikka.loadComponent()` at runtime
+- **Editor tooling caveat**: some `.astro` editors/language servers may still require `import Card from '../components/Card.astro'` for error-free static analysis, even though the runtime global registration works
 - **Slots**: Default slot in Layout, named slot (`actions`) in Header
 - **Props**: All components accept and render props
 - **Loops**: Dynamic lists with `.map()` in templates
@@ -58,6 +59,22 @@ examples/
 │   └── styles.css
 └── package.json
 ```
+
+## Controller / Template Split
+
+In these examples, the framework entrypoints act as the controller layer:
+
+- fetch or prepare data
+- normalize it into render-friendly props
+- call `sikka.render()` / `sikka.streamString()`
+
+The `.astro` templates are intended to stay presentation-focused:
+
+- destructure props
+- import `.astro` components
+- map and conditionally render markup
+
+Avoid putting heavy processing in frontmatter. If work belongs to the server, do it in the entrypoint and pass the result as props. If work belongs to the browser at runtime, use `<script>` tags in the template.
 
 ## Framework Entrypoints
 

@@ -131,7 +131,7 @@ It achieves this through:
 
 ## Syntax Features
 
-- **Frontmatter**: Use `---` fences at the top of the file for component logic and imports. Supports `await` and types.
+- **Frontmatter**: Use `---` fences at the top of the file for light template setup only, such as prop destructuring, small constants, and `.astro` component imports.
 - **JSX-like Body**: Standard HTML tags mixed with JavaScript expressions in curly braces `{...}`.
 - **Component Composition**: Import `.astro` files in the frontmatter and use them as tags (e.g., `<MyComponent />`).
 - **Slots**:
@@ -195,15 +195,90 @@ Registers a global component.
 
 Clears specific or all cache entries.
 
-## TypeScript: Global Components
+## Frontmatter Scope and Intended Usage
 
-Components registered via `sikka.loadComponent()` are available everywhere at runtime, but TypeScript doesn't know about them — you'll get `Cannot find name 'Card'` errors in `.astro` templates. Fix this by adding a declaration file:
+Sikka frontmatter is intentionally best treated as a **small template setup area**, not as a general application-logic layer.
+
+Use frontmatter for:
+
+- destructuring `Astro.props`
+- defining small local constants
+- simple conditional helpers
+- importing other `.astro` components
+- lightweight template-local preparation
+
+Avoid using frontmatter for:
+
+- heavy business logic
+- data fetching orchestration
+- database access
+- large transformations or normalization pipelines
+- application service wiring
+- browser runtime behavior
+
+### Important limitation: imports in frontmatter
+
+In Sikka, frontmatter imports are intended for **`.astro` component composition**. Do not rely on frontmatter as a general-purpose module-loading system for arbitrary runtime logic.
+
+Recommended rule of thumb:
+
+- if the work prepares data for rendering, do it in your **controller / route handler / server function** and pass the result as props
+- if the code must run in the **browser at runtime**, put it in a `<script>` tag
+- if you need reusable UI composition, import another **`.astro` component**
+
+Example:
+
+```ts
+// controller / route handler
+const users = await userService.list();
+const cards = users.map((user) => ({
+  title: user.name,
+  description: user.email,
+  href: `/users/${user.id}`,
+}));
+
+const html = await sikka.render('users.astro', { cards });
+```
+
+```astro
+---
+const { cards } = Astro.props;
+import Card from '../components/Card.astro';
+---
+{cards.map((card) => <Card {...card} />)}
+```
+
+For browser runtime imports or client-side behavior, use normal browser mechanisms inside `<script>` tags.
+
+## TypeScript and Editor Tooling: Global Components
+
+Components registered via `sikka.loadComponent()` are available everywhere at runtime, but editor tooling for `.astro` files may still report `Cannot find name 'Card'` (or similar) for component tags that are not explicitly imported.
+
+This happens because `loadComponent()` is a runtime registration mechanism, while most `.astro` language tooling performs static analysis and usually only recognizes:
+
+- components imported in frontmatter
+- local variables in scope
+- framework-specific built-in globals
+
+A declaration file can still help plain TypeScript understand a global symbol:
 
 ```typescript
 declare function Card(props: { title: string; description: string; href: string }): void;
 ```
 
-Place this file anywhere in your project. TypeScript picks it up automatically. Add one `declare function` per globally-registered component with its expected props. This is purely a type hint — it has no effect on runtime behavior.
+However, some editors and `.astro` language servers will still flag `<Card />` in templates even when that declaration exists, because component-tag resolution is handled by the `.astro` tooling layer, not by plain TypeScript alone.
+
+### Recommendation
+
+If you want the best editor experience, explicitly import globally-registered components in templates as well:
+
+```astro
+---
+import Card from '../components/Card.astro';
+---
+```
+
+You can still keep `sikka.loadComponent('Card', template)` for runtime global registration. The import is mainly for static tooling and autocomplete.
 
 ## License
 
