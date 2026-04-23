@@ -1,5 +1,5 @@
 import express from 'express';
-import { Sikka } from 'sikka';
+import { Sikka } from '@rush/sikka';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';

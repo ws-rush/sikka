@@ -17,7 +17,19 @@
 ## Installation
 
 ```bash
-npm install sikka
+deno add @rush/sikka
+# or
+pnpm dlx jsr add @rush/sikka
+# or
+npx jsr add @rush/sikka
+# or
+bunx jsr add @rush/sikka
+```
+
+Import in your code:
+
+```typescript
+import { Sikka } from '@rush/sikka';
 ```
 
 ## Quick Start
@@ -27,7 +39,7 @@ npm install sikka
 Render a template string directly with props:
 
 ```javascript
-import { Sikka } from 'sikka';
+import { Sikka } from '@rush/sikka';
 
 const sikka = new Sikka();
 
@@ -47,7 +59,7 @@ console.log(html); // <h1>Hello, World!</h1>
 To load templates from the file system, provide `views`, `readFile`, and `resolvePath` in the options:
 
 ```javascript
-import { Sikka } from 'sikka';
+import { Sikka } from '@rush/sikka';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -80,7 +92,7 @@ const html = await sikka.renderString(template);
 For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. Static content is flushed immediately, while component calls are awaited and yielded as single opaque chunks.
 
 ```javascript
-import { Sikka } from 'sikka';
+import { Sikka } from '@rush/sikka';
 
 const sikka = new Sikka();
 

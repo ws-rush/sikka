@@ -26,6 +26,8 @@
     "dist",
     "README.md",
     "README.astro-syntax.md",
+    "CHANGELOG.md",
+    "jsr.json",
     "LICENSE"
   ],
   "type": "module",
@@ -51,6 +53,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s",
+    "release": "node scripts/release.cjs",
     "bench": "node bench/index.js"
   },
   "devDependencies": {
@@ -63,6 +67,11 @@
     "globals": "^17.4.0",
     "knip": "^6.3.1",
     "prettier": "^3.8.2",
+    "chalk": "^5.3.0",
+    "conventional-changelog-cli": "^4.1.0",
+    "enquirer": "^2.4.1",
+    "execa": "^8.0.1",
+    "semver": "^7.5.4",
     "tinybench": "^6.0.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
