@@ -144,17 +144,22 @@ nub run test:coverage
 
 ## Performance
 
-Sikka is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
+Sikka includes a reproducible comparison suite for the precompiled render phase. It measures Sikka alongside EJS, Eta, Handlebars, LiquidJS, Pug, Dust.js, and igo-dust using identical static HTML, escaped interpolation, conditional-attribute, and nested-loop workloads.
 
-| Sikka            | "friends" Benchmark |
-| :--------------- | :------------------ |
-| **Sikka (Ours)** | **197ms**           |
-| Pug              | 209ms               |
-| Eta              | 214ms               |
+```bash
+npm ci --prefix benchmark
+nub run build && nub run bench
+```
 
-_Results based on 2000 runs. Higher is slower._
+The runner verifies that every engine produces identical HTML before timing it, prints each scenario in descending ops/sec order (with Tinybench's relative margin of error), and reports an overall score. The overall score is the geometric mean of an engine's speed relative to the fastest engine in each scenario, so workloads receive equal weight. It intentionally excludes compilation and file I/O; templates are precompiled once before measurement. Results are machine- and runtime-specific, so use the current local run rather than checked-in numbers when deciding on optimization work.
 
-It achieves this through:
+For quicker local feedback, reduce the duration while preserving the same workloads:
+
+```bash
+SIKKA_BENCH_TIME=200 SIKKA_BENCH_WARMUP_TIME=50 nub run bench
+```
+
+It achieves strong performance through:
 
 - **Zero-allocation caching**: Large templates are compiled once and stored in a high-speed cache.
 - **Compile-time static merging**: Adjacent static HTML parts and attributes are folded into single continuous strings.

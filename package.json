@@ -55,7 +55,7 @@
     "fallow": "fallow",
     "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s",
     "release": "node scripts/release.cjs",
-    "bench": "node bench/index.js"
+    "bench": "node --expose-gc bench/index.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -246,17 +246,20 @@ Avoid high-overhead operations in the runtime rendering loop.
 
 ## Performance Benchmarking & Profiling
 
-The project includes a dedicated benchmarking suite that relies only on the **Public API** (`Sikka.renderString`, etc.), ensuring tests remain valid even if internals change.
+The project includes a dedicated **Tinybench** comparison suite. It uses public compiled render functions (`Sikka.compile` and equivalent APIs) so it measures render-phase performance without compilation or file I/O. Before timing, it verifies that Sikka, EJS, Eta, Handlebars, LiquidJS, Pug, Dust.js, and igo-dust produce identical output for every scenario.
 
 ### 1. Running Benchmarks
 
-Use the built-in bench suite to measure raw performance across different scenarios:
+Install the comparison engines once, build Sikka, then run the suite:
 
 ```bash
+npm ci --prefix benchmark
 nub run build && nub run bench
 ```
 
-This uses **tinybench** to provide statistically significant results (Ops/sec, average latency).
+The output ranks each engine by ops/sec for static HTML, escaped interpolation, conditional attributes, and nested loops. It includes Tinybench's relative margin of error and an overall geometric-mean score normalized to the fastest engine in each scenario. Do not commit a result as a universal claim: performance is machine- and Node-version-specific.
+
+For a faster development run, set `SIKKA_BENCH_TIME` and `SIKKA_BENCH_WARMUP_TIME` in milliseconds (for example, `200` and `50`).
 
 ### 2. Detecting Bottlenecks (Profiling)
 
