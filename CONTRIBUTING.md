@@ -17,7 +17,7 @@ Sikka uses the latest TypeScript compiler, `oxfmt` for formatting, and `oxlint` 
 Before submitting changes, ensure the full pipeline passes:
 
 ```bash
-nub run format && nub run lint && nub run knip && nub run typecheck && nub run test && nub run test:coverage
+nub run format && nub run lint && nub run fallow && nub run typecheck && nub run test && nub run test:coverage
 ```
 
 ## Commit Convention
