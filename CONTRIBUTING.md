@@ -5,9 +5,9 @@ Thank you for your interest in contributing to Sikka! This guide covers the deve
 ## Development Setup
 
 ```bash
-pnpm install
-pnpm build     # compile TypeScript to dist/
-pnpm test      # run the test suite
+nub install
+nub run build     # compile TypeScript to dist/
+nub run test      # run the test suite
 ```
 
 ## Validation Pipeline
@@ -15,7 +15,7 @@ pnpm test      # run the test suite
 Before submitting changes, ensure the full pipeline passes:
 
 ```bash
-pnpm format && pnpm lint && pnpm knip && pnpm typecheck && pnpm test && pnpm test:coverage
+nub run format && nub run lint && nub run knip && nub run typecheck && nub run test && nub run test:coverage
 ```
 
 ## Commit Convention
@@ -54,7 +54,7 @@ The changelog is generated automatically from commit messages using [conventiona
 To regenerate `CHANGELOG.md`:
 
 ```bash
-pnpm changelog
+nub run changelog
 ```
 
 This reads git history and appends new entries to the top of `CHANGELOG.md`. It does **not** remove old entries.
@@ -66,7 +66,7 @@ This reads git history and appends new entries to the top of `CHANGELOG.md`. It 
 The release script handles version bumping, building, testing, changelog generation, and git tagging.
 
 ```bash
-pnpm release
+nub run release
 ```
 
 ### Release Flow
@@ -74,8 +74,8 @@ pnpm release
 1. **Select version type** — choose `patch`, `minor`, `major`, or enter a `custom` version.
 2. **Confirm** — verify the target version before proceeding.
 3. **Update `package.json`** — the version field is updated.
-4. **Build** — `pnpm build` compiles the project.
-5. **Test** — `pnpm test` runs the full test suite.
+4. **Build** — `nub run build` compiles the project.
+5. **Test** — `nub run test` runs the full test suite.
 6. **Generate changelog** — `CHANGELOG.md` is updated and formatted.
 7. **Review changelog** — you'll be asked to confirm the changelog looks correct.
 8. **Git commit + tag** — commits `package.json` and `CHANGELOG.md` with message `release: v<version>`, then creates tag `v<version>`.
@@ -110,7 +110,7 @@ The version must be in [SemVer](https://semver.org/) format. The `exports` field
 Publish from the terminal:
 
 ```bash
-npx jsr publish
+nubx jsr publish
 ```
 
 Or with Deno:
@@ -124,17 +124,17 @@ You will be prompted to interactively authenticate in your browser on first use.
 If the working tree is dirty (e.g. after a release commit), use:
 
 ```bash
-npx jsr publish --allow-dirty
+nubx jsr publish --allow-dirty
 ```
 
 ### Full Release + Publish Workflow
 
 ```bash
 # 1. Run the release script
-pnpm release
+nub run release
 
 # 2. Publish to JSR
-npx jsr publish --allow-dirty
+nubx jsr publish --allow-dirty
 ```
 
 ## Branching

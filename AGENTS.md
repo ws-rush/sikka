@@ -258,7 +258,7 @@ The project includes a dedicated benchmarking suite that relies only on the **Pu
 Use the built-in bench suite to measure raw performance across different scenarios:
 
 ```bash
-pnpm build && pnpm bench
+nub run build && nub run bench
 ```
 
 This uses **tinybench** to provide statistically significant results (Ops/sec, average latency).
@@ -282,7 +282,7 @@ To identify which specific parts of the code are slowing down rendering, use the
 For a visual representation of the call stack and "hot" functions:
 
 ```bash
-npx clinic flame -- node bench/index.js
+nubx --package clinic flame -- node bench/index.js
 ```
 
 This will open a flamegraph in your browser. Wide bars represent functions that consume the most CPU time.
@@ -294,7 +294,7 @@ The tests should primary focus on testing **functionality** and the **public API
 Run the full validation pipeline (mandatory after any code change):
 
 ```bash
-pnpm format && pnpm lint && pnpm knip && pnpm typecheck && pnpm test && pnpm test:coverage
+nub run format && nub run lint && nub run knip && nub run typecheck && nub run test && nub run test:coverage
 ```
 
 > [!IMPORTANT]
@@ -303,13 +303,13 @@ pnpm format && pnpm lint && pnpm knip && pnpm typecheck && pnpm test && pnpm tes
 Run the full test suite:
 
 ```bash
-npm test
+nub run test
 ```
 
 Run property-based tests only:
 
 ```bash
-npm test -- -t property
+nub run test -- -t property
 ```
 
 ## Coverage Status

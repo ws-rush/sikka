@@ -19,9 +19,9 @@
 ```bash
 deno add @rush/sikka
 # or
-pnpm dlx jsr add @rush/sikka
+nubx jsr add @rush/sikka
 # or
-npx jsr add @rush/sikka
+nubx jsr add @rush/sikka
 # or
 bunx jsr add @rush/sikka
 ```
@@ -120,7 +120,7 @@ Streaming supports:
 
 Sikka is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
 
-| Sikka           | "friends" Benchmark |
+| Sikka            | "friends" Benchmark |
 | :--------------- | :------------------ |
 | **Sikka (Ours)** | **197ms**           |
 | Pug              | 209ms               |

@@ -52,8 +52,8 @@ describe('Sikka', () => {
         set: (_k: string, _fn: unknown) => {
           setCount++;
         },
-        delete: (_k: string) => { },
-        clear: () => { },
+        delete: (_k: string) => {},
+        clear: () => {},
       };
       const sikka = new Sikka({ cache: customCache });
       sikka.compile('<div>a</div>');

@@ -6,25 +6,25 @@ Complete examples showing how to integrate [Sikka](https://github.com/ws-rush/si
 
 ```bash
 # From this directory
-npm install
+nub install
 
 # Run with Express
-npm start:express
+nub run start:express
 
 # Run with Hono
-npm start:hono
+nub run start:hono
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
 ## What It Demonstrates
 
-| Route         | Feature                                                                                |
-| ------------- | -------------------------------------------------------------------------------------- |
+| Route         | Feature                                                                               |
+| ------------- | ------------------------------------------------------------------------------------- |
 | `GET /`       | File-based rendering with `sikka.render()` — Layout & Header imported via frontmatter |
 | `GET /about`  | Global component via `sikka.loadComponent()` — Card component                         |
-| `GET /users`  | Dynamic data with loops — rendering a list of Cards from props                         |
-| `GET /todos`  | Full CRUD with HTML forms and method override (`_method` hidden field)                 |
+| `GET /users`  | Dynamic data with loops — rendering a list of Cards from props                        |
+| `GET /todos`  | Full CRUD with HTML forms and method override (`_method` hidden field)                |
 | `GET /stream` | Streaming response with `sikka.streamString()` — chunks flushed incrementally         |
 
 ## Features Used
