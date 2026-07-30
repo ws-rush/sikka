@@ -17,12 +17,12 @@
   "devDependencies": {
     "@types/express": "^5.0.0"
   },
-  "packageManager": "nub@0.1.1",
   "devEngines": {
     "packageManager": {
       "name": "nub",
       "version": "^0.1.1",
       "onFail": "warn"
     }
-  }
+  },
+  "packageManager": "nub@0.1.1"
 }

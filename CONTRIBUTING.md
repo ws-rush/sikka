@@ -12,6 +12,8 @@ nub run test      # run the test suite
 
 ## Validation Pipeline
 
+Sikka uses the latest TypeScript compiler, `oxfmt` for formatting, and `oxlint` for strict linting. Configuration is in `.oxfmtrc.json` and `.oxlintrc.json`.
+
 Before submitting changes, ensure the full pipeline passes:
 
 ```bash

@@ -3,21 +3,21 @@
   "version": "0.1.0",
   "description": "A zero-dependency, runtime-agnostic template engine with Astro-like syntax.",
   "keywords": [
-    "template",
+    "astro",
+    "compiler",
     "engine",
     "html",
-    "astro",
-    "ssr",
-    "compiler",
     "render",
-    "sikka"
+    "sikka",
+    "ssr",
+    "template"
   ],
-  "author": "Rasheed Qaied <wusaby.rush@zohomail.com>",
-  "license": "MIT",
+  "homepage": "https://github.com/ws-rush/sikka#readme",
   "bugs": {
     "url": "https://github.com/ws-rush/sikka/issues"
   },
-  "homepage": "https://github.com/ws-rush/sikka#readme",
+  "license": "MIT",
+  "author": "Rasheed Qaied <wusaby.rush@zohomail.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ws-rush/sikka.git"
@@ -31,8 +31,10 @@
     "LICENSE"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/esm/index.js",
@@ -40,17 +42,12 @@
       "types": "./dist/esm/index.d.ts"
     }
   },
-  "types": "./dist/esm/index.d.ts",
-  "sideEffects": false,
-  "engines": {
-    "node": ">=18.19.0"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "lint": "oxlint --deny-warnings .",
+    "lint:fix": "oxlint --fix --deny-warnings .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "test": "nub --test test/*.test.ts",
     "test:watch": "nub --test --watch test/*.test.ts",
     "test:coverage": "nub --test --experimental-test-coverage test/*.test.ts",
@@ -61,30 +58,29 @@
     "bench": "node bench/index.js"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.2",
-    "eslint": "^10.2.0",
-    "eslint-config-prettier": "^10.1.8",
-    "fast-check": "^4.7.0",
-    "globals": "^17.4.0",
-    "knip": "^6.3.1",
-    "prettier": "^3.8.2",
     "chalk": "^5.3.0",
     "conventional-changelog-cli": "^4.1.0",
     "enquirer": "^2.4.1",
     "execa": "^8.0.1",
+    "fast-check": "^4.7.0",
+    "knip": "^6.3.1",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.76.0",
     "semver": "^7.5.4",
     "tinybench": "^6.0.0",
-    "typescript": "^6.0.2",
-    "typescript-eslint": "^8.58.1",
+    "typescript": "^7.0.2",
     "zod": "^4.3.6"
   },
-  "packageManager": "nub@0.1.1",
   "devEngines": {
     "packageManager": {
       "name": "nub",
       "version": "^0.1.1",
       "onFail": "warn"
     }
-  }
+  },
+  "engines": {
+    "node": ">=18.19.0"
+  },
+  "packageManager": "nub@0.1.1"
 }

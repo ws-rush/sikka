@@ -8,7 +8,8 @@ This document provides technical context and guidance for AI agents working on t
 
 ### Tech Stack
 
-- **TypeScript**: Source code.
+- **TypeScript**: Source code, compiled with the latest TypeScript compiler.
+- **oxlint / oxfmt**: Strict linting and formatting.
 - **Node.js `node:test`**: Unit and integration tests.
 - **fast-check**: Property-based testing for correctness guarantees.
 
@@ -75,13 +76,7 @@ export interface ComponentImport {
 }
 
 export type TemplateNode =
-  | ElementNode
-  | ExpressionNode
-  | TextNode
-  | SlotNode
-  | ScriptNode
-  | StyleNode
-  | RawNode;
+  ElementNode | ExpressionNode | TextNode | SlotNode | ScriptNode | StyleNode | RawNode;
 
 export interface SpreadAttrNode {
   type: 'spread';
@@ -296,6 +291,8 @@ Run the full validation pipeline (mandatory after any code change):
 ```bash
 nub run format && nub run lint && nub run knip && nub run typecheck && nub run test && nub run test:coverage
 ```
+
+Formatting and linting are provided by `oxfmt` and `oxlint`; their configuration is in `.oxfmtrc.json` and `.oxlintrc.json`.
 
 > [!IMPORTANT]
 > If all validation steps pass, you MUST update the `README.md` and `AGENTS.md` files (e.g., to reflect changes in coverage, architecture, or documented properties).

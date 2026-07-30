@@ -14,6 +14,20 @@
 - **Component-driven**: Built-in support for component composition and slots.
 - **Typed**: Written in TypeScript with full type support for props and slots.
 
+## Development
+
+The project uses the latest TypeScript compiler, [oxlint](https://oxc.rs/docs/guide/usage/linter), and [oxfmt](https://oxc.rs/docs/guide/usage/formatter) for strict, fast validation:
+
+```bash
+nub install
+nub run format
+nub run lint
+nub run typecheck
+nub run test
+```
+
+Configuration lives in `.oxlintrc.json` and `.oxfmtrc.json`.
+
 ## Installation
 
 ```bash
