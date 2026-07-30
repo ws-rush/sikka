@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'node:test';
+import { expect } from './assert.js';
 import { render } from './helpers.js';
 
 describe('Syntax: Dynamic Expressions', () => {

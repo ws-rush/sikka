@@ -1,4 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "project": ["src/**/*.ts!"]
+  "project": ["src/**/*.ts!"],
+  "ignoreBinaries": ["nub"],
+  "ignoreDependencies": ["fast-check", "zod"]
 }

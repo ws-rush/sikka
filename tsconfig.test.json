@@ -1,8 +1,0 @@
-{
-  "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "bundler",
-    "outDir": "./dist/test"
-  },
-  "include": ["src/**/*"]
-}

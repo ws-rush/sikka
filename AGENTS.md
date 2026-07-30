@@ -9,7 +9,7 @@ This document provides technical context and guidance for AI agents working on t
 ### Tech Stack
 
 - **TypeScript**: Source code.
-- **Vitest**: Unit and integration tests.
+- **Node.js `node:test`**: Unit and integration tests.
 - **fast-check**: Property-based testing for correctness guarantees.
 
 ## Architecture
@@ -306,10 +306,10 @@ Run the full test suite:
 nub run test
 ```
 
-Run property-based tests only:
+Run the property-based test file:
 
 ```bash
-nub run test -- -t property
+nub --test test/property.test.ts
 ```
 
 ## Coverage Status

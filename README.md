@@ -116,6 +116,15 @@ Streaming supports:
 - **Component boundaries**: Component calls are awaited and yielded as single chunks
 - **Independent caching**: Streaming functions are cached separately from sync functions
 
+## Testing
+
+Tests use Node.js's built-in `node:test` runner, so no test framework runtime is required:
+
+```bash
+nub run test
+nub run test:coverage
+```
+
 ## Performance
 
 Sikka is built for extreme performance. In benchmarks like the "friends" test (nested loops, many attributes), it is currently the **fastest JavaScript template engine**, outperforming even Pug and Eta.
