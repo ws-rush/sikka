@@ -67,5 +67,9 @@ export declare class Sikka {
     private compileFile;
     private compileStreamingString;
     private compileStreamingFile;
+    private compileTemplate;
+    private parseTemplate;
+    private resolveTemplatePath;
+    private readTemplateFile;
 }
 //# sourceMappingURL=index.d.ts.map

@@ -50,7 +50,7 @@ For streaming, a parallel pipeline exists:
 
 - **Parser (`src/parser.ts`)**: Tokenizes and parses raw template text into an Abstract Syntax Tree (AST). Shared between sync and streaming pipelines.
 - **AST (`src/types.ts`)**: Intermediate representation of the template, including frontmatter, JSX-like elements, expressions, and component imports.
-- **Compiler (`src/compiler.ts`)**: Transforms the AST into a JavaScript closure (`RenderFunction`). Also contains the streaming compiler that generates `AsyncGenerator` functions. It handles component resolution, prop forwarding, slot substitution, and special attributes like `class:list` and `style` objects.
+- **Compiler (`src/compiler.ts`)**: Transforms the AST into a JavaScript closure (`RenderFunction`) and generates streaming `AsyncGenerator` functions. Both modes share component resolution, runtime helpers, function preambles, and AST emission; streaming additionally flushes the buffer at component boundaries. It handles prop forwarding, slot substitution, and special attributes like `class:list` and `style` objects.
 - **Sikka (`src/index.ts`)**: Provides the main entry point and orchestrates template loading, resolution, and caching. Maintains separate caches for sync and streaming functions.
 - **Cache (`src/cache.ts`)**: Stores compiled `RenderFunction` instances. Streaming uses its own cache instance.
 - **HTML Escaper (`src/escape.ts`)**: Provides security by default through automatic HTML entity escaping.
@@ -203,7 +203,7 @@ The engine defines specific error types for different failure points:
 1.  Add test cases for the desired output in `src/compiler.test.ts`.
 2.  Modify the code generation logic in `src/compiler.ts`.
 3.  If the change affects performance, ensure the cache still functions correctly (Properties 6, 7).
-4.  **Important**: The compiler has both sync and streaming code paths. Changes to `emitNode`, `emitElement`, or `emitComponentCall` likely need corresponding changes to `emitNodeStreaming`, `emitElementStreaming`, or `emitComponentCallStreaming`.
+4.  **Important**: Sync and streaming use the same AST emission functions. Preserve both modes when changing `emitNode`, `emitElement`, or `emitComponentCall`: streaming must retain its buffer flush and `yield await` behavior at component boundaries.
 
 ## Performance Guidelines
 

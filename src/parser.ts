@@ -61,29 +61,37 @@ interface FrontmatterResult {
   bodyStart: number;
 }
 
+type ExpressionState = {
+  depth: number;
+  nodes: (string | TemplateNode)[];
+  currentString: string;
+};
+
+type ExpressionPartResult = { ok: true } | { ok: false; error: ParseError };
+type AttributeParseResult =
+  | { ok: true; attr: AttrNode | SpreadAttrNode }
+  | { ok: false; error: ParseError };
+
 function extractFrontmatter(
   source: string
 ): { ok: true; result: FrontmatterResult } | { ok: false; error: ParseError } {
-  // Frontmatter is optional — if the file doesn't start with ---, body starts at 0
-  if (!source.startsWith('---')) {
-    return {
-      ok: true,
-      result: {
-        frontmatter: { source: '' },
-        imports: [],
-        bodyStart: 0,
-      },
-    };
-  }
+  if (!source.startsWith('---')) return emptyFrontmatter();
 
-  // Skip the opening fence (including optional trailing whitespace/newline)
   const afterOpen = source.indexOf('\n', 3);
   if (afterOpen === -1) {
-    // No newline after opening fence — malformed
     return { ok: false, error: makeError('Unclosed frontmatter fence', source, 3) };
   }
+  return extractFrontmatterContent(source, afterOpen);
+}
 
-  // Find the closing ---
+function emptyFrontmatter(): { ok: true; result: FrontmatterResult } {
+  return { ok: true, result: { frontmatter: { source: '' }, imports: [], bodyStart: 0 } };
+}
+
+function extractFrontmatterContent(
+  source: string,
+  afterOpen: number
+): { ok: true; result: FrontmatterResult } | { ok: false; error: ParseError } {
   const closeIndex = source.indexOf('\n---', afterOpen);
   if (closeIndex === -1) {
     return {
@@ -93,22 +101,18 @@ function extractFrontmatter(
   }
 
   const fmSource = source.slice(afterOpen + 1, closeIndex);
-  const imports = collectImports(fmSource);
-
-  // Body starts after the closing fence line
-  const bodyStart = closeIndex + 4; // skip \n---
-  // Skip optional newline right after closing fence
-  const actualBodyStart =
-    bodyStart < source.length && source[bodyStart] === '\n' ? bodyStart + 1 : bodyStart;
-
   return {
     ok: true,
     result: {
       frontmatter: { source: fmSource },
-      imports,
-      bodyStart: actualBodyStart,
+      imports: collectImports(fmSource),
+      bodyStart: skipFrontmatterNewline(source, closeIndex + 4),
     },
   };
+}
+
+function skipFrontmatterNewline(source: string, bodyStart: number): number {
+  return source[bodyStart] === '\n' ? bodyStart + 1 : bodyStart;
 }
 
 // ─── Import collection ────────────────────────────────────────────────────────
@@ -116,66 +120,78 @@ function extractFrontmatter(
 function collectImports(fmSource: string): ComponentImport[] {
   const imports: ComponentImport[] = [];
   const re = /^\s*import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/gm;
-  let m;
-  while ((m = re.exec(fmSource)) !== null) {
-    const importClause = m[1].trim();
-    const specifier = m[2];
-
-    if (importClause.startsWith('type ')) continue;
-
-    // Namespace import: import * as Foo from '...'
-    if (importClause.startsWith('* as ')) {
-      const localName = importClause.slice(5).trim();
-      imports.push({ localName, specifier });
-      continue;
-    }
-
-    // Default and/or named imports
-    // Handle mixed: import Foo, { Bar as Baz, Qux } from '...'
-    // We need to be careful with commas inside braces.
-    const parts: string[] = [];
-    let current = '';
-    let braceDepth = 0;
-    for (let i = 0; i < importClause.length; i++) {
-      const char = importClause[i];
-      if (char === '{') braceDepth++;
-      else if (char === '}') braceDepth--;
-
-      if (char === ',' && braceDepth === 0) {
-        parts.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    if (current) parts.push(current.trim());
-
-    for (const p of parts) {
-      if (p.startsWith('{')) {
-        const namedParts = p.slice(1, p.endsWith('}') ? -1 : undefined).split(',');
-        for (const named of namedParts) {
-          const n = named.trim();
-          if (!n) continue;
-          const asMatch = /\s+as\s+(\w+)$/.exec(n);
-          if (asMatch) {
-            imports.push({ localName: asMatch[1], specifier });
-          } else {
-            const nameMatch = /(\w+)$/.exec(n);
-            if (nameMatch) {
-              imports.push({ localName: nameMatch[1], specifier });
-            }
-          }
-        }
-      } else if (p) {
-        // Default import
-        const nameMatch = /(\w+)$/.exec(p);
-        if (nameMatch) {
-          imports.push({ localName: nameMatch[1], specifier });
-        }
-      }
-    }
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(fmSource)) !== null) {
+    collectImportClause(match[1].trim(), match[2], imports);
   }
   return imports;
+}
+
+function collectImportClause(
+  importClause: string,
+  specifier: string,
+  imports: ComponentImport[]
+): void {
+  if (importClause.startsWith('type ')) return;
+  if (collectNamespaceImport(importClause, specifier, imports)) return;
+  for (const part of splitImportClause(importClause)) {
+    collectImportPart(part, specifier, imports);
+  }
+}
+
+function collectNamespaceImport(
+  importClause: string,
+  specifier: string,
+  imports: ComponentImport[]
+): boolean {
+  if (!importClause.startsWith('* as ')) return false;
+  imports.push({ localName: importClause.slice(5).trim(), specifier });
+  return true;
+}
+
+function collectImportPart(part: string, specifier: string, imports: ComponentImport[]): void {
+  if (part.startsWith('{')) collectNamedImports(part, specifier, imports);
+  else collectDefaultImport(part, specifier, imports);
+}
+
+function splitImportClause(importClause: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let braceDepth = 0;
+  for (const char of importClause) {
+    braceDepth = updateBraceDepth(char, braceDepth);
+    if (isTopLevelImportComma(char, braceDepth)) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current) parts.push(current.trim());
+  return parts;
+}
+
+function updateBraceDepth(char: string, depth: number): number {
+  if (char === '{') return depth + 1;
+  if (char === '}') return depth - 1;
+  return depth;
+}
+
+function isTopLevelImportComma(char: string, braceDepth: number): boolean {
+  return char === ',' && braceDepth === 0;
+}
+
+function collectNamedImports(part: string, specifier: string, imports: ComponentImport[]): void {
+  const namedParts = part.slice(1, part.endsWith('}') ? -1 : undefined).split(',');
+  for (const named of namedParts) {
+    const localName = /(?:\s+as\s+)?(\w+)$/.exec(named.trim())?.[1];
+    if (localName) imports.push({ localName, specifier });
+  }
+}
+
+function collectDefaultImport(part: string, specifier: string, imports: ComponentImport[]): void {
+  const localName = /(\w+)$/.exec(part)?.[1];
+  if (localName) imports.push({ localName, specifier });
 }
 
 // ─── Body parser ─────────────────────────────────────────────────────────────
@@ -224,66 +240,73 @@ class Parser {
   parseBody(): { ok: true; nodes: TemplateNode[] } | { ok: false; error: ParseError } {
     const nodes: TemplateNode[] = [];
     while (!this.eof()) {
-      const startPos = this.pos;
-      const result = this.parseNode();
+      const result = this.parseBodyNode();
       if (!result.ok) return result;
-      if (result.node === null) {
-        // If we didn't advance, we hit an unexpected closing tag
-        if (this.pos === startPos) break;
-        // Otherwise (e.g. comment), just continue
-        continue;
-      }
-      nodes.push(result.node);
+      if (this.completeBodyNode(result, nodes)) break;
     }
     return { ok: true, nodes };
+  }
+
+  private completeBodyNode(
+    result: { node: TemplateNode | null; shouldStop: boolean },
+    nodes: TemplateNode[]
+  ): boolean {
+    if (result.shouldStop) return true;
+    if (result.node) nodes.push(result.node);
+    return false;
+  }
+
+  private parseBodyNode():
+    | { ok: true; node: TemplateNode | null; shouldStop: boolean }
+    | { ok: false; error: ParseError } {
+    const start = this.pos;
+    const result = this.parseNode();
+    if (!result.ok) return result;
+    return { ok: true, node: result.node, shouldStop: result.node === null && this.pos === start };
   }
 
   // ── Node dispatch ──────────────────────────────────────────────────────────
 
   private parseNode(): { ok: true; node: TemplateNode | null } | { ok: false; error: ParseError } {
     if (this.eof()) return { ok: true, node: null };
-
-    // Expression node: {expr}
-    if (this.peek() === '{') {
-      return this.parseExpression();
-    }
-
-    // Tag node: <...
-    if (this.peek() === '<') {
-      // Comment: <!-- ... -->
-      if (this.at('<!--')) {
-        return this.parseComment();
-      }
-      // Closing tag — caller handles this
-      if (this.at('</')) {
-        return { ok: true, node: null };
-      }
-      // Check if it's followed by a valid tag name start char or > for fragment
-      if (/[\w!/>]/.test(this.peek(1))) {
-        return this.parseElement();
-      }
-    }
-
-    // Text node
+    if (this.peek() === '{') return this.parseExpression();
+    if (this.peek() === '<') return this.parseTagNode();
     return this.parseText();
+  }
+
+  private parseTagNode():
+    | { ok: true; node: TemplateNode | null }
+    | { ok: false; error: ParseError } {
+    if (this.at('<!--')) return this.parseComment();
+    if (this.at('</')) return { ok: true, node: null };
+    return this.isElementOpening() ? this.parseElement() : this.parseText();
+  }
+
+  private isElementOpening(): boolean {
+    return /[\w!/>]/.test(this.peek(1));
   }
 
   // ── Text node ──────────────────────────────────────────────────────────────
 
   private parseText(): { ok: true; node: TextNode } | { ok: false; error: ParseError } {
     let value = '';
-    while (!this.eof()) {
-      const ch = this.peek();
-      if (ch === '{') break;
-      if (ch === '<') {
-        // If it's a comment, expression, closing tag, or valid tag start, break
-        if (this.at('<!--') || this.at('</') || /[\w!/>]/.test(this.peek(1))) {
-          break;
-        }
-      }
+    while (!this.eof() && !this.isTextBoundary()) {
       value += this.advance();
     }
     return { ok: true, node: { type: 'text', value } };
+  }
+
+  private isTextBoundary(): boolean {
+    return this.isExpressionBoundary() || this.isTagBoundary();
+  }
+
+  private isExpressionBoundary(): boolean {
+    return this.peek() === '{';
+  }
+
+  private isTagBoundary(): boolean {
+    if (this.peek() !== '<') return false;
+    return this.at('<!--') || this.at('</') || this.isElementOpening();
   }
 
   // ── Comment ────────────────────────────────────────────────────────────────
@@ -303,90 +326,157 @@ class Parser {
   private parseExpression(): { ok: true; node: ExpressionNode } | { ok: false; error: ParseError } {
     const start = this.pos;
     this.advance(); // consume '{'
-    let depth = 1;
-    const nodes: (string | TemplateNode)[] = [];
-    let currentString = '';
+    const state: ExpressionState = { depth: 1, nodes: [], currentString: '' };
 
-    while (!this.eof() && depth > 0) {
-      const ch = this.peek();
-      if (ch === '{') {
-        depth++;
-        currentString += this.advance();
-      } else if (ch === '}') {
-        depth--;
-        if (depth > 0) {
-          currentString += this.advance();
-        } else {
-          this.advance(); // consume closing '}'
-        }
-      } else if (ch === '"' || ch === "'" || ch === '`') {
-        const str = this.parseStringLiteral(ch);
-        if (!str.ok) return str;
-        currentString += str.value;
-      } else if (ch === '<' && /[\w!/>]/.test(this.peek(1))) {
-        // Potential tag inside expression
-        if (currentString) nodes.push(currentString);
-        currentString = '';
-        const nodeResult = this.parseNode();
-        if (!nodeResult.ok) return nodeResult;
-        if (nodeResult.node) {
-          nodes.push(nodeResult.node);
-        } else {
-          // If parseNode returned null (e.g. at a closing tag), consume the '<' to avoid infinite loop
-          currentString += this.advance();
-        }
-      } else {
-        currentString += this.advance();
-      }
+    while (this.hasUnclosedExpression(state)) {
+      const result = this.parseExpressionPart(state);
+      if (!result.ok) return result;
     }
-    if (depth !== 0) {
+    return this.completeExpression(start, state);
+  }
+
+  private hasUnclosedExpression(state: ExpressionState): boolean {
+    return !this.eof() && state.depth > 0;
+  }
+
+  private parseExpressionPart(state: ExpressionState): ExpressionPartResult {
+    const braceResult = this.parseExpressionBrace(state);
+    if (braceResult) return braceResult;
+
+    const stringResult = this.parseExpressionString(state);
+    if (stringResult) return stringResult;
+
+    if (this.isExpressionElement()) return this.parseExpressionElement(state);
+    state.currentString += this.advance();
+    return { ok: true };
+  }
+
+  private parseExpressionBrace(state: ExpressionState): ExpressionPartResult | undefined {
+    const ch = this.peek();
+    if (ch === '{') {
+      state.depth++;
+      state.currentString += this.advance();
+      return { ok: true };
+    }
+    if (ch !== '}') return undefined;
+
+    state.depth--;
+    this.consumeExpressionClosingBrace(state);
+    return { ok: true };
+  }
+
+  private consumeExpressionClosingBrace(state: ExpressionState): void {
+    const closingBrace = this.advance();
+    if (state.depth > 0) state.currentString += closingBrace;
+  }
+
+  private parseExpressionString(state: ExpressionState): ExpressionPartResult | undefined {
+    const quote = this.peek();
+    if (!this.isStringQuote(quote)) return undefined;
+
+    const result = this.parseStringLiteral(quote);
+    if (!result.ok) return result;
+    state.currentString += result.value;
+    return { ok: true };
+  }
+
+  private isStringQuote(value: string): boolean {
+    return value === '"' || value === "'" || value === '`';
+  }
+
+  private isExpressionElement(): boolean {
+    return this.peek() === '<' && /[\w!/>]/.test(this.peek(1));
+  }
+
+  private parseExpressionElement(state: ExpressionState): ExpressionPartResult {
+    this.flushExpressionString(state);
+    const result = this.parseNode();
+    if (!result.ok) return result;
+    if (result.node) state.nodes.push(result.node);
+    else state.currentString += this.advance();
+    return { ok: true };
+  }
+
+  private flushExpressionString(state: ExpressionState): void {
+    if (state.currentString) state.nodes.push(state.currentString);
+    state.currentString = '';
+  }
+
+  private completeExpression(
+    start: number,
+    state: ExpressionState
+  ): { ok: true; node: ExpressionNode } | { ok: false; error: ParseError } {
+    if (state.depth !== 0) {
       return {
         ok: false,
         error: makeError('Unclosed expression `{`', this.full, this.bodyOffset + start),
       };
     }
-    if (currentString) nodes.push(currentString);
-    const source = nodes.map((n) => (typeof n === 'string' ? n : '[NODE]')).join('');
-
-    return { ok: true, node: { type: 'expression', source, nodes } };
+    this.flushExpressionString(state);
+    const source = state.nodes.map((node) => (typeof node === 'string' ? node : '[NODE]')).join('');
+    return { ok: true, node: { type: 'expression', source, nodes: state.nodes } };
   }
 
   private parseStringLiteral(
     quote: string
   ): { ok: true; value: string } | { ok: false; error: ParseError } {
-    let value = quote;
+    const state = { value: quote };
     this.advance(); // consume opening quote
     while (!this.eof()) {
-      const ch = this.peek();
-      if (ch === '\\') {
-        value += this.advance(); // backslash
-        value += this.advance(); // escaped char
-      } else if (ch === quote) {
-        value += this.advance(); // closing quote
-        return { ok: true, value };
-      } else if (quote === '`' && this.at('${')) {
-        // Template literal interpolation — consume until matching }
-        value += this.advance(); // $
-        value += this.advance(); // {
-        let depth = 1;
-        while (!this.eof() && depth > 0) {
-          const c = this.peek();
-          if (c === '{') {
-            depth++;
-            value += this.advance();
-          } else if (c === '}') {
-            depth--;
-            if (depth > 0) value += this.advance();
-            else value += this.advance();
-          } else {
-            value += this.advance();
-          }
-        }
-      } else {
-        value += this.advance();
-      }
+      const result = this.parseStringCharacter(quote, state);
+      if (result === 'complete') return { ok: true, value: state.value };
+      const interpolationResult = this.parseStringInterpolation(result, state);
+      if (!interpolationResult.ok) return interpolationResult;
     }
     return { ok: false, error: this.error(`Unclosed string literal starting with ${quote}`) };
+  }
+
+  private parseStringCharacter(
+    quote: string,
+    state: { value: string }
+  ): 'continue' | 'complete' | 'interpolation' {
+    if (this.peek() === '\\') {
+      state.value += this.advance(2);
+      return 'continue';
+    }
+    if (this.peek() === quote) {
+      state.value += this.advance();
+      return 'complete';
+    }
+    if (this.isTemplateLiteralInterpolation(quote)) return 'interpolation';
+    state.value += this.advance();
+    return 'continue';
+  }
+
+  private isTemplateLiteralInterpolation(quote: string): boolean {
+    return quote === '`' && this.at('${');
+  }
+
+  private parseStringInterpolation(
+    result: 'continue' | 'interpolation',
+    state: { value: string }
+  ): { ok: true } | { ok: false; error: ParseError } {
+    return result === 'interpolation'
+      ? this.parseTemplateLiteralInterpolation(state)
+      : { ok: true };
+  }
+
+  private parseTemplateLiteralInterpolation(state: {
+    value: string;
+  }): { ok: true } | { ok: false; error: ParseError } {
+    state.value += this.advance(2);
+    let depth = 1;
+    while (this.hasTemplateLiteralInterpolationContent(depth)) {
+      const ch = this.peek();
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      state.value += this.advance();
+    }
+    return { ok: true };
+  }
+
+  private hasTemplateLiteralInterpolationContent(depth: number): boolean {
+    return !this.eof() && depth > 0;
   }
 
   // ── Element / special tags ─────────────────────────────────────────────────
@@ -440,33 +530,47 @@ class Parser {
     tagName: string,
     build: (content: string, attrs: (AttrNode | SpreadAttrNode)[]) => T
   ): { ok: true; node: T } | { ok: false; error: ParseError } {
-    // Parse (and discard) attributes then consume '>'
     const attrsResult = this.parseAttributes(tagName);
     if (!attrsResult.ok) return attrsResult;
 
-    if (this.peek() === '/') {
-      // Self-closing <script /> or <style /> — empty content
-      this.advance(); // /
-      if (this.peek() !== '>') {
-        return { ok: false, error: this.error(`Expected '>' after '/'`) };
-      }
-      this.advance(); // >
-      return { ok: true, node: build('', attrsResult.attrs) };
-    }
+    const opening = this.consumeRawTagOpening(tagName);
+    if (!opening.ok) return opening;
+    if (opening.isSelfClosing) return { ok: true, node: build('', attrsResult.attrs) };
+    return this.parseRawTagContent(tagName, attrsResult.attrs, build);
+  }
 
+  private consumeRawTagOpening(
+    tagName: string
+  ): { ok: true; isSelfClosing: boolean } | { ok: false; error: ParseError } {
+    if (this.peek() === '/') return this.consumeSelfClosingRawTag();
     if (this.peek() !== '>') {
       return { ok: false, error: this.error(`Expected '>' to close <${tagName}> opening tag`) };
     }
-    this.advance(); // >
+    this.advance();
+    return { ok: true, isSelfClosing: false };
+  }
 
+  private consumeSelfClosingRawTag():
+    | { ok: true; isSelfClosing: true }
+    | { ok: false; error: ParseError } {
+    this.advance();
+    if (this.peek() !== '>') return { ok: false, error: this.error(`Expected '>' after '/'`) };
+    this.advance();
+    return { ok: true, isSelfClosing: true };
+  }
+
+  private parseRawTagContent<T extends TemplateNode>(
+    tagName: string,
+    attrs: (AttrNode | SpreadAttrNode)[],
+    build: (content: string, attrs: (AttrNode | SpreadAttrNode)[]) => T
+  ): { ok: true; node: T } | { ok: false; error: ParseError } {
     const closeTag = `</${tagName}>`;
     const closeIdx = this.src.indexOf(closeTag, this.pos);
-    if (closeIdx === -1) {
-      return { ok: false, error: this.error(`Unclosed <${tagName}> tag`) };
-    }
+    if (closeIdx === -1) return { ok: false, error: this.error(`Unclosed <${tagName}> tag`) };
+
     const content = this.src.slice(this.pos, closeIdx);
     this.pos = closeIdx + closeTag.length;
-    return { ok: true, node: build(content, attrsResult.attrs) };
+    return { ok: true, node: build(content, attrs) };
   }
 
   // ── <slot> ────────────────────────────────────────────────────────────────
@@ -474,45 +578,102 @@ class Parser {
   private parseSlot(): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     const attrsResult = this.parseAttributes('slot');
     if (!attrsResult.ok) return attrsResult;
+    return this.parseSlotContent(this.getSlotDetails(attrsResult.attrs));
+  }
 
-    // Determine slot name from `name="..."` attribute
-    let name = '';
-    let nameExpr: ExpressionNode | undefined;
-    for (const attr of attrsResult.attrs) {
-      if (!('type' in attr) && attr.name === 'name') {
-        if (typeof attr.value === 'string') {
-          name = attr.value;
-        } else if (attr.value !== true && typeof attr.value === 'object') {
-          nameExpr = attr.value;
-        }
-      }
+  private getSlotDetails(attrs: (AttrNode | SpreadAttrNode)[]): {
+    name: string;
+    nameExpr: ExpressionNode | undefined;
+  } {
+    const details: { name: string; nameExpr: ExpressionNode | undefined } = {
+      name: '',
+      nameExpr: undefined,
+    };
+    for (const attr of attrs) {
+      const value = this.getSlotNameAttributeValue(attr);
+      if (value !== undefined) this.assignSlotName(details, value);
     }
+    return details;
+  }
 
-    // Consume self-closing /> or parse children until </slot>
+  private getSlotNameAttributeValue(
+    attr: AttrNode | SpreadAttrNode
+  ): AttrNode['value'] | undefined {
+    if ('type' in attr) return undefined;
+    if (attr.name !== 'name') return undefined;
+    return attr.value;
+  }
+
+  private assignSlotName(
+    details: { name: string; nameExpr: ExpressionNode | undefined },
+    value: AttrNode['value']
+  ): void {
+    if (typeof value === 'string') details.name = value;
+    else if (value !== true) details.nameExpr = value;
+  }
+
+  private parseSlotContent(details: {
+    name: string;
+    nameExpr: ExpressionNode | undefined;
+  }): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     if (this.at('/>')) {
       this.advance(2);
-      return { ok: true, node: { type: 'slot', name, nameExpr, children: [] } };
-    } else if (this.peek() === '>') {
-      this.advance();
-      const children: TemplateNode[] = [];
-      while (!this.eof()) {
-        if (this.at('</slot>')) {
-          this.pos += 7;
-          return { ok: true, node: { type: 'slot', name, nameExpr, children } };
-        }
-        const childStartPos = this.pos;
-        const childResult = this.parseNode();
-        if (!childResult.ok) return childResult;
-        if (childResult.node === null) {
-          if (this.pos === childStartPos) break;
-          continue;
-        }
-        children.push(childResult.node);
-      }
-      return { ok: false, error: this.error('Unclosed <slot> tag') };
-    } else {
+      return { ok: true, node: { type: 'slot', ...details, children: [] } };
+    }
+    if (this.peek() !== '>') {
       return { ok: false, error: this.error('Expected `/>` or `>` after <slot> attributes') };
     }
+    this.advance();
+    return this.parseSlotChildren(details);
+  }
+
+  private parseSlotChildren(details: {
+    name: string;
+    nameExpr: ExpressionNode | undefined;
+  }): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
+    const children: TemplateNode[] = [];
+    while (!this.eof()) {
+      const result = this.parseSlotChild(children);
+      if (!result.ok) return result;
+      if (result.status !== 'continue')
+        return this.completeSlotChildResult(result.status, details, children);
+    }
+    return { ok: false, error: this.error('Unclosed <slot> tag') };
+  }
+
+  private parseSlotChild(
+    children: TemplateNode[]
+  ): { ok: true; status: 'continue' | 'closing' | 'stop' } | { ok: false; error: ParseError } {
+    if (this.at('</slot>')) {
+      this.pos += 7;
+      return { ok: true, status: 'closing' };
+    }
+    const result = this.parseChild(children);
+    if (!result.ok) return result;
+    return { ok: true, status: result.shouldStop ? 'stop' : 'continue' };
+  }
+
+  private completeSlotChildResult(
+    status: 'closing' | 'stop',
+    details: { name: string; nameExpr: ExpressionNode | undefined },
+    children: TemplateNode[]
+  ): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
+    return status === 'closing'
+      ? { ok: true, node: { type: 'slot', ...details, children } }
+      : { ok: false, error: this.error('Unclosed <slot> tag') };
+  }
+
+  private parseChild(
+    children: TemplateNode[]
+  ): { ok: true; shouldStop: boolean } | { ok: false; error: ParseError } {
+    const childStartPos = this.pos;
+    const childResult = this.parseNode();
+    if (!childResult.ok) return childResult;
+    if (childResult.node === null) {
+      return { ok: true, shouldStop: this.pos === childStartPos };
+    }
+    children.push(childResult.node);
+    return { ok: true, shouldStop: false };
   }
 
   // ── Generic element ───────────────────────────────────────────────────────
@@ -524,150 +685,226 @@ class Parser {
     const attrsResult = this.parseAttributes(tag);
     if (!attrsResult.ok) return attrsResult;
 
-    // Determine if this is a raw tag (is:raw)
-    const isRaw = attrsResult.attrs.some((a) => !('type' in a) && a.name === 'is:raw');
+    const opening = this.consumeGenericOpeningTag(tag, attrsResult.attrs);
+    if (!opening.ok) return opening;
+    if (opening.selfClosing) return opening;
+    return this.parseOpenedGenericElement(tag, attrsResult.attrs, start);
+  }
 
-    // Self-closing
-    if (this.at('/>')) {
-      this.advance(2);
-      return {
-        ok: true,
-        node: {
-          type: 'element',
-          tag,
-          attrs: attrsResult.attrs.filter((a) => 'type' in a || a.name !== 'is:raw'),
-          children: [],
-          selfClosing: true,
-        },
-      };
+  private consumeGenericOpeningTag(
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[]
+  ):
+    | { ok: true; selfClosing: false }
+    | { ok: true; selfClosing: true; node: ElementNode }
+    | { ok: false; error: ParseError } {
+    if (this.at('/>')) return this.parseSelfClosingElement(tag, attrs);
+    if (this.peek() !== '>') return this.unclosedOpeningTagError(tag);
+    this.advance();
+    return { ok: true, selfClosing: false };
+  }
+
+  private parseOpenedGenericElement(
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[],
+    start: number
+  ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
+    if (this.hasRawAttribute(attrs)) return this.parseRawElement(tag, attrs);
+    if (VOID_ELEMENTS.has(tag.toLowerCase())) {
+      return { ok: true, node: this.createElement(tag, attrs, [], false) };
+    }
+    return this.parseElementChildren(tag, attrs, start);
+  }
+
+  private hasRawAttribute(attrs: (AttrNode | SpreadAttrNode)[]): boolean {
+    return attrs.some((attr) => !('type' in attr) && attr.name === 'is:raw');
+  }
+
+  private parseSelfClosingElement(
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[]
+  ): { ok: true; selfClosing: true; node: ElementNode } {
+    this.advance(2);
+    return {
+      ok: true,
+      selfClosing: true,
+      node: this.createElement(tag, this.removeRawAttribute(attrs), [], true),
+    };
+  }
+
+  private unclosedOpeningTagError(tag: string): { ok: false; error: ParseError } {
+    return {
+      ok: false,
+      error: makeError(
+        `Expected '>' or '/>' to close opening tag <${tag}>`,
+        this.full,
+        this.bodyOffset + this.pos
+      ),
+    };
+  }
+
+  private parseRawElement(
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[]
+  ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
+    if (tag === 'Fragment' || tag === '') {
+      return { ok: false, error: this.error('is:raw is not supported on Fragments') };
+    }
+    const closeIdx = this.findRawClosingTag(tag);
+    if (closeIdx === -1) {
+      return { ok: false, error: this.error(`Unclosed <${tag}> tag with is:raw`) };
     }
 
-    if (this.peek() !== '>') {
-      return {
-        ok: false,
-        error: makeError(
-          `Expected '>' or '/>' to close opening tag <${tag}>`,
-          this.full,
-          this.bodyOffset + this.pos
-        ),
-      };
+    const closeTag = `</${tag}>`;
+    const content = this.src.slice(this.pos, closeIdx);
+    this.pos = closeIdx + closeTag.length;
+    return {
+      ok: true,
+      node: this.createElement(
+        tag,
+        this.removeRawAttribute(attrs),
+        [{ type: 'raw', html: content }],
+        false
+      ),
+    };
+  }
+
+  private findRawClosingTag(tag: string): number {
+    const closeTag = `</${tag}>`;
+    let depth = 1;
+    let cursor = this.pos;
+    let closeIdx = -1;
+
+    while (depth > 0) {
+      const next = this.findNextRawTag(tag, closeTag, cursor);
+      if (!next) return -1;
+      depth += next.depthChange;
+      cursor = next.cursor;
+      if (next.closeIdx !== undefined) closeIdx = next.closeIdx;
     }
-    this.advance(); // >
+    return closeIdx;
+  }
 
-    if (isRaw) {
-      if (tag === 'Fragment' || tag === '') {
-        return { ok: false, error: this.error('is:raw is not supported on Fragments') };
-      }
-      const openTag = `<${tag}`;
-      const closeTag = `</${tag}>`;
-      let depth = 1;
-      let curPos = this.pos;
-      let closeIdx = -1;
+  private findNextRawTag(
+    tag: string,
+    closeTag: string,
+    cursor: number
+  ): { depthChange: number; cursor: number; closeIdx?: number } | undefined {
+    const nextClose = this.src.indexOf(closeTag, cursor);
+    if (nextClose === -1) return undefined;
 
-      while (depth > 0) {
-        const nextOpen = this.src.indexOf(openTag, curPos);
-        const nextClose = this.src.indexOf(closeTag, curPos);
-
-        if (nextClose === -1) {
-          return { ok: false, error: this.error(`Unclosed <${tag}> tag with is:raw`) };
-        }
-
-        if (nextOpen !== -1 && nextOpen < nextClose) {
-          const after = this.src[nextOpen + openTag.length];
-          if (!after || /[\s/>]/.test(after)) {
-            depth++;
-            curPos = nextOpen + openTag.length;
-          } else {
-            curPos = nextOpen + openTag.length;
-          }
-        } else {
-          depth--;
-          closeIdx = nextClose;
-          curPos = nextClose + closeTag.length;
-        }
-      }
-
-      const rawContent = this.src.slice(this.pos, closeIdx);
-      this.pos = closeIdx + closeTag.length;
-      return {
-        ok: true,
-        node: {
-          type: 'element',
-          tag,
-          attrs: attrsResult.attrs.filter((a) => 'type' in a || a.name !== 'is:raw'),
-          children: [{ type: 'raw', html: rawContent }],
-          selfClosing: false,
-        },
-      };
+    const nextOpen = this.findRawOpeningTag(tag, cursor);
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      return { depthChange: 1, cursor: nextOpen + tag.length + 1 };
     }
+    return { depthChange: -1, cursor: nextClose + closeTag.length, closeIdx: nextClose };
+  }
 
-    // Void elements — no children, no closing tag
-    const lowerTag = tag.toLowerCase();
-    if (VOID_ELEMENTS.has(lowerTag)) {
-      return {
-        ok: true,
-        node: { type: 'element', tag, attrs: attrsResult.attrs, children: [], selfClosing: false },
-      };
-    }
+  private findRawOpeningTag(tag: string, cursor: number): number {
+    const index = this.src.indexOf(`<${tag}`, cursor);
+    if (index === -1) return -1;
 
-    // Parse children until </tag>
+    const nextCharacter = this.src[index + tag.length + 1];
+    if (!nextCharacter) return index;
+    return /[\s/>]/.test(nextCharacter) ? index : -1;
+  }
+
+  private parseElementChildren(
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[],
+    start: number
+  ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
     const children: TemplateNode[] = [];
     while (!this.eof()) {
-      let isClosingTag = false;
-      if (tag === '') {
-        if (this.at('</>')) {
-          isClosingTag = true;
-          this.pos += 3;
-        }
-      } else {
-        if (
-          this.at(`</${tag}`) &&
-          /[\s>]/.test(this.full[this.bodyOffset + this.pos + 2 + tag.length] || '')
-        ) {
-          isClosingTag = true;
-          this.pos += 2 + tag.length; // </tag
-          this.skipWhitespace();
-          if (this.peek() !== '>') {
-            return {
-              ok: false,
-              error: this.error(`Expected '>' to close </${tag}>`),
-            };
-          }
-          this.advance(); // >
-        }
-      }
-
-      if (isClosingTag) {
-        return {
-          ok: true,
-          node: { type: 'element', tag, attrs: attrsResult.attrs, children, selfClosing: false },
-        };
-      }
-
-      // Closing tag for an ancestor or mismatched — stop parsing children
-      if (this.at('</')) {
-        return {
-          ok: true,
-          node: { type: 'element', tag, attrs: attrsResult.attrs, children, selfClosing: false },
-        };
-      }
-
-      const childStartPos = this.pos;
-      const childResult = this.parseNode();
-      if (!childResult.ok) return childResult;
-      if (childResult.node === null) {
-        // We hit a closing tag that didn't match, or a comment.
-        // If pos didn't advance, we must break to avoid infinite loop.
-        if (this.pos === childStartPos) break;
-        continue;
-      }
-      children.push(childResult.node);
+      const result = this.parseElementChild(tag, children);
+      if (!result.ok) return result;
+      if (result.status !== 'continue')
+        return this.completeElementChildResult(result.status, tag, attrs, children, start);
     }
+    return this.unclosedElementError(tag, start);
+  }
 
+  private parseElementChild(
+    tag: string,
+    children: TemplateNode[]
+  ): { ok: true; status: 'continue' | 'closing' | 'stop' } | { ok: false; error: ParseError } {
+    const closeResult = this.consumeMatchingClosingTag(tag);
+    if (!closeResult.ok) return closeResult;
+    if (closeResult.isClosing || this.at('</')) return { ok: true, status: 'closing' };
+    return this.parseElementContentChild(children);
+  }
+
+  private parseElementContentChild(
+    children: TemplateNode[]
+  ): { ok: true; status: 'continue' | 'stop' } | { ok: false; error: ParseError } {
+    const result = this.parseChild(children);
+    if (!result.ok) return result;
+    return { ok: true, status: result.shouldStop ? 'stop' : 'continue' };
+  }
+
+  private completeElementChildResult(
+    status: 'closing' | 'stop',
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[],
+    children: TemplateNode[],
+    start: number
+  ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
+    return status === 'closing'
+      ? { ok: true, node: this.createElement(tag, attrs, children, false) }
+      : this.unclosedElementError(tag, start);
+  }
+
+  private unclosedElementError(tag: string, start: number): { ok: false; error: ParseError } {
     return {
       ok: false,
       error: makeError(`Unclosed tag <${tag}>`, this.full, this.bodyOffset + start),
     };
+  }
+
+  private consumeMatchingClosingTag(
+    tag: string
+  ): { ok: true; isClosing: boolean } | { ok: false; error: ParseError } {
+    if (tag === '') return this.consumeFragmentClosingTag();
+    if (!this.isMatchingClosingTag(tag)) return { ok: true, isClosing: false };
+    return this.consumeNamedClosingTag(tag);
+  }
+
+  private consumeFragmentClosingTag(): { ok: true; isClosing: boolean } {
+    if (!this.at('</>')) return { ok: true, isClosing: false };
+    this.pos += 3;
+    return { ok: true, isClosing: true };
+  }
+
+  private isMatchingClosingTag(tag: string): boolean {
+    const closeStart = `</${tag}`;
+    if (!this.at(closeStart)) return false;
+    const closingCharacter = this.full[this.bodyOffset + this.pos + closeStart.length] || '';
+    return /[\s>]/.test(closingCharacter);
+  }
+
+  private consumeNamedClosingTag(
+    tag: string
+  ): { ok: true; isClosing: boolean } | { ok: false; error: ParseError } {
+    this.pos += tag.length + 2;
+    this.skipWhitespace();
+    if (this.peek() !== '>') {
+      return { ok: false, error: this.error(`Expected '>' to close </${tag}>`) };
+    }
+    this.advance();
+    return { ok: true, isClosing: true };
+  }
+
+  private createElement(
+    tag: string,
+    attrs: (AttrNode | SpreadAttrNode)[],
+    children: TemplateNode[],
+    selfClosing: boolean
+  ): ElementNode {
+    return { type: 'element', tag, attrs, children, selfClosing };
+  }
+
+  private removeRawAttribute(attrs: (AttrNode | SpreadAttrNode)[]): (AttrNode | SpreadAttrNode)[] {
+    return attrs.filter((attr) => 'type' in attr || attr.name !== 'is:raw');
   }
 
   // ── Attribute parsing ─────────────────────────────────────────────────────
@@ -676,60 +913,63 @@ class Parser {
     tagName?: string
   ): { ok: true; attrs: (AttrNode | SpreadAttrNode)[] } | { ok: false; error: ParseError } {
     const attrs: (AttrNode | SpreadAttrNode)[] = [];
-
     while (!this.eof()) {
       this.skipWhitespace();
+      if (this.shouldStopParsingAttributes(tagName)) break;
 
-      // End of opening tag
-      if (
-        this.peek() === '>' ||
-        this.at('/>') ||
-        (tagName === 'script' || tagName === 'style' ? this.peek() === '/' : false)
-      )
-        break;
-
-      if (this.at('{...')) {
-        const exprResult = this.parseExpression();
-        if (!exprResult.ok) return exprResult;
-
-        const exprNode = exprResult.node;
-        if (exprNode.source.startsWith('...')) {
-          exprNode.source = exprNode.source.slice(3).trim();
-          if (exprNode.nodes && typeof exprNode.nodes[0] === 'string') {
-            exprNode.nodes[0] = (exprNode.nodes[0] as string).slice(3).trim();
-          }
-        }
-
-        attrs.push({ type: 'spread', expression: exprNode });
-        continue;
-      }
-
-      // Attribute name
-      const name = this.readAttrName();
-      if (!name) {
-        // If we are at EOF or hit unexpected char and not at tag end, it's an error
-        if (this.eof()) break;
-        return { ok: false, error: this.error('Expected attribute name') };
-      }
-
-      this.skipWhitespace();
-
-      // Boolean attribute (no value)
-      if (this.peek() !== '=') {
-        attrs.push({ name, value: true });
-        continue;
-      }
-
-      this.advance(); // consume '='
-      this.skipWhitespace();
-
-      // Attribute value
-      const valResult = this.parseAttrValue();
-      if (!valResult.ok) return valResult;
-      attrs.push({ name, value: valResult.value });
+      const result = this.parseAttribute();
+      if (!result.ok) return result;
+      attrs.push(result.attr);
     }
-
     return { ok: true, attrs };
+  }
+
+  private shouldStopParsingAttributes(tagName?: string): boolean {
+    return this.eof() || this.isAttributeTerminator(tagName);
+  }
+
+  private isAttributeTerminator(tagName?: string): boolean {
+    if (this.peek() === '>') return true;
+    if (this.at('/>')) return true;
+    return this.isRawAssetTag(tagName) && this.peek() === '/';
+  }
+
+  private isRawAssetTag(tagName: string | undefined): boolean {
+    return tagName === 'script' || tagName === 'style';
+  }
+
+  private parseAttribute(): AttributeParseResult {
+    return this.at('{...') ? this.parseSpreadAttribute() : this.parseNamedAttribute();
+  }
+
+  private parseSpreadAttribute(): AttributeParseResult {
+    const result = this.parseExpression();
+    if (!result.ok) return result;
+
+    const expression = result.node;
+    expression.source = expression.source.slice(3).trim();
+    if (expression.nodes && typeof expression.nodes[0] === 'string') {
+      expression.nodes[0] = expression.nodes[0].slice(3).trim();
+    }
+    return { ok: true, attr: { type: 'spread', expression } };
+  }
+
+  private parseNamedAttribute(): AttributeParseResult {
+    const name = this.readAttrName();
+    if (!name) return this.missingAttributeNameError();
+
+    this.skipWhitespace();
+    if (this.peek() !== '=') return { ok: true, attr: { name, value: true } };
+
+    this.advance(); // consume '='
+    this.skipWhitespace();
+    const valueResult = this.parseAttrValue();
+    if (!valueResult.ok) return valueResult;
+    return { ok: true, attr: { name, value: valueResult.value } };
+  }
+
+  private missingAttributeNameError(): AttributeParseResult {
+    return { ok: false, error: this.error('Expected attribute name') };
   }
 
   private readAttrName(): string {
@@ -743,30 +983,36 @@ class Parser {
   private parseAttrValue():
     | { ok: true; value: string | ExpressionNode }
     | { ok: false; error: ParseError } {
-    const ch = this.peek();
+    if (this.peek() === '{') return this.parseExpressionAttributeValue();
+    if (this.isQuotedAttributeValue()) return this.parseQuotedAttributeValue(this.peek());
+    return this.parseUnquotedAttributeValue();
+  }
 
-    // Dynamic expression value: attr={expr}
-    if (ch === '{') {
-      const exprResult = this.parseExpression();
-      if (!exprResult.ok) return exprResult;
-      return { ok: true, value: exprResult.node };
+  private parseExpressionAttributeValue():
+    | { ok: true; value: ExpressionNode }
+    | { ok: false; error: ParseError } {
+    const result = this.parseExpression();
+    return result.ok ? { ok: true, value: result.node } : result;
+  }
+
+  private isQuotedAttributeValue(): boolean {
+    return this.peek() === '"' || this.peek() === "'";
+  }
+
+  private parseQuotedAttributeValue(
+    quote: string
+  ): { ok: true; value: string } | { ok: false; error: ParseError } {
+    this.advance(); // opening quote
+    let value = '';
+    while (!this.eof() && this.peek() !== quote) {
+      value += this.advance();
     }
+    if (this.eof()) return { ok: false, error: this.error(`Unclosed attribute value string`) };
+    this.advance(); // closing quote
+    return { ok: true, value };
+  }
 
-    // Quoted string value
-    if (ch === '"' || ch === "'") {
-      this.advance(); // opening quote
-      let value = '';
-      while (!this.eof() && this.peek() !== ch) {
-        value += this.advance();
-      }
-      if (this.eof()) {
-        return { ok: false, error: this.error(`Unclosed attribute value string`) };
-      }
-      this.advance(); // closing quote
-      return { ok: true, value };
-    }
-
-    // Unquoted value (read until whitespace or >)
+  private parseUnquotedAttributeValue(): { ok: true; value: string } {
     let value = '';
     while (!this.eof() && !/[\s>]/.test(this.peek())) {
       value += this.advance();

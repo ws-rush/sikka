@@ -43,105 +43,215 @@ type StyleObjectArg =
   | Record<string, string | number | null | undefined>
   | null
   | undefined;
+const STREAMING_TARGET = '__buf';
+
+type CompileSetupOptions = CompileOptions & {
+  fileReader?: (path: string) => string;
+  basePath?: string;
+};
+
+interface RuntimeHelpers {
+  classListHelper: (arg: ClassListArg) => string;
+  styleObjectHelper: (arg: StyleObjectArg) => string;
+  filterHelper: (val: unknown) => unknown;
+}
+
+function createRuntimeHelpers(options?: CompileOptions): RuntimeHelpers {
+  return {
+    classListHelper,
+    styleObjectHelper,
+    filterHelper: options?.autoFilter
+      ? options.filterFunction || ((value: unknown) => value)
+      : (value: unknown) => value,
+  };
+}
+
+function classListHelper(arg: ClassListArg): string {
+  if (typeof arg === 'string') return arg;
+  if (arg instanceof Set) return Array.from(arg).join(' ');
+  if (Array.isArray(arg)) return arg.map(classListHelper).filter(Boolean).join(' ');
+  return classListObject(arg);
+}
+
+function classListObject(arg: ClassListArg): string {
+  if (!arg || typeof arg !== 'object') return '';
+  return Object.entries(arg)
+    .filter(([_, value]) => value)
+    .map(([key]) => key)
+    .join(' ');
+}
+
+function styleObjectHelper(arg: StyleObjectArg): string {
+  if (typeof arg === 'string') return arg;
+  if (!arg || typeof arg !== 'object') return '';
+  return stringifiedStyleObject(arg);
+}
+
+function stringifiedStyleObject(arg: Record<string, string | number | null | undefined>): string {
+  if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
+    return arg.toString();
+  }
+  return Object.entries(arg)
+    .map(([key, value]) => `${key.replace(/[A-Z]/g, toKebabCase)}:${value}`)
+    .join(';');
+}
+
+function toKebabCase(match: string): string {
+  return '-' + match.toLowerCase();
+}
 
 // ─── Component resolution ─────────────────────────────────────────────────────
 
 type ResolveResult =
   | { ok: true; components: Record<string, RenderFunction> }
   | { ok: false; error: CompileError };
+type ComponentFailure = { ok: false; error: CompileError };
+type ComponentResolution = { ok: true; fn: RenderFunction } | ComponentFailure;
 
 /**
  * Recursively resolve and compile all component imports in an AST (Synchronous).
  */
 function resolveComponentsSync(
   imports: ComponentImport[],
-  fileReader: (path: string) => string,
+  fileReader: ((path: string) => string) | undefined,
   basePath: string,
   options: CompileOptions,
   inProgress: Set<string> = new Set()
 ): ResolveResult {
   const components: Record<string, RenderFunction> = {};
-
-  for (const imp of imports) {
-    if (options.components && options.components[imp.localName]) {
-      continue;
-    }
-
-    if (!fileReader) {
-      return {
-        ok: false,
-        error: {
-          message: `Cannot resolve component: ${imp.specifier} (no readFileSync provided)`,
-          specifier: imp.specifier,
-        },
-      };
-    }
-
-    const resolvedPath = resolvePath(basePath, imp.specifier);
-
-    if (inProgress.has(resolvedPath)) {
-      const cycle = [...inProgress, resolvedPath];
-      return {
-        ok: false,
-        error: {
-          message: `Circular component dependency detected: ${cycle.join(' → ')}`,
-          specifier: imp.specifier,
-          cycle,
-        },
-      };
-    }
-
-    let source: string;
-    try {
-      source = fileReader(resolvedPath);
-      if (source === undefined || source === null) {
-        throw new Error('Not found');
-      }
-    } catch {
-      return {
-        ok: false,
-        error: {
-          message: `Cannot resolve component: ${imp.specifier}`,
-          specifier: imp.specifier,
-        },
-      };
-    }
-
-    const parseResult = parse(source);
-    if (!parseResult.ok) {
-      return {
-        ok: false,
-        error: {
-          message: `Parse error in component ${imp.specifier}: ${parseResult.error.message}`,
-          specifier: imp.specifier,
-        },
-      };
-    }
-
-    const childInProgress = new Set([...inProgress, resolvedPath]);
-    const childResult = resolveComponentsSync(
-      parseResult.ast.imports,
-      fileReader,
-      resolvedPath,
-      options,
-      childInProgress
-    );
-    if (!childResult.ok) {
-      return childResult;
-    }
-
-    const compileResult = compileAST(parseResult.ast, {
-      ...options,
-      components: { ...options.components, ...childResult.components },
-    });
-    if (!compileResult.ok) {
-      return { ok: false, error: compileResult.error };
-    }
-
-    components[imp.localName] = compileResult.fn;
+  for (const imp of imports.filter((item) => !options.components?.[item.localName])) {
+    const result = resolveComponentImport(imp, fileReader, basePath, options, inProgress);
+    if (!result.ok) return result;
+    components[imp.localName] = result.fn;
   }
-
   return { ok: true, components };
+}
+
+function resolveComponentImport(
+  imp: ComponentImport,
+  fileReader: ((path: string) => string) | undefined,
+  basePath: string,
+  options: CompileOptions,
+  inProgress: Set<string>
+): ComponentResolution {
+  if (!fileReader) return missingComponentReader(imp);
+  const pathResult = resolveComponentPath(imp, basePath, inProgress);
+  if (!pathResult.ok) return pathResult;
+  return compileResolvedComponent(imp, fileReader, pathResult.path, options, inProgress);
+}
+
+function resolveComponentPath(
+  imp: ComponentImport,
+  basePath: string,
+  inProgress: Set<string>
+): { ok: true; path: string } | { ok: false; error: CompileError } {
+  const path = resolvePath(basePath, imp.specifier);
+  if (inProgress.has(path)) return circularComponentError(imp, inProgress, path);
+  return { ok: true, path };
+}
+
+function compileResolvedComponent(
+  imp: ComponentImport,
+  fileReader: (path: string) => string,
+  resolvedPath: string,
+  options: CompileOptions,
+  inProgress: Set<string>
+): ComponentResolution {
+  const astResult = readComponentAST(imp, fileReader, resolvedPath);
+  if (!astResult.ok) return astResult;
+
+  const childResult = resolveComponentsSync(
+    astResult.ast.imports,
+    fileReader,
+    resolvedPath,
+    options,
+    new Set([...inProgress, resolvedPath])
+  );
+  if (!childResult.ok) return childResult;
+  return compileResolvedComponentAST(astResult.ast, options, childResult.components);
+}
+
+function compileResolvedComponentAST(
+  ast: TemplateAST,
+  options: CompileOptions,
+  childComponents: Record<string, RenderFunction>
+): ComponentResolution {
+  const result = compileAST(ast, {
+    ...options,
+    components: { ...options.components, ...childComponents },
+  });
+  return result.ok ? { ok: true, fn: result.fn } : result;
+}
+
+function missingComponentReader(imp: ComponentImport): ComponentFailure {
+  return {
+    ok: false,
+    error: {
+      message: `Cannot resolve component: ${imp.specifier} (no readFileSync provided)`,
+      specifier: imp.specifier,
+    },
+  };
+}
+
+function circularComponentError(
+  imp: ComponentImport,
+  inProgress: Set<string>,
+  resolvedPath: string
+): ComponentFailure {
+  const cycle = [...inProgress, resolvedPath];
+  return {
+    ok: false,
+    error: {
+      message: `Circular component dependency detected: ${cycle.join(' → ')}`,
+      specifier: imp.specifier,
+      cycle,
+    },
+  };
+}
+
+function readComponentAST(
+  imp: ComponentImport,
+  fileReader: (path: string) => string,
+  resolvedPath: string
+): { ok: true; ast: TemplateAST } | { ok: false; error: CompileError } {
+  const sourceResult = readComponentSource(imp, fileReader, resolvedPath);
+  if (!sourceResult.ok) return sourceResult;
+  return parseComponentSource(imp, sourceResult.source);
+}
+
+function readComponentSource(
+  imp: ComponentImport,
+  fileReader: (path: string) => string,
+  resolvedPath: string
+): { ok: true; source: string } | { ok: false; error: CompileError } {
+  try {
+    const source = fileReader(resolvedPath);
+    return source == null ? unresolvedComponentError(imp) : { ok: true, source };
+  } catch {
+    return unresolvedComponentError(imp);
+  }
+}
+
+function unresolvedComponentError(imp: ComponentImport): { ok: false; error: CompileError } {
+  return {
+    ok: false,
+    error: { message: `Cannot resolve component: ${imp.specifier}`, specifier: imp.specifier },
+  };
+}
+
+function parseComponentSource(
+  imp: ComponentImport,
+  source: string
+): { ok: true; ast: TemplateAST } | { ok: false; error: CompileError } {
+  const result = parse(source);
+  if (result.ok) return { ok: true, ast: result.ast };
+  return {
+    ok: false,
+    error: {
+      message: `Parse error in component ${imp.specifier}: ${result.error.message}`,
+      specifier: imp.specifier,
+    },
+  };
 }
 
 export const compile = compileSync;
@@ -149,256 +259,345 @@ export const compile = compileSync;
 /**
  * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
-function compileSync(
-  ast: TemplateAST,
-  options?: CompileOptions & { fileReader?: (path: string) => string; basePath?: string }
-): CompileResult {
-  let components = options?.components ?? {};
+function compileSync(ast: TemplateAST, options?: CompileSetupOptions): CompileResult {
+  const result = resolveCompileOptions(ast, options);
+  if (!result.ok) return result;
+  return compileAST(ast, { ...options, components: result.components });
+}
 
-  if (ast.imports.length > 0) {
-    const fileReader = options?.fileReader;
-    const basePath = options?.basePath ?? '';
-    const result = resolveComponentsSync(
-      ast.imports,
-      fileReader as (path: string) => string,
-      basePath,
-      {
-        ...options,
-        components,
-      }
-    );
-    if (!result.ok) {
-      return result;
-    }
-    components = { ...result.components, ...components };
-  }
+function resolveCompileOptions(ast: TemplateAST, options?: CompileSetupOptions): ResolveResult {
+  return ast.imports.length === 0
+    ? resolvedInitialComponents(options)
+    : resolveImportedComponents(ast.imports, options);
+}
 
-  return compileAST(ast, { ...options, components });
+function resolvedInitialComponents(options?: CompileSetupOptions): ResolveResult {
+  return { ok: true, components: initialComponents(options) };
+}
+
+function resolveImportedComponents(
+  imports: ComponentImport[],
+  options?: CompileSetupOptions
+): ResolveResult {
+  const components = initialComponents(options);
+  const result = resolveComponentImports(imports, options, components);
+  return mergeResolvedComponents(result, components);
+}
+
+function resolveComponentImports(
+  imports: ComponentImport[],
+  options: CompileSetupOptions | undefined,
+  components: Record<string, RenderFunction>
+): ResolveResult {
+  return resolveComponentsSync(imports, componentFileReader(options), componentBasePath(options), {
+    ...options,
+    components,
+  });
+}
+
+function componentFileReader(
+  options: CompileSetupOptions | undefined
+): ((path: string) => string) | undefined {
+  return options?.fileReader;
+}
+
+function componentBasePath(options: CompileSetupOptions | undefined): string {
+  return options?.basePath ?? '';
+}
+
+function mergeResolvedComponents(
+  result: ResolveResult,
+  components: Record<string, RenderFunction>
+): ResolveResult {
+  if (!result.ok) return result;
+  return { ok: true, components: { ...result.components, ...components } };
+}
+
+function initialComponents(options?: CompileSetupOptions): Record<string, RenderFunction> {
+  return options?.components ?? {};
 }
 
 function resolvePath(basePath: string, specifier: string): string {
-  if (!specifier.startsWith('./') && !specifier.startsWith('../')) {
-    return specifier;
-  }
+  if (!isRelativeSpecifier(specifier)) return specifier;
   const lastSlash = basePath.lastIndexOf('/');
   const baseDir = lastSlash >= 0 ? basePath.slice(0, lastSlash) : '';
-  const joined = baseDir ? `${baseDir}/${specifier}` : specifier;
-  return normalisePath(joined);
+  return normalisePath(baseDir ? `${baseDir}/${specifier}` : specifier);
+}
+
+function isRelativeSpecifier(specifier: string): boolean {
+  return specifier.startsWith('./') || specifier.startsWith('../');
 }
 
 function normalisePath(path: string): string {
-  const parts = path.split('/');
   const resolved: string[] = [];
-  for (const part of parts) {
-    if (part === '.' || part === '') continue;
-    if (part === '..') {
-      resolved.pop();
-    } else {
-      resolved.push(part);
-    }
+  for (const part of path.split('/')) {
+    appendPathSegment(resolved, part);
   }
-  const prefix = path.startsWith('/') ? '/' : '';
-  return prefix + resolved.join('/');
+  return (path.startsWith('/') ? '/' : '') + resolved.join('/');
+}
+
+function appendPathSegment(resolved: string[], part: string): void {
+  if (part === '.' || part === '') return;
+  if (part === '..') resolved.pop();
+  else resolved.push(part);
 }
 
 /**
  * Compile a TemplateAST into a RenderFunction.
  */
+type GeneratedSyncFunction = (
+  props: Record<string, unknown>,
+  slots: Record<string, string>,
+  escape: typeof escapeHtml,
+  rawHtml: typeof RawHtml,
+  components: Record<string, RenderFunction>,
+  classList: RuntimeHelpers['classListHelper'],
+  styleObject: RuntimeHelpers['styleObjectHelper'],
+  filter: RuntimeHelpers['filterHelper']
+) => string;
+
 function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
   try {
-    const components = options?.components ?? {};
-    const renderSyncBody = buildFunctionBody(ast, components, options);
-
-    const syncFn = new Function(
-      'props',
-      'slots',
-      '__escape',
-      '__RawHtml',
-      '__components',
-      '__classList',
-      '__styleObject',
-      '__filter',
-      renderSyncBody
-    );
-
-    const classListHelper = (arg: ClassListArg): string => {
-      // ... (omitting for brevity in this thought, will use full edit)
-      if (typeof arg === 'string') return arg;
-      if (arg instanceof Set) return Array.from(arg).join(' ');
-      if (Array.isArray(arg)) return arg.map(classListHelper).filter(Boolean).join(' ');
-      if (arg && typeof arg === 'object') {
-        return Object.entries(arg)
-          .filter(([_, v]) => v)
-          .map(([k]) => k)
-          .join(' ');
-      }
-      return '';
-    };
-
-    const styleObjectHelper = (arg: StyleObjectArg): string => {
-      if (typeof arg === 'string') return arg;
-      if (arg && typeof arg === 'object') {
-        if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
-          return arg.toString();
-        }
-        return Object.entries(arg)
-          .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}:${v}`)
-          .join(';');
-      }
-      return '';
-    };
-
-    const filterHelper = options?.autoFilter
-      ? options.filterFunction || ((v: unknown) => v)
-      : (v: unknown) => v;
-
-    const renderFn = (async (
-      props: Record<string, unknown>,
-      slots?: Record<string, string>
-    ): Promise<string> => {
-      return renderFn.renderSync(props, slots);
-    }) as RenderFunction;
-
-    renderFn.render = async function (
-      props: Record<string, unknown>,
-      slots?: Record<string, string | AsyncIterable<string>>
-    ): Promise<string> {
-      // Convert AsyncIterable slots to strings for sync rendering
-      const syncSlots: Record<string, string> = {};
-      if (slots) {
-        for (const [key, val] of Object.entries(slots)) {
-          if (typeof val === 'string') {
-            syncSlots[key] = val;
-          }
-          // AsyncIterable slots are not supported in sync render path
-        }
-      }
-      return renderFn.renderSync(props, syncSlots);
-    };
-
-    renderFn.renderSync = function (
-      props: Record<string, unknown>,
-      slots?: Record<string, string>
-    ): string {
-      try {
-        const s = slots ?? {};
-        return syncFn(
-          props,
-          s,
-          escapeHtml,
-          RawHtml,
-          components,
-          classListHelper,
-          styleObjectHelper,
-          filterHelper
-        );
-      } catch (err: unknown) {
-        if (options?.debug) {
-          throw new Error(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
-            cause: err,
-          });
-        }
-        throw err;
-      }
-    };
-
-    return { ok: true, fn: renderFn, source: renderSyncBody };
+    return compileASTUnsafe(ast, options);
   } catch (err) {
-    return {
-      ok: false,
-      error: { message: err instanceof Error ? err.message : String(err) },
-    };
+    return { ok: false, error: { message: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
+function compileASTUnsafe(ast: TemplateAST, options?: CompileOptions): CompileResult {
+  const components = options?.components ?? {};
+  const source = buildFunctionBody(ast, components, options, '__out', 'return __out;');
+  const renderFn = createRenderFunction(
+    createSyncFunction(source),
+    components,
+    createRuntimeHelpers(options),
+    options?.debug
+  );
+  return { ok: true, fn: renderFn, source };
+}
+
+function createSyncFunction(source: string): GeneratedSyncFunction {
+  return new Function(
+    'props',
+    'slots',
+    '__escape',
+    '__RawHtml',
+    '__components',
+    '__classList',
+    '__styleObject',
+    '__filter',
+    source
+  ) as GeneratedSyncFunction;
+}
+
+function createRenderFunction(
+  syncFn: GeneratedSyncFunction,
+  components: Record<string, RenderFunction>,
+  helpers: RuntimeHelpers,
+  debug: boolean | undefined
+): RenderFunction {
+  const renderFn = (async (
+    props: Record<string, unknown>,
+    slots?: Record<string, string>
+  ): Promise<string> => renderFn.renderSync(props, slots)) as RenderFunction;
+
+  renderFn.render = async function (
+    props: Record<string, unknown>,
+    slots?: Record<string, string | AsyncIterable<string>>
+  ): Promise<string> {
+    const syncSlots: Record<string, string> = {};
+    for (const [key, value] of Object.entries(slots ?? {})) {
+      if (typeof value === 'string') syncSlots[key] = value;
+    }
+    return renderFn.renderSync(props, syncSlots);
+  };
+
+  renderFn.renderSync = (props, slots): string =>
+    executeSyncFunction(syncFn, props, slots ?? {}, components, helpers, debug);
+  return renderFn;
+}
+
+function executeSyncFunction(
+  syncFn: GeneratedSyncFunction,
+  props: Record<string, unknown>,
+  slots: Record<string, string>,
+  components: Record<string, RenderFunction>,
+  helpers: RuntimeHelpers,
+  debug: boolean | undefined
+): string {
+  try {
+    return syncFn(
+      props,
+      slots,
+      escapeHtml,
+      RawHtml,
+      components,
+      helpers.classListHelper,
+      helpers.styleObjectHelper,
+      helpers.filterHelper
+    );
+  } catch (err: unknown) {
+    if (debug) {
+      throw new Error(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
+    }
+    throw err;
   }
 }
 
 function buildFunctionBody(
   ast: TemplateAST,
   components: Record<string, RenderFunction>,
-  options?: CompileOptions
+  options: CompileOptions | undefined,
+  target: string,
+  completion: string
 ): string {
-  const lines: string[] = [];
+  const lines = [`let ${target} = "";`, ...buildFunctionPreamble(ast, options)];
+  const bodyLines = ast.body.flatMap((node) => emitNode(node, components, options, target));
+
+  lines.push(...mergeLines(bodyLines, target), completion);
+  return lines.join('\n');
+}
+
+function buildFunctionPreamble(ast: TemplateAST, options?: CompileOptions): string[] {
   const varName = options?.varName || 'Astro';
+  return [
+    ...buildAstroPreamble(ast, varName),
+    '',
+    ...buildComponentPreamble(ast.imports),
+    ...buildFrontmatterPreamble(ast.frontmatter.source),
+  ];
+}
 
-  lines.push(`let __out = "";`);
-
-  // Heuristic: only create Astro if it's explicitly used in the template or frontmatter
-  const isAstroUsed =
-    ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
-
-  if (isAstroUsed) {
-    lines.push(`const ${varName} = {
+function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
+  if (!usesAstroGlobal(ast, varName)) return [];
+  return [
+    `const ${varName} = {
       props,
       slots: {
         ...slots,
         render: (name) => new __RawHtml(slots[name] || ""),
         has: (name) => slots[name] !== undefined || (name === "default" && slots[""] !== undefined)
       }
-    };`);
-  }
-  lines.push('');
-  const importNames = ast.imports.map((imp) => imp.localName);
-  if (importNames.length > 0) {
-    for (const name of importNames) {
-      lines.push(`const ${name} = __components[${JSON.stringify(name)}];`);
-    }
-  }
+    };`,
+  ];
+}
 
-  if (ast.frontmatter.source.trim()) {
-    const cleanFM = ast.frontmatter.source
-      .replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '')
-      .replace(/^\s*export\s+/gm, '');
-    lines.push(cleanFM);
-    lines.push('');
-  }
+function usesAstroGlobal(ast: TemplateAST, varName: string): boolean {
+  return ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
+}
 
-  const bodyLines: string[] = [];
-  for (const node of ast.body) {
-    bodyLines.push(...emitNode(node, components, options, '__out'));
-  }
+function buildComponentPreamble(imports: ComponentImport[]): string[] {
+  return imports.map(
+    ({ localName }) => `const ${localName} = __components[${JSON.stringify(localName)}];`
+  );
+}
 
-  const mergedLines = mergeLines(bodyLines, '__out');
-  lines.push(...mergedLines);
-
-  lines.push(`return __out;`);
-  return lines.join('\n');
+function buildFrontmatterPreamble(source: string): string[] {
+  if (!source.trim()) return [];
+  const cleanSource = source
+    .replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '')
+    .replace(/^\s*export\s+/gm, '');
+  return [cleanSource, ''];
 }
 
 function mergeLines(bodyLines: string[], target: string): string[] {
   const lines: string[] = [];
   const prefix = `${target} += `;
-  let i = 0;
-  while (i < bodyLines.length) {
-    const line = bodyLines[i].trim();
-    if (line.startsWith(prefix)) {
-      let combined = line.slice(prefix.length);
-      if (combined.endsWith(';')) combined = combined.slice(0, -1);
-      let j = i + 1;
-      while (j < bodyLines.length) {
-        const nextLine = bodyLines[j].trim();
-        if (nextLine.startsWith(prefix)) {
-          let nextExpr = nextLine.slice(prefix.length);
-          if (nextExpr.endsWith(';')) nextExpr = nextExpr.slice(0, -1);
-
-          // Fold constant string concatenations like "a" + "b"
-          if (combined.endsWith('"') && nextExpr.startsWith('"')) {
-            combined = combined.slice(0, -1) + nextExpr.slice(1);
-          } else {
-            combined += ' + ' + nextExpr;
-          }
-          j++;
-        } else {
-          break;
-        }
-      }
-      lines.push(`${target} += ${combined};`);
-      i = j;
-    } else {
-      lines.push(bodyLines[i]);
-      i++;
-    }
+  let index = 0;
+  while (index < bodyLines.length) {
+    const result = mergeLineAt(bodyLines, index, prefix, target);
+    lines.push(result.line);
+    index = result.nextIndex;
   }
   return lines;
 }
+
+function mergeLineAt(
+  bodyLines: string[],
+  index: number,
+  prefix: string,
+  target: string
+): { line: string; nextIndex: number } {
+  const expression = outputExpression(bodyLines[index], prefix);
+  if (expression === undefined) return { line: bodyLines[index], nextIndex: index + 1 };
+
+  const merged = mergeAdjacentOutputExpressions(bodyLines, index + 1, prefix, expression);
+  return { line: `${target} += ${merged.expression};`, nextIndex: merged.nextIndex };
+}
+
+function outputExpression(line: string, prefix: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(prefix)) return undefined;
+  const expression = trimmed.slice(prefix.length);
+  return expression.endsWith(';') ? expression.slice(0, -1) : expression;
+}
+
+function mergeAdjacentOutputExpressions(
+  bodyLines: string[],
+  index: number,
+  prefix: string,
+  expression: string
+): { expression: string; nextIndex: number } {
+  let merged = expression;
+  let nextIndex = index;
+  while (nextIndex < bodyLines.length) {
+    const nextExpression = outputExpression(bodyLines[nextIndex], prefix);
+    if (nextExpression === undefined) break;
+    merged = combineOutputExpressions(merged, nextExpression);
+    nextIndex++;
+  }
+  return { expression: merged, nextIndex };
+}
+
+function combineOutputExpressions(previous: string, next: string): string {
+  return previous.endsWith('"') && next.startsWith('"')
+    ? previous.slice(0, -1) + next.slice(1)
+    : previous + ' + ' + next;
+}
+
+function emitChildren(
+  children: TemplateNode[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string,
+  indent = ''
+): string[] {
+  return children.flatMap((child) =>
+    emitNode(child, components, options, target).map((line) => indent + line)
+  );
+}
+
+type ElementAttribute = AttrNode | SpreadAttrNode;
+type DynamicAttribute = {
+  name: string;
+  value: ExpressionNode;
+  type?: 'list' | 'style';
+};
+type ElementAttributeGroups = {
+  setHtml?: AttrNode;
+  setText?: AttrNode;
+  standardAttrs: ElementAttribute[];
+  hasSpread: boolean;
+};
+
+type NodeEmitter = (
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+) => string[];
+
+const NODE_EMITTERS: Record<TemplateNode['type'], NodeEmitter> = {
+  text: emitTextNode,
+  expression: emitExpressionTemplateNode,
+  element: emitElementTemplateNode,
+  slot: emitSlotTemplateNode,
+  script: emitScriptTemplateNode,
+  style: emitStyleTemplateNode,
+  raw: emitRawTemplateNode,
+};
 
 function emitNode(
   node: TemplateNode,
@@ -406,109 +605,181 @@ function emitNode(
   options: CompileOptions | undefined,
   target = '__out'
 ): string[] {
-  const emit = (val: string) => `${target} += ${val};`;
+  const emitter = NODE_EMITTERS[node.type];
+  if (!emitter) throw new Error(`Unknown node type: ${(node as { type: string }).type}`);
+  return emitter(node, components, options, target);
+}
 
-  switch (node.type) {
-    case 'text':
-      return node.value ? [emit(JSON.stringify(node.value))] : [];
+function emitTextNode(node: TemplateNode, _: unknown, __: unknown, target: string): string[] {
+  const value = (node as import('./types.js').TextNode).value;
+  return value ? [`${target} += ${JSON.stringify(value)};`] : [];
+}
 
-    case 'expression': {
-      if (!node.nodes || (node.nodes.length === 1 && typeof node.nodes[0] === 'string')) {
-        let expr = node.source;
-        if (options?.autoFilter) expr = `__filter(${expr})`;
-        if (options?.autoEscape !== false) expr = `__escape(${expr})`;
-        return [emit(expr)];
-      }
-      const source = transformExpression(node, components, options);
-      if (/^\s*(\/\*[\s\S]*\*\/|\/\/.*)\s*$/.test(source)) {
-        return [];
-      }
-      let expr = source;
-      if (options?.autoFilter) {
-        expr = `__filter(${expr})`;
-      }
-      if (options?.autoEscape !== false) {
-        expr = `__escape(${expr})`;
-      }
-      return [emit(expr)];
-    }
+function emitExpressionTemplateNode(
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return emitExpressionNode(node as ExpressionNode, components, options, target);
+}
 
-    case 'element':
-      return emitElement(node, components, options, target);
+function emitElementTemplateNode(
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return emitElement(node as ElementNode, components, options, target);
+}
 
-    case 'slot': {
-      const slotNode = node as import('./types.js').SlotNode;
-      const slotName = slotNode.name || 'default';
-      const slotNameExpr = slotNode.nameExpr;
-      const lines: string[] = [];
+function emitSlotTemplateNode(
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return emitSlotNode(node as import('./types.js').SlotNode, components, options, target);
+}
 
-      if (slotNameExpr) {
-        // Dynamic slot name — evaluate at runtime
-        const exprSource = transformExpression(slotNameExpr, components, options);
-        lines.push(`{ const __slotName = String(${exprSource});`);
-        lines.push(`  if (slots[__slotName] !== undefined) {`);
-        lines.push(`    ${emit('slots[__slotName]')}`);
-        lines.push(`  } else if (slots["" ] !== undefined && __slotName === "default") {`);
-        lines.push(`    ${emit('slots[""]')}`);
-        if (slotNode.children.length > 0) {
-          lines.push(`  } else {`);
-          for (const child of slotNode.children) {
-            lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
-          }
-        }
-        lines.push(`  }`);
-        lines.push(`}`);
-      } else {
-        // Static slot name
-        const slotNameKey = JSON.stringify(slotName);
-        lines.push(`if (slots[${slotNameKey}] !== undefined) {`);
-        lines.push(`  ${emit(`slots[${slotNameKey}]`)}`);
-        lines.push(
-          `} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`
-        );
-        lines.push(`  ${emit(`slots[${JSON.stringify('')}]`)}`);
-        if (slotNode.children.length > 0) {
-          lines.push(`} else {`);
-          for (const child of slotNode.children) {
-            lines.push(...emitNode(child, components, options, target).map((l) => '  ' + l));
-          }
-        }
-        lines.push(`}`);
-      }
-      return lines;
-    }
+function emitScriptTemplateNode(
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const asset = node as import('./types.js').ScriptNode;
+  return emitAssetNode('script', asset.content, asset.attrs, components, options, target);
+}
 
-    case 'script': {
-      if (options?.aggregateAssets) {
-        // In render mode, assets are ignored (or could be collected if we passed an asset array)
-        return [];
-      }
-      const lines: string[] = [emit(`"<script"`)];
-      for (const attr of node.attrs) {
-        lines.push(...emitAttr(attr, components, options, target));
-      }
-      lines.push(emit(`">" + ${JSON.stringify(node.content)} + "</script>"`));
-      return lines;
-    }
+function emitStyleTemplateNode(
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const asset = node as import('./types.js').StyleNode;
+  return emitAssetNode('style', asset.content, asset.attrs, components, options, target);
+}
 
-    case 'style': {
-      if (options?.aggregateAssets) {
-        return [];
-      }
-      const lines: string[] = [emit(`"<style"`)];
-      for (const attr of node.attrs) {
-        lines.push(...emitAttr(attr, components, options, target));
-      }
-      lines.push(emit(`">" + ${JSON.stringify(node.content)} + "</style>"`));
-      return lines;
-    }
+function emitRawTemplateNode(
+  node: TemplateNode,
+  _: unknown,
+  __: unknown,
+  target: string
+): string[] {
+  return [`${target} += ${JSON.stringify((node as import('./types.js').RawNode).html)};`];
+}
 
-    case 'raw':
-      return [emit(JSON.stringify(node.html))];
+function emitExpressionNode(
+  node: ExpressionNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const source = expressionSource(node, components, options);
+  if (isCommentExpression(source)) return [];
+  return [`${target} += ${applyExpressionOptions(source, options)};`];
+}
 
-    default:
-      throw new Error(`Unknown node type: ${(node as { type: string }).type}`);
+function expressionSource(
+  node: ExpressionNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  return node.nodes?.length === 1 && typeof node.nodes[0] === 'string'
+    ? node.source
+    : transformExpression(node, components, options);
+}
+
+function isCommentExpression(source: string): boolean {
+  return /^\s*(\/\*[\s\S]*\*\/|\/\/.*)\s*$/.test(source);
+}
+
+function applyExpressionOptions(source: string, options: CompileOptions | undefined): string {
+  let expression = source;
+  if (shouldFilterExpression(options)) expression = `__filter(${expression})`;
+  if (shouldEscapeExpression(options)) expression = `__escape(${expression})`;
+  return expression;
+}
+
+function shouldFilterExpression(options: CompileOptions | undefined): boolean {
+  return options?.autoFilter === true;
+}
+
+function shouldEscapeExpression(options: CompileOptions | undefined): boolean {
+  return options?.autoEscape !== false;
+}
+
+function emitSlotNode(
+  node: import('./types.js').SlotNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return node.nameExpr
+    ? emitDynamicSlot(node, components, options, target)
+    : emitStaticSlot(node, components, options, target);
+}
+
+function emitDynamicSlot(
+  node: import('./types.js').SlotNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const emit = (value: string) => `${target} += ${value};`;
+  const source = transformExpression(node.nameExpr as ExpressionNode, components, options);
+  const lines = [
+    `{ const __slotName = String(${source});`,
+    `  if (slots[__slotName] !== undefined) {`,
+    `    ${emit('slots[__slotName]')}`,
+    `  } else if (slots["" ] !== undefined && __slotName === "default") {`,
+    `    ${emit('slots[""]')}`,
+  ];
+  if (node.children.length > 0) {
+    lines.push(`  } else {`, ...emitChildren(node.children, components, options, target, '    '));
   }
+  lines.push(`  }`, `}`);
+  return lines;
+}
+
+function emitStaticSlot(
+  node: import('./types.js').SlotNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const emit = (value: string) => `${target} += ${value};`;
+  const slotName = node.name || 'default';
+  const slotKey = JSON.stringify(slotName);
+  const lines = [
+    `if (slots[${slotKey}] !== undefined) {`,
+    `  ${emit(`slots[${slotKey}]`)}`,
+    `} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`,
+    `  ${emit(`slots[${JSON.stringify('')}]`)}`,
+  ];
+  if (node.children.length > 0) {
+    lines.push(`} else {`, ...emitChildren(node.children, components, options, target, '  '));
+  }
+  lines.push(`}`);
+  return lines;
+}
+
+function emitAssetNode(
+  tag: 'script' | 'style',
+  content: string,
+  attrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  if (options?.aggregateAssets) return [];
+  const emit = (value: string) => `${target} += ${value};`;
+  const lines = [emit(JSON.stringify(`<${tag}`))];
+  for (const attr of attrs) lines.push(...emitAttr(attr, components, options, target));
+  lines.push(emit(`">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)}`));
+  return lines;
 }
 
 function emitElement(
@@ -517,235 +788,430 @@ function emitElement(
   options: CompileOptions | undefined,
   target = '__out'
 ): string[] {
-  const lines: string[] = [];
-  const emit = (val: string) => `${target} += ${val};`;
-
-  if (!node.tag || node.tag === 'Fragment') {
-    let setHtml: AttrNode | undefined;
-    let setText: AttrNode | undefined;
-
-    for (const attr of node.attrs) {
-      if (!('type' in attr)) {
-        if (attr.name === 'set:html') setHtml = attr;
-        else if (attr.name === 'set:text') setText = attr;
-        else if (attr.name === 'slot') {
-          /* allowed */
-        } else {
-          throw new Error(
-            `CompileError: Fragments cannot have attributes or directives (found: ${attr.name})`
-          );
-        }
-      } else {
-        throw new Error(`CompileError: Fragments cannot have spread attributes`);
-      }
-    }
-
-    if (setHtml) {
-      const val = setHtml.value;
-      if (typeof val === 'string') {
-        lines.push(emit(JSON.stringify(val)));
-      } else if (val !== true) {
-        lines.push(
-          `{ const __h = (${transformExpression(val, components, options)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`
-        );
-      }
-    } else if (setText) {
-      const val = setText.value;
-      if (node.children.length > 0) throw new Error('Cannot use set:text with children');
-      if (typeof val === 'string') {
-        lines.push(emit(`__escape(${JSON.stringify(val)})`));
-      } else if (val !== true) {
-        lines.push(emit(`__escape(${transformExpression(val, components, options)})`));
-      }
-    } else {
-      for (const child of node.children) {
-        lines.push(...emitNode(child, components, options, target));
-      }
-    }
-    return lines;
-  }
-
-  const isCapitalized = /^[A-Z]/.test(node.tag);
-  if (node.tag in components || isCapitalized) {
+  if (!node.tag || node.tag === 'Fragment') return emitFragment(node, components, options, target);
+  if (isComponentElement(node, components))
     return emitComponentCall(node, components, options, target);
-  }
+  return emitHtmlElement(node, components, options, target);
+}
 
-  let setHtml: AttrNode | undefined;
-  let setText: AttrNode | undefined;
+function isComponentElement(
+  node: ElementNode,
+  components: Record<string, RenderFunction>
+): boolean {
+  return node.tag in components || /^[A-Z]/.test(node.tag);
+}
 
-  const standardAttrs: (AttrNode | SpreadAttrNode)[] = [];
-  for (const attr of node.attrs) {
-    if (!('type' in attr)) {
-      if (attr.name === 'set:html') {
-        setHtml = attr;
-        continue;
-      }
-      if (attr.name === 'set:text') {
-        setText = attr;
-        continue;
-      }
-    }
-    standardAttrs.push(attr);
-  }
-
-  const hasSpread = node.attrs.some((a) => 'type' in a);
-
-  if (!hasSpread) {
-    let tagOpen = `<${node.tag}`;
-    const dynamicAttrs: { name: string; value: ExpressionNode; type?: 'list' | 'style' }[] = [];
-
-    for (const attr of standardAttrs as AttrNode[]) {
-      if (attr.name === 'class' || attr.name === 'className' || attr.name === 'class:list') {
-        if (typeof attr.value === 'string') {
-          tagOpen += ` class="${escapeHtml(attr.value)}"`;
-        } else if (attr.value !== true) {
-          dynamicAttrs.push({
-            name: 'class',
-            value: attr.value,
-            type: attr.name === 'class:list' ? 'list' : undefined,
-          });
-        }
-      } else if (attr.name === 'style') {
-        if (typeof attr.value === 'string') {
-          tagOpen += ` style="${escapeHtml(attr.value)}"`;
-        } else if (attr.value !== true) {
-          dynamicAttrs.push({ name: 'style', value: attr.value, type: 'style' });
-        }
-      } else {
-        if (attr.value === true) {
-          tagOpen += ` ${attr.name}`;
-        } else if (typeof attr.value === 'string') {
-          tagOpen += ` ${attr.name}="${escapeHtml(attr.value)}"`;
-        } else {
-          dynamicAttrs.push({ name: attr.name, value: attr.value });
-        }
-      }
-    }
-
-    lines.push(emit(JSON.stringify(tagOpen)));
-    for (const attr of dynamicAttrs) {
-      const source = transformExpression(attr.value, components, options);
-      if (attr.name === 'class') {
-        const valExpr = attr.type === 'list' ? `__classList(${source})` : source;
-        lines.push(emit(JSON.stringify(` class="`) + ` + __escape(${valExpr}) + "\\""`));
-      } else if (attr.name === 'style') {
-        const valExpr = attr.type === 'style' ? `__styleObject(${source})` : source;
-        lines.push(emit(JSON.stringify(` style="`) + ` + __escape(${valExpr}) + "\\""`));
-      } else {
-        lines.push(emit(JSON.stringify(` ${attr.name}="`) + ` + __escape(${source}) + "\\""`));
-      }
-    }
-  } else {
-    lines.push(emit(JSON.stringify('<' + node.tag)));
-
-    lines.push(`{`);
-    lines.push(`  const __attrs = {};`);
-    lines.push(`  const __classes = [];`);
-    lines.push(`  const __styles = [];`);
-    for (const attr of standardAttrs) {
-      if ('type' in attr) {
-        lines.push(`  {`);
-        lines.push(
-          `    const __s = (${transformExpression(attr.expression, components, options)});`
-        );
-        lines.push(`    for (const __k in __s) {`);
-        lines.push(`      if (__k === "class" || __k === "className" || __k === "class:list") {`);
-        lines.push(
-          `        __classes.push(__k === "class:list" ? __classList(__s[__k]) : __s[__k]);`
-        );
-        lines.push(`      } else if (__k === "style") {`);
-        lines.push(`        const __v = __s[__k];`);
-        lines.push(`        if (typeof __v === "string") __styles.push(__v);`);
-        lines.push(`        else __styles.push(__styleObject(__v));`);
-        lines.push(`      } else {`);
-        lines.push(`        __attrs[__k] = __s[__k];`);
-        lines.push(`      }`);
-        lines.push(`    }`);
-        lines.push(`  }`);
-      } else {
-        if (attr.name === 'class' || attr.name === 'className' || attr.name === 'class:list') {
-          if (attr.value === true) lines.push(`  __classes.push("");`);
-          else if (typeof attr.value === 'string')
-            lines.push(`  __classes.push(${JSON.stringify(attr.value)});`);
-          else
-            lines.push(
-              `  __classes.push(__classList(${transformExpression(attr.value, components, options)}));`
-            );
-        } else if (attr.name === 'style') {
-          if (attr.value === true) lines.push(`  __styles.push("");`);
-          else if (typeof attr.value === 'string')
-            lines.push(`  __styles.push(${JSON.stringify(attr.value)});`);
-          else
-            lines.push(
-              `  __styles.push(__styleObject(${transformExpression(attr.value, components, options)}));`
-            );
-        } else {
-          if (attr.value === true) lines.push(`  __attrs[${JSON.stringify(attr.name)}] = true;`);
-          else if (typeof attr.value === 'string')
-            lines.push(
-              `  __attrs[${JSON.stringify(attr.name)}] = new __RawHtml(${JSON.stringify(attr.value)});`
-            );
-          else
-            lines.push(
-              `  __attrs[${JSON.stringify(attr.name)}] = (${transformExpression(attr.value, components, options)});`
-            );
-        }
-      }
-    }
-
-    lines.push(`  for (const __k in __attrs) {`);
-    lines.push(`    const __v = __attrs[__k];`);
-    lines.push(`    if (__v === true) ${emit(`" " + __escape(__k)`)}`);
-    lines.push(
-      `    else if (__v !== false && __v != null) ${emit(`" " + __escape(__k) + '="' + __escape(__v) + '"'`)}`
-    );
-    lines.push(`  }`);
-    lines.push(`  const __finalCls = __classes.filter(Boolean).join(' ');`);
-    lines.push(`  if (__finalCls) ${emit(`' class="' + __escape(__finalCls) + '"'`)}`);
-    lines.push(
-      `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`
-    );
-    lines.push(`  if (__finalSty) ${emit(`' style="' + __escape(__finalSty) + '"'`)}`);
-    lines.push(`}`);
-  }
-
-  const isVoid = VOID_ELEMENTS.has(node.tag) || node.tag.startsWith('!');
-  if (isVoid) {
-    if (node.tag.startsWith('!')) lines.push(emit(`">"`));
-    else lines.push(emit(`" />"`));
+function emitHtmlElement(
+  node: ElementNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const attributes = partitionElementAttributes(node.attrs);
+  const lines = emitElementOpeningTag(node.tag, attributes, components, options, target);
+  if (isVoidOrDeclaration(node.tag)) {
+    lines.push(`${target} += ${node.tag.startsWith('!') ? '">"' : '" />"'};`);
     return lines;
   }
+  return emitNonVoidElement(node, attributes, lines, components, options, target);
+}
 
-  lines.push(emit(`">"`));
-
-  if (setHtml) {
-    if (setText) throw new Error('Cannot use both set:html and set:text');
-    if (node.children.length > 0) throw new Error('Cannot use set:html with children');
-    if (typeof setHtml.value === 'string') {
-      lines.push(emit(JSON.stringify(setHtml.value)));
-    } else if (setHtml.value !== true) {
-      lines.push(
-        `{ const __h = (${transformExpression(setHtml.value, components, options)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`
+function emitElementOpeningTag(
+  tag: string,
+  attributes: ElementAttributeGroups,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return attributes.hasSpread
+    ? emitSpreadOpeningTag(tag, attributes.standardAttrs, components, options, target)
+    : emitStaticOpeningTag(
+        tag,
+        attributes.standardAttrs as AttrNode[],
+        components,
+        options,
+        target
       );
-    }
-  } else if (setText) {
-    if (node.children.length > 0) throw new Error('Cannot use set:text with children');
-    if (typeof setText.value === 'string') {
-      lines.push(emit(`__escape(${JSON.stringify(setText.value)})`));
-    } else if (setText.value !== true) {
-      lines.push(emit(`__escape(${transformExpression(setText.value, components, options)})`));
-    }
-  } else {
-    for (const child of node.children) {
-      lines.push(...emitNode(child, components, options, target));
-    }
-  }
+}
 
-  if (!isVoid) {
-    lines.push(emit(JSON.stringify('</' + node.tag + '>')));
-  }
+function isVoidOrDeclaration(tag: string): boolean {
+  return VOID_ELEMENTS.has(tag) || tag.startsWith('!');
+}
 
+function emitNonVoidElement(
+  node: ElementNode,
+  attributes: ElementAttributeGroups,
+  lines: string[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  lines.push(`${target} += ">";`);
+  lines.push(...emitElementContent(node, attributes, components, options, target));
+  lines.push(`${target} += ${JSON.stringify(`</${node.tag}>`)};`);
   return lines;
+}
+
+function emitFragment(
+  node: ElementNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const attributes = partitionFragmentAttributes(node.attrs);
+  if (attributes.setHtml) return emitHtmlDirective(attributes.setHtml, components, options, target);
+  if (attributes.setText) {
+    if (node.children.length > 0) throw new Error('Cannot use set:text with children');
+    return emitTextDirective(attributes.setText, components, options, target);
+  }
+  return emitChildren(node.children, components, options, target);
+}
+
+function partitionFragmentAttributes(
+  attrs: ElementAttribute[]
+): Pick<ElementAttributeGroups, 'setHtml' | 'setText'> {
+  const directives: Pick<ElementAttributeGroups, 'setHtml' | 'setText'> = {};
+  for (const attr of attrs) {
+    const directive = fragmentDirectiveName(attr);
+    if (directive) directives[directive] = attr as AttrNode;
+  }
+  return directives;
+}
+
+const FRAGMENT_DIRECTIVES: Record<string, 'setHtml' | 'setText' | undefined> = {
+  'set:html': 'setHtml',
+  'set:text': 'setText',
+};
+
+function fragmentDirectiveName(attr: ElementAttribute): 'setHtml' | 'setText' | undefined {
+  if ('type' in attr) throw new Error('CompileError: Fragments cannot have spread attributes');
+  return FRAGMENT_DIRECTIVES[attr.name] ?? validateFragmentAttribute(attr.name);
+}
+
+function validateFragmentAttribute(name: string): undefined {
+  if (name === 'slot') return undefined;
+  throw new Error(`CompileError: Fragments cannot have attributes or directives (found: ${name})`);
+}
+
+function partitionElementAttributes(attrs: ElementAttribute[]): ElementAttributeGroups {
+  const result: ElementAttributeGroups = { standardAttrs: [], hasSpread: false };
+  for (const attr of attrs) {
+    const directive = elementDirectiveName(attr);
+    if (directive) result[directive] = attr as AttrNode;
+    else addStandardAttribute(result, attr);
+  }
+  return result;
+}
+
+function elementDirectiveName(attr: ElementAttribute): 'setHtml' | 'setText' | undefined {
+  if ('type' in attr) return undefined;
+  if (attr.name === 'set:html') return 'setHtml';
+  return attr.name === 'set:text' ? 'setText' : undefined;
+}
+
+function addStandardAttribute(result: ElementAttributeGroups, attr: ElementAttribute): void {
+  result.standardAttrs.push(attr);
+  if ('type' in attr) result.hasSpread = true;
+}
+
+function emitStaticOpeningTag(
+  tag: string,
+  attrs: AttrNode[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const { tagOpen, dynamicAttrs } = collectStaticOpeningAttributes(tag, attrs);
+  return [
+    `${target} += ${JSON.stringify(tagOpen)};`,
+    ...emitDynamicAttributes(dynamicAttrs, components, options, target),
+  ];
+}
+
+function collectStaticOpeningAttributes(
+  tag: string,
+  attrs: AttrNode[]
+): { tagOpen: string; dynamicAttrs: DynamicAttribute[] } {
+  let tagOpen = `<${tag}`;
+  const dynamicAttrs: DynamicAttribute[] = [];
+  for (const attr of attrs) {
+    const attribute = classifyStaticAttribute(attr);
+    if (typeof attribute === 'string') tagOpen += attribute;
+    else if (attribute) dynamicAttrs.push(attribute);
+  }
+  return { tagOpen, dynamicAttrs };
+}
+
+function classifyStaticAttribute(attr: AttrNode): string | DynamicAttribute | undefined {
+  const kind = specialAttributeKind(attr.name);
+  return kind ? classifySpecialStaticAttribute(attr, kind) : classifyOrdinaryStaticAttribute(attr);
+}
+
+const SPECIAL_ATTRIBUTE_KINDS: Record<string, 'class' | 'classList' | 'style' | undefined> = {
+  class: 'class',
+  className: 'class',
+  'class:list': 'classList',
+  style: 'style',
+};
+
+function specialAttributeKind(name: string): 'class' | 'classList' | 'style' | undefined {
+  return SPECIAL_ATTRIBUTE_KINDS[name];
+}
+
+function classifySpecialStaticAttribute(
+  attr: AttrNode,
+  kind: 'class' | 'classList' | 'style'
+): string | DynamicAttribute | undefined {
+  if (typeof attr.value === 'string')
+    return ` ${attributeOutputName(kind)}="${escapeHtml(attr.value)}"`;
+  if (attr.value === true) return undefined;
+  return { name: attributeOutputName(kind), value: attr.value, type: dynamicAttributeType(kind) };
+}
+
+function attributeOutputName(kind: 'class' | 'classList' | 'style'): 'class' | 'style' {
+  return kind === 'style' ? 'style' : 'class';
+}
+
+function dynamicAttributeType(kind: 'class' | 'classList' | 'style'): 'list' | 'style' | undefined {
+  if (kind === 'classList') return 'list';
+  return kind === 'style' ? 'style' : undefined;
+}
+
+function classifyOrdinaryStaticAttribute(attr: AttrNode): string | DynamicAttribute {
+  if (attr.value === true) return ` ${attr.name}`;
+  if (typeof attr.value === 'string') return ` ${attr.name}="${escapeHtml(attr.value)}"`;
+  return { name: attr.name, value: attr.value };
+}
+
+function emitDynamicAttributes(
+  attrs: DynamicAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return attrs.map((attr) => emitDynamicAttribute(attr, components, options, target));
+}
+
+function emitDynamicAttribute(
+  attr: DynamicAttribute,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string {
+  const source = transformExpression(attr.value, components, options);
+  if (attr.name === 'class') return emitDynamicClassAttribute(source, attr.type, target);
+  if (attr.name === 'style') return emitDynamicStyleAttribute(source, attr.type, target);
+  return `${target} += ${JSON.stringify(` ${attr.name}="`)} + __escape(${source}) + ${JSON.stringify('"')};`;
+}
+
+function emitDynamicClassAttribute(
+  source: string,
+  type: DynamicAttribute['type'],
+  target: string
+): string {
+  const value = type === 'list' ? `__classList(${source})` : source;
+  return `${target} += ${JSON.stringify(' class="')} + __escape(${value}) + ${JSON.stringify('"')};`;
+}
+
+function emitDynamicStyleAttribute(
+  source: string,
+  type: DynamicAttribute['type'],
+  target: string
+): string {
+  const value = type === 'style' ? `__styleObject(${source})` : source;
+  return `${target} += ${JSON.stringify(' style="')} + __escape(${value}) + ${JSON.stringify('"')};`;
+}
+
+function emitSpreadOpeningTag(
+  tag: string,
+  attrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const lines = [
+    `${target} += ${JSON.stringify('<' + tag)};`,
+    `{`,
+    `  const __attrs = {};`,
+    `  const __classes = [];`,
+    `  const __styles = [];`,
+  ];
+  for (const attr of attrs) lines.push(...emitSpreadAttribute(attr, components, options));
+  lines.push(...emitCollectedSpreadValues(target), `}`);
+  return lines;
+}
+
+function emitSpreadAttribute(
+  attr: ElementAttribute,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  return 'type' in attr
+    ? emitSpreadObject(attr, components, options)
+    : emitSpreadNamedAttribute(attr, components, options);
+}
+
+function emitSpreadObject(
+  attr: SpreadAttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  const source = transformExpression(attr.expression, components, options);
+  return [
+    `  {`,
+    `    const __s = (${source});`,
+    `    for (const __k in __s) {`,
+    `      if (__k === "class" || __k === "className" || __k === "class:list") {`,
+    `        __classes.push(__k === "class:list" ? __classList(__s[__k]) : __s[__k]);`,
+    `      } else if (__k === "style") {`,
+    `        const __v = __s[__k];`,
+    `        if (typeof __v === "string") __styles.push(__v);`,
+    `        else __styles.push(__styleObject(__v));`,
+    `      } else {`,
+    `        __attrs[__k] = __s[__k];`,
+    `      }`,
+    `    }`,
+    `  }`,
+  ];
+}
+
+function emitSpreadNamedAttribute(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  if (isClassAttribute(attr.name)) return emitSpreadClassAttribute(attr, components, options);
+  if (attr.name === 'style') return emitSpreadStyleAttribute(attr, components, options);
+  return emitSpreadOrdinaryAttribute(attr, components, options);
+}
+
+function isClassAttribute(name: string): boolean {
+  return name === 'class' || name === 'className' || name === 'class:list';
+}
+
+function emitSpreadClassAttribute(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  return [`  __classes.push(${spreadAttributeValue(attr, '__classList', components, options)});`];
+}
+
+function emitSpreadStyleAttribute(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  return [`  __styles.push(${spreadAttributeValue(attr, '__styleObject', components, options)});`];
+}
+
+function spreadAttributeValue(
+  attr: AttrNode,
+  helper: '__classList' | '__styleObject',
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  if (attr.value === true) return '""';
+  if (typeof attr.value === 'string') return JSON.stringify(attr.value);
+  return `${helper}(${transformExpression(attr.value, components, options)})`;
+}
+
+function emitSpreadOrdinaryAttribute(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  const name = JSON.stringify(attr.name);
+  return [`  __attrs[${name}] = ${spreadOrdinaryAttributeValue(attr, components, options)};`];
+}
+
+function spreadOrdinaryAttributeValue(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  if (attr.value === true) return 'true';
+  if (typeof attr.value === 'string') return `new __RawHtml(${JSON.stringify(attr.value)})`;
+  return `(${transformExpression(attr.value, components, options)})`;
+}
+
+function emitCollectedSpreadValues(target: string): string[] {
+  const emit = (value: string) => `${target} += ${value};`;
+  return [
+    `  for (const __k in __attrs) {`,
+    `    const __v = __attrs[__k];`,
+    `    if (__v === true) ${emit('" " + __escape(__k)')}`,
+    `    else if (__v !== false && __v != null) ${emit('" " + __escape(__k) + \'="\' + __escape(__v) + \'"\'')}`,
+    `  }`,
+    `  const __finalCls = __classes.filter(Boolean).join(' ');`,
+    `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
+    `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`,
+    `  if (__finalSty) ${emit("' style=\"' + __escape(__finalSty) + '\"'")}`,
+  ];
+}
+
+function emitElementContent(
+  node: ElementNode,
+  attrs: ElementAttributeGroups,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  if (attrs.setHtml) return emitHtmlElementContent(node, attrs, components, options, target);
+  if (attrs.setText)
+    return emitTextElementContent(node, attrs.setText, components, options, target);
+  return emitChildren(node.children, components, options, target);
+}
+
+function emitHtmlElementContent(
+  node: ElementNode,
+  attrs: ElementAttributeGroups,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  if (attrs.setText) throw new Error('Cannot use both set:html and set:text');
+  if (node.children.length > 0) throw new Error('Cannot use set:html with children');
+  return emitHtmlDirective(attrs.setHtml as AttrNode, components, options, target);
+}
+
+function emitTextElementContent(
+  node: ElementNode,
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  if (node.children.length > 0) throw new Error('Cannot use set:text with children');
+  return emitTextDirective(attr, components, options, target);
+}
+
+function emitHtmlDirective(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const emit = (value: string) => `${target} += ${value};`;
+  if (typeof attr.value === 'string') return [emit(JSON.stringify(attr.value))];
+  if (attr.value === true) return [];
+  const source = transformExpression(attr.value, components, options);
+  return [
+    `{ const __h = (${source}); ${emit('[].concat(__h).map(v => (v && typeof v === \'object\' && v.__isRawHtml) ? v.value : v).join("")')} }`,
+  ];
+}
+
+function emitTextDirective(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const emit = (value: string) => `${target} += ${value};`;
+  if (typeof attr.value === 'string') return [emit(`__escape(${JSON.stringify(attr.value)})`)];
+  return attr.value === true
+    ? []
+    : [emit(`__escape(${transformExpression(attr.value, components, options)})`)];
 }
 
 function emitAttr(
@@ -754,48 +1220,71 @@ function emitAttr(
   options: CompileOptions | undefined,
   target = '__out'
 ): string[] {
-  const emit = (val: string) => `${target} += ${val};`;
+  return 'type' in attr
+    ? emitSpreadAttr(attr, components, options, target)
+    : emitNamedAttr(attr, components, options, target);
+}
 
-  if ('type' in attr) {
-    return [
-      `{`,
-      `  const __spread = (${transformExpression(attr.expression, components, options)});`,
-      `  for (const __k in __spread) {`,
-      `    const __val = __spread[__k];`,
-      `    if (__k === "class" || __k === "className" || __k === "class:list") {`,
-      `      ${emit(`" class=\\"" + __escape(__classList(__val)) + "\\""`)}`,
-      `    } else if (__k === "style" && typeof __val === "object") {`,
-      `      ${emit(`" style=\\"" + __escape(__styleObject(__val)) + "\\""`)}`,
-      `    } else if (__val === true) {`,
-      `      ${emit(`" " + __escape(__k)`)}`,
-      `    } else if (__val !== false && __val != null) {`,
-      `      ${emit(`" " + __escape(__k) + '="' + __escape(__val) + '"'`)}`,
-      `    }`,
-      `  }`,
-      `}`,
-    ];
+function emitSpreadAttr(
+  attr: SpreadAttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const emit = (value: string) => `${target} += ${value};`;
+  return [
+    `{`,
+    `  const __spread = (${transformExpression(attr.expression, components, options)});`,
+    `  for (const __k in __spread) {`,
+    `    const __val = __spread[__k];`,
+    `    if (__k === "class" || __k === "className" || __k === "class:list") {`,
+    `      ${emit(`" class=\\"" + __escape(__classList(__val)) + "\\""`)}`,
+    `    } else if (__k === "style" && typeof __val === "object") {`,
+    `      ${emit(`" style=\\"" + __escape(__styleObject(__val)) + "\\""`)}`,
+    `    } else if (__val === true) {`,
+    `      ${emit(`" " + __escape(__k)`)}`,
+    `    } else if (__val !== false && __val != null) {`,
+    `      ${emit(`" " + __escape(__k) + '="' + __escape(__val) + '"'`)}`,
+    `    }`,
+    `  }`,
+    `}`,
+  ];
+}
+
+function emitNamedAttr(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  if (attr.value === true) return [emitTargetValue(target, JSON.stringify(' ' + attr.name))];
+  if (typeof attr.value === 'string') {
+    return [emitTargetValue(target, JSON.stringify(' ' + attr.name + '="' + attr.value + '"'))];
   }
+  return emitDynamicNamedAttr(attr, components, options, target);
+}
 
-  if (attr.value === true) {
-    return [emit(JSON.stringify(' ' + attr.name))];
-  }
+function emitDynamicNamedAttr(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const source = transformExpression(attr.value as ExpressionNode, components, options);
+  const expression = dynamicAttributeExpression(attr.name, source);
+  return [emitTargetValue(target, expression)];
+}
 
-  const val = attr.value;
-  if (typeof val === 'string') {
-    return [emit(JSON.stringify(' ' + attr.name + '="' + val + '"'))];
-  }
+function dynamicAttributeExpression(name: string, source: string): string {
+  if (name === 'class:list')
+    return JSON.stringify(` class="`) + ` + __escape(__classList(${source})) + "\\""`;
+  if (name === 'style')
+    return JSON.stringify(` style="`) + ` + __escape(__styleObject(${source})) + "\\""`;
+  return JSON.stringify(` ${name}="`) + ` + __escape(${source}) + "\\""`;
+}
 
-  const source = transformExpression(val, components, options);
-
-  if (attr.name === 'class:list') {
-    return [emit(JSON.stringify(` class="`) + ` + __escape(__classList(${source})) + "\\""`)];
-  }
-
-  if (attr.name === 'style') {
-    return [emit(JSON.stringify(` style="`) + ` + __escape(__styleObject(${source})) + "\\""`)];
-  }
-
-  return [emit(JSON.stringify(` ${attr.name}="`) + ` + __escape(${source}) + "\\""`)];
+function emitTargetValue(target: string, value: string): string {
+  return `${target} += ${value};`;
 }
 
 function emitComponentCall(
@@ -804,117 +1293,166 @@ function emitComponentCall(
   options: CompileOptions | undefined,
   target = '__out'
 ): string[] {
-  const lines: string[] = [];
   const localName = node.tag;
-  const emit = (val: string) => `${target} += ${val};`;
+  const props = buildComponentPropsExpression(node.attrs, components, options);
+  const lines = [
+    `{`,
+    `  let __component = __components[${JSON.stringify(localName)}];`,
+    `  try { if (!__component && typeof ${localName} !== 'undefined') __component = ${localName}; } catch (e) {}`,
+    `  if (typeof __component === 'function') {`,
+    `    const __childSlots = {};`,
+    ...emitComponentSlots(node.children, components, options),
+    ...emitResolvedComponentCall(localName, props, target),
+    ...emitComponentFallbacks(node, components, options, target),
+    `  }`,
+    `}`,
+  ];
+  return lines;
+}
 
-  const propParts: string[] = [];
-  for (const attr of node.attrs) {
-    if ('type' in attr) {
-      propParts.push(`...(${transformExpression(attr.expression, components, options)})`);
-    } else {
-      if (attr.value === true) {
-        propParts.push(`${JSON.stringify(attr.name)}: true`);
-      } else if (typeof attr.value === 'string') {
-        propParts.push(`${JSON.stringify(attr.name)}: ${JSON.stringify(attr.value)}`);
-      } else {
-        const val = attr.value;
-        const source = transformExpression(val, components, options);
-        if (attr.name === 'class:list') {
-          propParts.push(`"class:list": (${source})`);
-        } else {
-          propParts.push(`${JSON.stringify(attr.name)}: (${source})`);
-        }
-      }
-    }
-  }
+function buildComponentPropsExpression(
+  attrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  return `{${attrs.map((attr) => componentPropPart(attr, components, options)).join(', ')}}`;
+}
 
-  const propsExpr = `{${propParts.join(', ')}}`;
+function componentPropPart(
+  attr: ElementAttribute,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  if ('type' in attr) return `...(${transformExpression(attr.expression, components, options)})`;
+  const staticPart = staticComponentPropPart(attr);
+  return staticPart ?? dynamicComponentPropPart(attr, components, options);
+}
 
-  lines.push(`{`);
-  lines.push(`  let __component = __components[${JSON.stringify(localName)}];`);
-  lines.push(
-    `  try { if (!__component && typeof ${localName} !== 'undefined') __component = ${localName}; } catch (e) {}`
+function staticComponentPropPart(attr: AttrNode): string | undefined {
+  if (attr.value === true) return `${JSON.stringify(attr.name)}: true`;
+  if (typeof attr.value === 'string')
+    return `${JSON.stringify(attr.name)}: ${JSON.stringify(attr.value)}`;
+  return undefined;
+}
+
+function dynamicComponentPropPart(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  const name = attr.name === 'class:list' ? 'class:list' : attr.name;
+  return `${JSON.stringify(name)}: (${transformExpression(attr.value as ExpressionNode, components, options)})`;
+}
+
+function emitComponentSlots(
+  children: TemplateNode[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  return children.flatMap((child, index) => emitComponentSlot(child, index, components, options));
+}
+
+function emitComponentSlot(
+  child: TemplateNode,
+  index: number,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  const { slotName, node } = getComponentSlot(child, components, options);
+  const variable = `__slot_${index}`;
+  return [
+    `    let ${variable} = "";`,
+    ...emitNode(node, components, options, variable).map((line) => '    ' + line),
+    `    {`,
+    `      const __sname = ${slotName};`,
+    `      if (__sname === "" || __sname === "default") {`,
+    `        if (!__childSlots[""]) __childSlots[""] = "";`,
+    `        if (!__childSlots["default"]) __childSlots["default"] = "";`,
+    `        __childSlots[""] += ${variable};`,
+    `        __childSlots["default"] += ${variable};`,
+    `      } else {`,
+    `        if (!__childSlots[__sname]) __childSlots[__sname] = "";`,
+    `        __childSlots[__sname] += ${variable};`,
+    `      }`,
+    `    }`,
+  ];
+}
+
+function getComponentSlot(
+  child: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): { slotName: string; node: TemplateNode } {
+  if (child.type !== 'element') return { slotName: JSON.stringify(''), node: child };
+
+  const slotAttr = child.attrs.find(
+    (attr): attr is AttrNode => !('type' in attr) && attr.name === 'slot'
   );
-  lines.push(`  if (typeof __component === 'function') {`);
-  lines.push(`    const __childSlots = {};`);
+  if (!slotAttr) return { slotName: JSON.stringify(''), node: child };
+  const slotName = getSlotName(slotAttr, components, options);
+  return {
+    slotName,
+    node: { ...child, attrs: child.attrs.filter((attr) => attr !== slotAttr) },
+  };
+}
 
-  for (let i = 0; i < node.children.length; i++) {
-    const child = node.children[i];
-    let slotName: string;
-    const childSlotVarName = `__slot_${i}`;
-    if (child.type === 'element') {
-      const slotAttr = child.attrs.find((a): a is AttrNode => !('type' in a) && a.name === 'slot');
-      let childAttrs = child.attrs;
-      if (slotAttr) {
-        if (typeof slotAttr.value === 'string') {
-          slotName = JSON.stringify(slotAttr.value);
-        } else if (slotAttr.value !== true) {
-          slotName = transformExpression(slotAttr.value, components, options);
-        } else {
-          slotName = JSON.stringify('');
-        }
-        childAttrs = child.attrs.filter((a) => a !== slotAttr);
-      } else {
-        slotName = JSON.stringify('');
-      }
-      lines.push(`    let ${childSlotVarName} = "";`);
-      const tempChild = { ...child, attrs: childAttrs };
-      lines.push(
-        ...emitNode(tempChild, components, options, childSlotVarName).map((l) => '    ' + l)
-      );
-    } else {
-      slotName = JSON.stringify('');
-      lines.push(`    let ${childSlotVarName} = "";`);
-      lines.push(...emitNode(child, components, options, childSlotVarName).map((l) => '    ' + l));
-    }
+function getSlotName(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  if (typeof attr.value === 'string') return JSON.stringify(attr.value);
+  return attr.value === true
+    ? JSON.stringify('')
+    : transformExpression(attr.value, components, options);
+}
 
-    lines.push(`    {`);
-    lines.push(`      const __sname = ${slotName};`);
-    lines.push(`      if (__sname === "" || __sname === "default") {`);
-    lines.push(`        if (!__childSlots[""]) __childSlots[""] = "";`);
-    lines.push(`        if (!__childSlots["default"]) __childSlots["default"] = "";`);
-    lines.push(`        __childSlots[""] += ${childSlotVarName};`);
-    lines.push(`        __childSlots["default"] += ${childSlotVarName};`);
-    lines.push(`      } else {`);
-    lines.push(`        if (!__childSlots[__sname]) __childSlots[__sname] = "";`);
-    lines.push(`        __childSlots[__sname] += ${childSlotVarName};`);
-    lines.push(`      }`);
-    lines.push(`    }`);
+function emitResolvedComponentCall(localName: string, props: string, target: string): string[] {
+  if (target === STREAMING_TARGET) {
+    return [
+      `    if (__buf) { yield __buf; __buf = ""; }`,
+      `    yield await __component(${props}, __childSlots);`,
+    ];
   }
+  return [
+    `    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`,
+    `    ${target} += __component.renderSync(${props}, __childSlots);`,
+  ];
+}
 
+function emitComponentFallbacks(
+  node: ElementNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const lines = [
+    `  } else if (typeof __component === 'string') {`,
+    `${target} += "<" + __component;`,
+  ];
+  for (const attr of node.attrs) {
+    lines.push(...emitAttr(attr, components, options, target).map((line) => '    ' + line));
+  }
   lines.push(
-    `    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`
+    `${target} += ">";`,
+    ...emitChildren(node.children, components, options, target, '    ')
   );
-  lines.push(`    ${emit(`__component.renderSync(${propsExpr}, __childSlots)`)}`);
-
-  lines.push(`  } else if (typeof __component === 'string') {`);
-  lines.push(emit(`"<" + __component`));
+  lines.push(
+    `${target} += "</" + __component + ">";`,
+    `  } else {`,
+    `${target} += "<${node.tag}";`
+  );
   for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr, components, options, target).map((l) => '    ' + l));
+    lines.push(...emitAttr(attr, components, options, target).map((line) => '    ' + line));
   }
-  lines.push(emit(`">"`));
-  for (const child of node.children) {
-    lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
+  if (node.selfClosing) lines.push(`${target} += " />";`);
+  else {
+    lines.push(
+      `${target} += ">";`,
+      ...emitChildren(node.children, components, options, target, '    ')
+    );
+    lines.push(`${target} += ${JSON.stringify(`</${node.tag}>`)};`);
   }
-  lines.push(emit(`"</" + __component + ">"`));
-  lines.push(`  } else {`);
-  lines.push(emit(`"<${localName}"`));
-  for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr, components, options, target).map((l) => '    ' + l));
-  }
-  if (node.selfClosing) {
-    lines.push(emit(`" />"`));
-  } else {
-    lines.push(emit(`">"`));
-    for (const child of node.children) {
-      lines.push(...emitNode(child, components, options, target).map((l) => '    ' + l));
-    }
-    lines.push(emit(`"</${localName}>"`));
-  }
-  lines.push(`  }`);
-  lines.push(`}`);
-
   return lines;
 }
 
@@ -923,28 +1461,37 @@ function transformExpression(
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined
 ): string {
-  if (!expr.nodes || (expr.nodes.length === 1 && typeof expr.nodes[0] === 'string')) {
-    return expr.source;
-  }
+  if (isPlainExpression(expr)) return expr.source;
+  return (expr.nodes ?? [])
+    .map((part) => transformExpressionPart(part, components, options))
+    .join('');
+}
 
-  let result = '';
-  for (const part of expr.nodes) {
-    if (typeof part === 'string') {
-      result += part;
-    } else {
-      const bodyLines = emitNode(part, components, options, '__out');
-      const lines = mergeLines(bodyLines, '__out');
+function isPlainExpression(expr: ExpressionNode): boolean {
+  return !expr.nodes || (expr.nodes.length === 1 && typeof expr.nodes[0] === 'string');
+}
 
-      if (lines.length === 1 && lines[0].startsWith('__out += ') && lines[0].endsWith(';')) {
-        const exprContent = lines[0].slice(9, -1); // '__out += '.length === 9
-        result += `new __RawHtml(${exprContent})`;
-      } else {
-        result += `((() => { let __out = ""; ${lines.join(' ')} return new __RawHtml(__out); })())`;
-      }
-    }
-  }
+function transformExpressionPart(
+  part: string | TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  if (typeof part === 'string') return part;
+  return rawHtmlExpressionFromNode(part, components, options);
+}
 
-  return result;
+function rawHtmlExpressionFromNode(
+  node: TemplateNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  const lines = mergeLines(emitNode(node, components, options, '__out'), '__out');
+  if (isSingleOutputLine(lines)) return `new __RawHtml(${lines[0].slice(9, -1)})`;
+  return `((() => { let __out = ""; ${lines.join(' ')} return new __RawHtml(__out); })())`;
+}
+
+function isSingleOutputLine(lines: string[]): boolean {
+  return lines.length === 1 && lines[0].startsWith('__out += ') && lines[0].endsWith(';');
 }
 
 // ─── Streaming Compiler ─────────────────────────────────────────────────────
@@ -955,26 +1502,11 @@ function transformExpression(
  */
 function compileStreamingInternal(
   ast: TemplateAST,
-  options?: CompileOptions & { fileReader?: (path: string) => string; basePath?: string }
+  options?: CompileSetupOptions
 ): StreamingCompileResult {
-  let components = options?.components ?? {};
-
-  if (ast.imports.length > 0) {
-    const fileReader = options?.fileReader;
-    const basePath = options?.basePath ?? '';
-    const result = resolveComponentsSync(
-      ast.imports,
-      fileReader as (path: string) => string,
-      basePath,
-      { ...options, components }
-    );
-    if (!result.ok) {
-      return result;
-    }
-    components = { ...result.components, ...components };
-  }
-
-  return compileStreamingAST(ast, { ...options, components });
+  const result = resolveCompileOptions(ast, options);
+  if (!result.ok) return result;
+  return compileStreamingAST(ast, { ...options, components: result.components });
 }
 
 export const compileStreaming = compileStreamingInternal;
@@ -982,94 +1514,65 @@ export const compileStreaming = compileStreamingInternal;
 /**
  * Compile a TemplateAST into a StreamingRenderFunction (async generator).
  */
+type GeneratedStreamingFunction = GeneratedSyncFunction extends (...args: infer Args) => unknown
+  ? (...args: Args) => AsyncGenerator<string>
+  : never;
+
 function compileStreamingAST(ast: TemplateAST, options?: CompileOptions): StreamingCompileResult {
   try {
-    const components = options?.components ?? {};
-    const streamingBody = buildStreamingFunctionBody(ast, components, options);
-
-    // Obtain the AsyncGeneratorFunction constructor
-    const AsyncGenCtor: new (...args: string[]) => (
-      props: Record<string, unknown>,
-      slots: Record<string, string>,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...rest: any[]
-    ) => AsyncGenerator<string> = Object.getPrototypeOf(async function* () {}).constructor as never;
-
-    const streamingFn = new AsyncGenCtor(
-      'props',
-      'slots',
-      '__escape',
-      '__RawHtml',
-      '__components',
-      '__classList',
-      '__styleObject',
-      '__filter',
-      streamingBody
-    );
-
-    const classListHelper = (arg: ClassListArg): string => {
-      if (typeof arg === 'string') return arg;
-      if (arg instanceof Set) return Array.from(arg).join(' ');
-      if (Array.isArray(arg)) return arg.map(classListHelper).filter(Boolean).join(' ');
-      if (arg && typeof arg === 'object') {
-        return Object.entries(arg)
-          .filter(([_, v]) => v)
-          .map(([k]) => k)
-          .join(' ');
-      }
-      return '';
-    };
-
-    const styleObjectHelper = (arg: StyleObjectArg): string => {
-      if (typeof arg === 'string') return arg;
-      if (arg && typeof arg === 'object') {
-        if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
-          return arg.toString();
-        }
-        return Object.entries(arg)
-          .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}:${v}`)
-          .join(';');
-      }
-      return '';
-    };
-
-    const filterHelper = options?.autoFilter
-      ? options.filterFunction || ((v: unknown) => v)
-      : (v: unknown) => v;
-
-    const streamFn = (
-      props: Record<string, unknown>,
-      slots?: Record<string, string>
-    ): AsyncGenerator<string> => {
-      try {
-        const s = slots ?? {};
-        return streamingFn(
-          props,
-          s,
-          escapeHtml,
-          RawHtml,
-          components,
-          classListHelper,
-          styleObjectHelper,
-          filterHelper
-        );
-      } catch (err: unknown) {
-        if (options?.debug) {
-          throw new Error(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
-            cause: err,
-          });
-        }
-        throw err;
-      }
-    };
-
-    return { ok: true, fn: streamFn, source: streamingBody };
+    return compileStreamingASTUnsafe(ast, options);
   } catch (err) {
     return {
       ok: false,
       error: { message: err instanceof Error ? err.message : String(err) },
     };
   }
+}
+
+function compileStreamingASTUnsafe(
+  ast: TemplateAST,
+  options?: CompileOptions
+): StreamingCompileResult {
+  const components = options?.components ?? {};
+  const source = buildStreamingFunctionBody(ast, components, options);
+  const fn = createStreamingRenderFunction(createStreamingFunction(source), components, options);
+  return { ok: true, fn, source };
+}
+
+function createStreamingFunction(source: string): GeneratedStreamingFunction {
+  const AsyncGenCtor = Object.getPrototypeOf(async function* () {}).constructor as new (
+    ...args: string[]
+  ) => GeneratedStreamingFunction;
+  return new AsyncGenCtor(
+    'props',
+    'slots',
+    '__escape',
+    '__RawHtml',
+    '__components',
+    '__classList',
+    '__styleObject',
+    '__filter',
+    source
+  );
+}
+
+function createStreamingRenderFunction(
+  streamingFn: GeneratedStreamingFunction,
+  components: Record<string, RenderFunction>,
+  options?: CompileOptions
+): import('./types.js').StreamingRenderFunction {
+  const helpers = createRuntimeHelpers(options);
+  return (props, slots) =>
+    streamingFn(
+      props,
+      slots ?? {},
+      escapeHtml,
+      RawHtml,
+      components,
+      helpers.classListHelper,
+      helpers.styleObjectHelper,
+      helpers.filterHelper
+    );
 }
 
 /**
@@ -1081,525 +1584,11 @@ function buildStreamingFunctionBody(
   components: Record<string, RenderFunction>,
   options?: CompileOptions
 ): string {
-  const lines: string[] = [];
-  const varName = options?.varName || 'Astro';
-
-  lines.push(`let __buf = "";`);
-
-  const isAstroUsed =
-    ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
-
-  if (isAstroUsed) {
-    lines.push(`const ${varName} = {
-      props,
-      slots: {
-        ...slots,
-        render: (name) => new __RawHtml(slots[name] || ""),
-        has: (name) => slots[name] !== undefined || (name === "default" && slots[""] !== undefined)
-      }
-    };`);
-  }
-  lines.push('');
-  const importNames = ast.imports.map((imp) => imp.localName);
-  if (importNames.length > 0) {
-    for (const name of importNames) {
-      lines.push(`const ${name} = __components[${JSON.stringify(name)}];`);
-    }
-  }
-
-  if (ast.frontmatter.source.trim()) {
-    const cleanFM = ast.frontmatter.source
-      .replace(/^\s*import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '')
-      .replace(/^\s*export\s+/gm, '');
-    lines.push(cleanFM);
-    lines.push('');
-  }
-
-  const bodyLines: string[] = [];
-  for (const node of ast.body) {
-    bodyLines.push(...emitNodeStreaming(node, components, options));
-  }
-
-  const mergedLines = mergeLines(bodyLines, '__buf');
-  lines.push(...mergedLines);
-
-  // Final flush
-  lines.push(`if (__buf) { yield __buf; }`);
-
-  return lines.join('\n');
-}
-
-/**
- * Streaming variant of emitNode — accumulates into __buf, flushes at component boundaries.
- */
-function emitNodeStreaming(
-  node: TemplateNode,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined
-): string[] {
-  const target = '__buf';
-  const emit = (val: string) => `${target} += ${val};`;
-
-  switch (node.type) {
-    case 'text':
-      return node.value ? [emit(JSON.stringify(node.value))] : [];
-
-    case 'expression': {
-      if (!node.nodes || (node.nodes.length === 1 && typeof node.nodes[0] === 'string')) {
-        let expr = node.source;
-        if (options?.autoFilter) expr = `__filter(${expr})`;
-        if (options?.autoEscape !== false) expr = `__escape(${expr})`;
-        return [emit(expr)];
-      }
-      const source = transformExpression(node, components, options);
-      if (/^\s*(\/\*[\s\S]*\*\/|\/\/.*)\s*$/.test(source)) {
-        return [];
-      }
-      let expr = source;
-      if (options?.autoFilter) {
-        expr = `__filter(${expr})`;
-      }
-      if (options?.autoEscape !== false) {
-        expr = `__escape(${expr})`;
-      }
-      return [emit(expr)];
-    }
-
-    case 'element':
-      return emitElementStreaming(node, components, options);
-
-    case 'slot': {
-      const slotNode = node as import('./types.js').SlotNode;
-      const slotName = slotNode.name || 'default';
-      const slotNameExpr = slotNode.nameExpr;
-      const lines: string[] = [];
-
-      if (slotNameExpr) {
-        const exprSource = transformExpression(slotNameExpr, components, options);
-        lines.push(`{ const __slotName = String(${exprSource});`);
-        lines.push(`  if (slots[__slotName] !== undefined) {`);
-        lines.push(`    ${emit('slots[__slotName]')}`);
-        lines.push(`  } else if (slots[""] !== undefined && __slotName === "default") {`);
-        lines.push(`    ${emit('slots[""]')}`);
-        if (slotNode.children.length > 0) {
-          lines.push(`  } else {`);
-          for (const child of slotNode.children) {
-            lines.push(...emitNodeStreaming(child, components, options).map((l) => '    ' + l));
-          }
-        }
-        lines.push(`  }`);
-        lines.push(`}`);
-      } else {
-        const slotNameKey = JSON.stringify(slotName);
-        lines.push(`if (slots[${slotNameKey}] !== undefined) {`);
-        lines.push(`  ${emit(`slots[${slotNameKey}]`)}`);
-        lines.push(
-          `} else if (slots[${JSON.stringify('')}] !== undefined && ${JSON.stringify(slotName)} === "default") {`
-        );
-        lines.push(`  ${emit(`slots[${JSON.stringify('')}]`)}`);
-        if (slotNode.children.length > 0) {
-          lines.push(`} else {`);
-          for (const child of slotNode.children) {
-            lines.push(...emitNodeStreaming(child, components, options).map((l) => '  ' + l));
-          }
-        }
-        lines.push(`}`);
-      }
-      return lines;
-    }
-
-    case 'script': {
-      if (options?.aggregateAssets) {
-        return [];
-      }
-      const lines: string[] = [emit(`"<script"`)];
-      for (const attr of node.attrs) {
-        lines.push(...emitAttr(attr, components, options, target));
-      }
-      lines.push(emit(`">" + ${JSON.stringify(node.content)} + "</script>"`));
-      return lines;
-    }
-
-    case 'style': {
-      if (options?.aggregateAssets) {
-        return [];
-      }
-      const lines: string[] = [emit(`"<style"`)];
-      for (const attr of node.attrs) {
-        lines.push(...emitAttr(attr, components, options, target));
-      }
-      lines.push(emit(`">" + ${JSON.stringify(node.content)} + "</style>"`));
-      return lines;
-    }
-
-    case 'raw':
-      return [emit(JSON.stringify(node.html))];
-
-    default:
-      throw new Error(`Unknown node type: ${(node as { type: string }).type}`);
-  }
-}
-
-/**
- * Streaming variant of emitElement — accumulates into __buf, delegates component
- * calls to emitComponentCallStreaming which flushes and yield-awaits.
- */
-function emitElementStreaming(
-  node: ElementNode,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined
-): string[] {
-  const lines: string[] = [];
-  const target = '__buf';
-  const emit = (val: string) => `${target} += ${val};`;
-
-  if (!node.tag || node.tag === 'Fragment') {
-    let setHtml: AttrNode | undefined;
-    let setText: AttrNode | undefined;
-
-    for (const attr of node.attrs) {
-      if (!('type' in attr)) {
-        if (attr.name === 'set:html') setHtml = attr;
-        else if (attr.name === 'set:text') setText = attr;
-        else if (attr.name === 'slot') {
-          /* allowed */
-        } else {
-          throw new Error(
-            `CompileError: Fragments cannot have attributes or directives (found: ${attr.name})`
-          );
-        }
-      } else {
-        throw new Error(`CompileError: Fragments cannot have spread attributes`);
-      }
-    }
-
-    if (setHtml) {
-      const val = setHtml.value;
-      if (typeof val === 'string') {
-        lines.push(emit(JSON.stringify(val)));
-      } else if (val !== true) {
-        lines.push(
-          `{ const __h = (${transformExpression(val, components, options)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`
-        );
-      }
-    } else if (setText) {
-      const val = setText.value;
-      if (node.children.length > 0) throw new Error('Cannot use set:text with children');
-      if (typeof val === 'string') {
-        lines.push(emit(`__escape(${JSON.stringify(val)})`));
-      } else if (val !== true) {
-        lines.push(emit(`__escape(${transformExpression(val, components, options)})`));
-      }
-    } else {
-      for (const child of node.children) {
-        lines.push(...emitNodeStreaming(child, components, options));
-      }
-    }
-    return lines;
-  }
-
-  const isCapitalized = /^[A-Z]/.test(node.tag);
-  if (node.tag in components || isCapitalized) {
-    return emitComponentCallStreaming(node, components, options);
-  }
-
-  let setHtml: AttrNode | undefined;
-  let setText: AttrNode | undefined;
-
-  const standardAttrs: (AttrNode | SpreadAttrNode)[] = [];
-  for (const attr of node.attrs) {
-    if (!('type' in attr)) {
-      if (attr.name === 'set:html') {
-        setHtml = attr;
-        continue;
-      }
-      if (attr.name === 'set:text') {
-        setText = attr;
-        continue;
-      }
-    }
-    standardAttrs.push(attr);
-  }
-
-  const hasSpread = node.attrs.some((a) => 'type' in a);
-
-  if (!hasSpread) {
-    let tagOpen = `<${node.tag}`;
-    const dynamicAttrs: { name: string; value: ExpressionNode; type?: 'list' | 'style' }[] = [];
-
-    for (const attr of standardAttrs as AttrNode[]) {
-      if (attr.name === 'class' || attr.name === 'className' || attr.name === 'class:list') {
-        if (typeof attr.value === 'string') {
-          tagOpen += ` class="${escapeHtml(attr.value)}"`;
-        } else if (attr.value !== true) {
-          dynamicAttrs.push({
-            name: 'class',
-            value: attr.value,
-            type: attr.name === 'class:list' ? 'list' : undefined,
-          });
-        }
-      } else if (attr.name === 'style') {
-        if (typeof attr.value === 'string') {
-          tagOpen += ` style="${escapeHtml(attr.value)}"`;
-        } else if (attr.value !== true) {
-          dynamicAttrs.push({ name: 'style', value: attr.value, type: 'style' });
-        }
-      } else {
-        if (attr.value === true) {
-          tagOpen += ` ${attr.name}`;
-        } else if (typeof attr.value === 'string') {
-          tagOpen += ` ${attr.name}="${escapeHtml(attr.value)}"`;
-        } else {
-          dynamicAttrs.push({ name: attr.name, value: attr.value });
-        }
-      }
-    }
-
-    lines.push(emit(JSON.stringify(tagOpen)));
-    for (const attr of dynamicAttrs) {
-      const source = transformExpression(attr.value, components, options);
-      if (attr.name === 'class') {
-        const valExpr = attr.type === 'list' ? `__classList(${source})` : source;
-        lines.push(emit(JSON.stringify(` class="`) + ` + __escape(${valExpr}) + "\\""`));
-      } else if (attr.name === 'style') {
-        const valExpr = attr.type === 'style' ? `__styleObject(${source})` : source;
-        lines.push(emit(JSON.stringify(` style="`) + ` + __escape(${valExpr}) + "\\""`));
-      } else {
-        lines.push(emit(JSON.stringify(` ${attr.name}="`) + ` + __escape(${source}) + "\\""`));
-      }
-    }
-  } else {
-    lines.push(emit(JSON.stringify('<' + node.tag)));
-
-    lines.push(`{`);
-    lines.push(`  const __attrs = {};`);
-    lines.push(`  const __classes = [];`);
-    lines.push(`  const __styles = [];`);
-    for (const attr of standardAttrs) {
-      if ('type' in attr) {
-        lines.push(`  {`);
-        lines.push(
-          `    const __s = (${transformExpression(attr.expression, components, options)});`
-        );
-        lines.push(`    for (const __k in __s) {`);
-        lines.push(`      if (__k === "class" || __k === "className" || __k === "class:list") {`);
-        lines.push(
-          `        __classes.push(__k === "class:list" ? __classList(__s[__k]) : __s[__k]);`
-        );
-        lines.push(`      } else if (__k === "style") {`);
-        lines.push(`        const __v = __s[__k];`);
-        lines.push(`        if (typeof __v === "string") __styles.push(__v);`);
-        lines.push(`        else __styles.push(__styleObject(__v));`);
-        lines.push(`      } else {`);
-        lines.push(`        __attrs[__k] = __s[__k];`);
-        lines.push(`      }`);
-        lines.push(`    }`);
-        lines.push(`  }`);
-      } else {
-        if (attr.name === 'class' || attr.name === 'className' || attr.name === 'class:list') {
-          if (attr.value === true) lines.push(`  __classes.push("");`);
-          else if (typeof attr.value === 'string')
-            lines.push(`  __classes.push(${JSON.stringify(attr.value)});`);
-          else
-            lines.push(
-              `  __classes.push(__classList(${transformExpression(attr.value, components, options)}));`
-            );
-        } else if (attr.name === 'style') {
-          if (attr.value === true) lines.push(`  __styles.push("");`);
-          else if (typeof attr.value === 'string')
-            lines.push(`  __styles.push(${JSON.stringify(attr.value)});`);
-          else
-            lines.push(
-              `  __styles.push(__styleObject(${transformExpression(attr.value, components, options)}));`
-            );
-        } else {
-          if (attr.value === true) lines.push(`  __attrs[${JSON.stringify(attr.name)}] = true;`);
-          else if (typeof attr.value === 'string')
-            lines.push(
-              `  __attrs[${JSON.stringify(attr.name)}] = new __RawHtml(${JSON.stringify(attr.value)});`
-            );
-          else
-            lines.push(
-              `  __attrs[${JSON.stringify(attr.name)}] = (${transformExpression(attr.value, components, options)});`
-            );
-        }
-      }
-    }
-
-    lines.push(`  for (const __k in __attrs) {`);
-    lines.push(`    const __v = __attrs[__k];`);
-    lines.push(`    if (__v === true) ${emit(`" " + __escape(__k)`)}`);
-    lines.push(
-      `    else if (__v !== false && __v != null) ${emit(`" " + __escape(__k) + '="' + __escape(__v) + '"'`)}`
-    );
-    lines.push(`  }`);
-    lines.push(`  const __finalCls = __classes.filter(Boolean).join(' ');`);
-    lines.push(`  if (__finalCls) ${emit(`' class="' + __escape(__finalCls) + '"'`)}`);
-    lines.push(
-      `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`
-    );
-    lines.push(`  if (__finalSty) ${emit(`' style="' + __escape(__finalSty) + '"'`)}`);
-    lines.push(`}`);
-  }
-
-  const isVoid = VOID_ELEMENTS.has(node.tag) || node.tag.startsWith('!');
-  if (isVoid) {
-    if (node.tag.startsWith('!')) lines.push(emit(`">"`));
-    else lines.push(emit(`" />"`));
-    return lines;
-  }
-
-  lines.push(emit(`">"`));
-
-  if (setHtml) {
-    if (setText) throw new Error('Cannot use both set:html and set:text');
-    if (node.children.length > 0) throw new Error('Cannot use set:html with children');
-    if (typeof setHtml.value === 'string') {
-      lines.push(emit(JSON.stringify(setHtml.value)));
-    } else if (setHtml.value !== true) {
-      lines.push(
-        `{ const __h = (${transformExpression(setHtml.value, components, options)}); ${emit(`[].concat(__h).map(v => (v && typeof v === 'object' && v.__isRawHtml) ? v.value : v).join("")`)} }`
-      );
-    }
-  } else if (setText) {
-    if (node.children.length > 0) throw new Error('Cannot use set:text with children');
-    if (typeof setText.value === 'string') {
-      lines.push(emit(`__escape(${JSON.stringify(setText.value)})`));
-    } else if (setText.value !== true) {
-      lines.push(emit(`__escape(${transformExpression(setText.value, components, options)})`));
-    }
-  } else {
-    for (const child of node.children) {
-      lines.push(...emitNodeStreaming(child, components, options));
-    }
-  }
-
-  if (!isVoid) {
-    lines.push(emit(JSON.stringify('</' + node.tag + '>')));
-  }
-
-  return lines;
-}
-
-/**
- * Streaming variant of emitComponentCall — flushes the buffer, then
- * yield-awaits the component's async render, then resumes buffering.
- */
-function emitComponentCallStreaming(
-  node: ElementNode,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined
-): string[] {
-  const lines: string[] = [];
-  const localName = node.tag;
-
-  const propParts: string[] = [];
-  for (const attr of node.attrs) {
-    if ('type' in attr) {
-      propParts.push(`...(${transformExpression(attr.expression, components, options)})`);
-    } else {
-      if (attr.value === true) {
-        propParts.push(`${JSON.stringify(attr.name)}: true`);
-      } else if (typeof attr.value === 'string') {
-        propParts.push(`${JSON.stringify(attr.name)}: ${JSON.stringify(attr.value)}`);
-      } else {
-        const val = attr.value;
-        const source = transformExpression(val, components, options);
-        if (attr.name === 'class:list') {
-          propParts.push(`"class:list": (${source})`);
-        } else {
-          propParts.push(`${JSON.stringify(attr.name)}: (${source})`);
-        }
-      }
-    }
-  }
-
-  const propsExpr = `{${propParts.join(', ')}}`;
-
-  lines.push(`{`);
-  lines.push(`  let __component = __components[${JSON.stringify(localName)}];`);
-  lines.push(
-    `  try { if (!__component && typeof ${localName} !== 'undefined') __component = ${localName}; } catch (e) {}`
+  return buildFunctionBody(
+    ast,
+    components,
+    options,
+    STREAMING_TARGET,
+    'if (__buf) { yield __buf; }'
   );
-  lines.push(`  if (typeof __component === 'function') {`);
-  lines.push(`    const __childSlots = {};`);
-
-  // Build slot content using sync emit (slot variables are local strings)
-  for (let i = 0; i < node.children.length; i++) {
-    const child = node.children[i];
-    let slotName: string;
-    const childSlotVarName = `__slot_${i}`;
-    if (child.type === 'element') {
-      const slotAttr = child.attrs.find((a): a is AttrNode => !('type' in a) && a.name === 'slot');
-      let childAttrs = child.attrs;
-      if (slotAttr) {
-        if (typeof slotAttr.value === 'string') {
-          slotName = JSON.stringify(slotAttr.value);
-        } else if (slotAttr.value !== true) {
-          slotName = transformExpression(slotAttr.value, components, options);
-        } else {
-          slotName = JSON.stringify('');
-        }
-        childAttrs = child.attrs.filter((a) => a !== slotAttr);
-      } else {
-        slotName = JSON.stringify('');
-      }
-      lines.push(`    let ${childSlotVarName} = "";`);
-      const tempChild = { ...child, attrs: childAttrs };
-      lines.push(
-        ...emitNode(tempChild, components, options, childSlotVarName).map((l) => '    ' + l)
-      );
-    } else {
-      slotName = JSON.stringify('');
-      lines.push(`    let ${childSlotVarName} = "";`);
-      lines.push(...emitNode(child, components, options, childSlotVarName).map((l) => '    ' + l));
-    }
-
-    lines.push(`    {`);
-    lines.push(`      const __sname = ${slotName};`);
-    lines.push(`      if (__sname === "" || __sname === "default") {`);
-    lines.push(`        if (!__childSlots[""]) __childSlots[""] = "";`);
-    lines.push(`        if (!__childSlots["default"]) __childSlots["default"] = "";`);
-    lines.push(`        __childSlots[""] += ${childSlotVarName};`);
-    lines.push(`        __childSlots["default"] += ${childSlotVarName};`);
-    lines.push(`      } else {`);
-    lines.push(`        if (!__childSlots[__sname]) __childSlots[__sname] = "";`);
-    lines.push(`        __childSlots[__sname] += ${childSlotVarName};`);
-    lines.push(`      }`);
-    lines.push(`    }`);
-  }
-
-  // Flush buffer before component call
-  lines.push(`    if (__buf) { yield __buf; __buf = ""; }`);
-  lines.push(`    yield await __component(${propsExpr}, __childSlots);`);
-
-  lines.push(`  } else if (typeof __component === 'string') {`);
-  // Fallback: treat as HTML element tag — accumulate into __buf
-  lines.push(`    __buf += "<" + __component;`);
-  for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr, components, options, '__buf').map((l) => '    ' + l));
-  }
-  lines.push(`    __buf += ">";`);
-  for (const child of node.children) {
-    lines.push(...emitNodeStreaming(child, components, options).map((l) => '    ' + l));
-  }
-  lines.push(`    __buf += "</" + __component + ">";`);
-  lines.push(`  } else {`);
-  lines.push(`    __buf += "<${localName}";`);
-  for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr, components, options, '__buf').map((l) => '    ' + l));
-  }
-  if (node.selfClosing) {
-    lines.push(`    __buf += " />";`);
-  } else {
-    lines.push(`    __buf += ">";`);
-    for (const child of node.children) {
-      lines.push(...emitNodeStreaming(child, components, options).map((l) => '    ' + l));
-    }
-    lines.push(`    __buf += "</${localName}>";`);
-  }
-  lines.push(`  }`);
-  lines.push(`}`);
-
-  return lines;
 }

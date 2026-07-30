@@ -1,6 +1,32 @@
 import { parse } from './parser.js';
 import { compile as internalCompile, compileStreaming as internalCompileStreaming, } from './compiler.js';
 import { createCache } from './cache.js';
+function createTemplateCaches(options) {
+    const cache = templateCacheFor(options);
+    return { cache, streamCache: cache ? createCache(options.cacheSize) : null };
+}
+function templateCacheFor(options) {
+    if (cachingIsEnabled(options))
+        return createCache(options.cacheSize);
+    return suppliedCache(options);
+}
+function cachingIsEnabled(options) {
+    return options.cache === true || cacheSizeEnablesCaching(options);
+}
+function cacheSizeEnablesCaching(options) {
+    return options.cache === undefined && Boolean(options.cacheSize);
+}
+function suppliedCache(options) {
+    return typeof options.cache === 'object' ? options.cache : null;
+}
+function invalidateCache(cache, key) {
+    if (!cache)
+        return;
+    if (key !== undefined)
+        cache.delete(key);
+    else
+        cache.clear();
+}
 export class Sikka {
     options;
     cache;
@@ -8,18 +34,9 @@ export class Sikka {
     globalComponents = {};
     constructor(options = {}) {
         this.options = options;
-        if (options.cache === true || (options.cache === undefined && options.cacheSize)) {
-            this.cache = createCache(options.cacheSize);
-            this.streamCache = createCache(options.cacheSize);
-        }
-        else if (typeof options.cache === 'object') {
-            this.cache = options.cache;
-            this.streamCache = createCache(options.cacheSize);
-        }
-        else {
-            this.cache = null;
-            this.streamCache = null;
-        }
+        const caches = createTemplateCaches(options);
+        this.cache = caches.cache;
+        this.streamCache = caches.streamCache;
     }
     /**
      * Renders a template string with the provided props.
@@ -81,22 +98,8 @@ export class Sikka {
      * @param key - Optional specific key to remove. If omitted, the entire cache is cleared.
      */
     invalidate(key) {
-        if (this.cache) {
-            if (key !== undefined) {
-                this.cache.delete(key);
-            }
-            else {
-                this.cache.clear();
-            }
-        }
-        if (this.streamCache) {
-            if (key !== undefined) {
-                this.streamCache.delete(key);
-            }
-            else {
-                this.streamCache.clear();
-            }
-        }
+        invalidateCache(this.cache, key);
+        invalidateCache(this.streamCache, key);
     }
     /**
      * Compiles a template string into a render function.
@@ -114,11 +117,7 @@ export class Sikka {
      * @param config - Optional configuration overrides for this compilation.
      */
     compileToString(str, config) {
-        const parseResult = parse(str);
-        if (!parseResult.ok) {
-            throw new Error(`ParseError: ${parseResult.error.message}`);
-        }
-        const result = internalCompile(parseResult.ast, {
+        const result = internalCompile(this.parseTemplate(str), {
             ...(config || this.options),
             components: this.globalComponents,
         });
@@ -129,120 +128,57 @@ export class Sikka {
     }
     compileString(template, basePath = '', config) {
         const options = config || this.options;
-        if (this.cache && !config) {
-            const cached = this.cache.get(template);
-            if (cached)
-                return cached;
-        }
-        const parseResult = parse(template);
-        if (!parseResult.ok) {
-            throw new Error(`ParseError: ${parseResult.error.message}`);
-        }
-        const result = internalCompile(parseResult.ast, {
+        return this.compileTemplate(() => template, template, basePath, options, internalCompile, config ? null : this.cache);
+    }
+    compileFile(name) {
+        const fullPath = this.resolveTemplatePath(name);
+        return this.compileTemplate(() => this.readTemplateFile(fullPath, 'render'), fullPath, fullPath, this.options, internalCompile, this.cache, fullPath);
+    }
+    compileStreamingString(template, basePath = '') {
+        return this.compileTemplate(() => template, template, basePath, this.options, internalCompileStreaming, this.streamCache);
+    }
+    compileStreamingFile(name) {
+        const fullPath = this.resolveTemplatePath(name);
+        return this.compileTemplate(() => this.readTemplateFile(fullPath, 'stream'), fullPath, fullPath, this.options, internalCompileStreaming, this.streamCache, fullPath);
+    }
+    compileTemplate(loadSource, cacheKey, basePath, options, compiler, cache, location) {
+        const cached = cache?.get(cacheKey);
+        if (cached)
+            return cached;
+        const result = compiler(this.parseTemplate(loadSource(), location), {
             ...options,
             components: this.globalComponents,
             basePath,
             fileReader: options.readFile,
         });
         if (!result.ok) {
-            throw new Error(`CompileError: ${result.error.message}`);
+            const suffix = location ? ` in ${location}` : '';
+            throw new Error(`CompileError${suffix}: ${result.error.message}`);
         }
-        if (this.cache && !config) {
-            this.cache.set(template, result.fn);
-        }
+        cache?.set(cacheKey, result.fn);
         return result.fn;
     }
-    compileFile(name) {
-        const fullPath = this.options.views && !name.startsWith('/') && !name.includes(':')
+    parseTemplate(source, location) {
+        const result = parse(source);
+        if (result.ok)
+            return result.ast;
+        const suffix = location ? ` in ${location}` : '';
+        throw new Error(`ParseError${suffix}: ${result.error.message}`);
+    }
+    resolveTemplatePath(name) {
+        return this.options.views && !name.startsWith('/') && !name.includes(':')
             ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
             : name;
-        if (this.cache) {
-            const cached = this.cache.get(fullPath);
-            if (cached)
-                return cached;
-        }
-        if (!this.options.readFile) {
-            throw new Error('Sikka.render() requires options.readFile to be configured');
-        }
-        const content = this.options.readFile(fullPath);
-        if (content === undefined || content === null) {
-            throw new Error(`Could not read file: ${fullPath}`);
-        }
-        const parseResult = parse(content);
-        if (!parseResult.ok) {
-            throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
-        }
-        const result = internalCompile(parseResult.ast, {
-            ...this.options,
-            components: this.globalComponents,
-            basePath: fullPath,
-            fileReader: this.options.readFile,
-        });
-        if (!result.ok) {
-            throw new Error(`CompileError in ${fullPath}: ${result.error.message}`);
-        }
-        if (this.cache) {
-            this.cache.set(fullPath, result.fn);
-        }
-        return result.fn;
     }
-    compileStreamingString(template, basePath = '') {
-        if (this.streamCache) {
-            const cached = this.streamCache.get(template);
-            if (cached)
-                return cached;
-        }
-        const parseResult = parse(template);
-        if (!parseResult.ok) {
-            throw new Error(`ParseError: ${parseResult.error.message}`);
-        }
-        const result = internalCompileStreaming(parseResult.ast, {
-            ...this.options,
-            components: this.globalComponents,
-            basePath,
-            fileReader: this.options.readFile,
-        });
-        if (!result.ok) {
-            throw new Error(`CompileError: ${result.error.message}`);
-        }
-        if (this.streamCache) {
-            this.streamCache.set(template, result.fn);
-        }
-        return result.fn;
-    }
-    compileStreamingFile(name) {
-        const fullPath = this.options.views && !name.startsWith('/') && !name.includes(':')
-            ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
-            : name;
-        if (this.streamCache) {
-            const cached = this.streamCache.get(fullPath);
-            if (cached)
-                return cached;
-        }
+    readTemplateFile(path, method) {
         if (!this.options.readFile) {
-            throw new Error('Sikka.stream() requires options.readFile to be configured');
+            throw new Error(`Sikka.${method}() requires options.readFile to be configured`);
         }
-        const content = this.options.readFile(fullPath);
+        const content = this.options.readFile(path);
         if (content === undefined || content === null) {
-            throw new Error(`Could not read file: ${fullPath}`);
+            throw new Error(`Could not read file: ${path}`);
         }
-        const parseResult = parse(content);
-        if (!parseResult.ok) {
-            throw new Error(`ParseError in ${fullPath}: ${parseResult.error.message}`);
-        }
-        const result = internalCompileStreaming(parseResult.ast, {
-            ...this.options,
-            components: this.globalComponents,
-            basePath: fullPath,
-            fileReader: this.options.readFile,
-        });
-        if (!result.ok) {
-            throw new Error(`CompileError in ${fullPath}: ${result.error.message}`);
-        }
-        if (this.streamCache) {
-            this.streamCache.set(fullPath, result.fn);
-        }
-        return result.fn;
+        return content;
     }
 }
 //# sourceMappingURL=index.js.map

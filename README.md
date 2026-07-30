@@ -22,8 +22,10 @@ The project uses the latest TypeScript compiler, [oxlint](https://oxc.rs/docs/gu
 nub install
 nub run format
 nub run lint
+nub run fallow
 nub run typecheck
 nub run test
+nub run test:coverage
 ```
 
 Configuration lives in `.oxlintrc.json` and `.oxfmtrc.json`.
@@ -129,6 +131,7 @@ Streaming supports:
 - **Static flushing**: Static HTML is yielded immediately without waiting for dynamic content
 - **Component boundaries**: Component calls are awaited and yielded as single chunks
 - **Independent caching**: Streaming functions are cached separately from sync functions
+- **Shared compilation**: Sync and streaming rendering share AST emission logic, so syntax behavior remains aligned
 
 ## Testing
 

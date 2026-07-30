@@ -20,22 +20,20 @@ interface CompileOptions {
     /** Whether to aggregate <script> and <style> tags. */
     aggregateAssets?: boolean;
 }
+type CompileSetupOptions = CompileOptions & {
+    fileReader?: (path: string) => string;
+    basePath?: string;
+};
 export declare const compile: typeof compileSync;
 /**
  * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
-declare function compileSync(ast: TemplateAST, options?: CompileOptions & {
-    fileReader?: (path: string) => string;
-    basePath?: string;
-}): CompileResult;
+declare function compileSync(ast: TemplateAST, options?: CompileSetupOptions): CompileResult;
 /**
  * Higher-level streaming compile entry point: resolves component imports then
  * compiles the AST for streaming.
  */
-declare function compileStreamingInternal(ast: TemplateAST, options?: CompileOptions & {
-    fileReader?: (path: string) => string;
-    basePath?: string;
-}): StreamingCompileResult;
+declare function compileStreamingInternal(ast: TemplateAST, options?: CompileSetupOptions): StreamingCompileResult;
 export declare const compileStreaming: typeof compileStreamingInternal;
 export {};
 //# sourceMappingURL=compiler.d.ts.map
