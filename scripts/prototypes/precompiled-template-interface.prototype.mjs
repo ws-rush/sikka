@@ -71,14 +71,21 @@ export async function* stream(props, slots = {}) {
 }`;
 
 const applicationUse = `import { Sikka } from 'sikka/runtime';
-import { render, stream } from './views/Home.sikka.mjs';
+import * as home from './views/Home.sikka.mjs';
 
-const sikka = new Sikka({ autoEscape: true });
+// The host chooses the entry-key convention and loads artifacts. It can
+// dynamically import this module before registering it if it wants lazy loading.
+const artifacts = { home };
+const sikka = new Sikka({
+  mode: 'precompiled',
+  autoEscape: true,
+  resolver: (entry) => artifacts[entry],
+});
 
-render.call(sikka, { name: 'Ada & <Lin>' });
+sikka.render('home', { name: 'Ada & <Lin>' });
 // '<main><h1>Ada &amp; &lt;Lin&gt;</h1>...</main>'
 
-for await (const chunk of stream.call(sikka, { name: 'Ada' })) {
+for await (const chunk of sikka.stream('home', { name: 'Ada' })) {
   send(chunk);
 }`;
 
@@ -86,14 +93,15 @@ console.log(`
 THROWAWAY PROTOTYPE: standalone artifact compiler and build-tool output
 
 State
-  Entry Template:          views/Home.astro
+  Entry key:               home → views/Home.astro
   Discovered Component:    ui/Card.astro (from its import; no components directory)
   Compiler I/O:            injected read and resolve only
   Compiler result:         artifacts with raw renderString, streamString, and Component edges
   Output I/O:              build tool only
   Output paths:            views/Home.sikka.mjs and ui/Card.sikka.mjs
   Module exports:          named render and stream functions; no default export
-  Standard invocation:     render.call(sikka, props) and stream.call(sikka, props)
+  Application invocation:  sikka.render('home', props) and sikka.stream('home', props)
+  Artifact invocation:     artifact.render.call(sikka, props) and artifact.stream.call(sikka, props)
   CSP:                     static ESM only; no eval or Function constructor
 
 0. Entry Template source
@@ -117,7 +125,9 @@ ${applicationUse}
 Confirmed direction
   compile() follows Frontmatter Component imports from the supplied entry Templates.
   It returns artifacts but never writes files. A build tool turns every artifact into
-  its matching .sikka.mjs file. The Sikka runtime receives either source Templates
-  or generated modules according to its mode; only generated modules run under
-  strict CSP.
+  its matching .sikka.mjs file. In precompiled mode, the application renders a named
+  entry such as 'home'; its resolver returns an already-loaded generated module, and
+  Sikka invokes that module with itself as receiver. The host may lazy-load before
+  registration, but Sikka does not dynamically import modules. Only generated
+  modules run under strict CSP.
 `);
