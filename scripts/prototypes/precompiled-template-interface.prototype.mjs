@@ -27,10 +27,12 @@ const buildToolStep = `const compiler = new Sikka({
   readFile,
 });
 
-const renderBody = compiler.compileToString(templateSource);
-// renderBody is raw Sikka render code, not an ESM module.
+const { renderString, streamString } = compiler.compileToString(templateSource);
+// Both are raw Sikka render-code strings, not ESM modules.
 
-const moduleSource = wrapSikkaRenderBody(renderBody, {
+const moduleSource = wrapSikkaRenderStrings({
+  renderString,
+  streamString,
   componentImports,
   sourceMap,
 });
@@ -52,8 +54,8 @@ export async function* stream(props, slots = {}) {
   const config = this.config;
   const __escape = config.autoEscape === false ? String : escapeHtml;
 
-  // The build tool wraps Sikka's separate Streaming render string here.
-  // It yields the same Rendered HTML semantics as the default export.
+  // The build tool wraps streamString here.
+  // It yields the same Rendered HTML semantics as render().
 }`;
 
 const applicationUse = `import { Sikka } from 'sikka/runtime';
@@ -77,9 +79,10 @@ THROWAWAY PROTOTYPE: build-tool module with instance-owned runtime configuration
 
 State
   Template input:          /src/views/Greeting.astro
-  Sikka compiler output:   raw render-code string
+  Sikka compiler output:   raw renderString and streamString code strings
   Generated artifact:      /dist/views/Greeting.sikka.mjs
   Module exports:          named render and stream functions; no default export
+  Standard invocation:     render.call(sikka, props) and stream.call(sikka, props)
   Module wrapper owner:    the build tool
   Build-time configuration: Template loading, component resolution, source maps
   Runtime configuration:   the Sikka instance passed with Function.call()
@@ -99,8 +102,9 @@ ${generatedByBuildTool}
 ${applicationUse}
 
 Confirmed direction
-  Sikka emits raw render-code strings. Build tools turn them into modules. The
-  compiled module reads render behavior from the Sikka instance passed at Render
-  time, following Eta's receiver model. Build-only configuration cannot move to
-  Render time because it has already resolved the Template and its Components.
+  Sikka emits an object containing raw renderString and streamString code strings.
+  Build tools turn them into modules. The compiled module reads render behavior from
+  the Sikka instance passed with Function.call(), following Eta's receiver model.
+  Build-only configuration cannot move to Render time because it has already resolved
+  the Template and its Components.
 `);
