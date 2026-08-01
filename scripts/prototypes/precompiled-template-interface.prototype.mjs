@@ -40,7 +40,7 @@ const generatedByBuildTool = `// /dist/views/Greeting.sikka.mjs
 // The build tool owns this wrapper around Sikka's raw render string.
 import { escapeHtml } from 'sikka/runtime';
 
-export default function compiled(props, slots = {}) {
+export function render(props, slots = {}) {
   // The caller supplies this Sikka instance with Function.call().
   const config = this.config;
   const __escape = config.autoEscape === false ? String : escapeHtml;
@@ -57,16 +57,20 @@ export async function* stream(props, slots = {}) {
 }`;
 
 const applicationUse = `import { Sikka } from 'sikka/runtime';
-import Greeting from './dist/views/Greeting.sikka.mjs';
+import { render, stream } from './dist/views/Greeting.sikka.mjs';
 
 const escaped = new Sikka({ autoEscape: true });
 const raw = new Sikka({ autoEscape: false });
 
-Greeting.call(escaped, { name: 'Ada & <Lin>', items: ['one'] });
+render.call(escaped, { name: 'Ada & <Lin>', items: ['one'] });
 // '<main><h1>Ada &amp; &lt;Lin&gt;</h1><ul><li>one</li></ul></main>'
 
-Greeting.call(raw, { name: 'Ada & <Lin>', items: ['one'] });
-// '<main><h1>Ada & <Lin></h1><ul><li>one</li></ul></main>'`;
+render.call(raw, { name: 'Ada & <Lin>', items: ['one'] });
+// '<main><h1>Ada & <Lin></h1><ul><li>one</li></ul></main>'
+
+for await (const chunk of stream.call(escaped, { name: 'Ada', items: [] })) {
+  send(chunk);
+}`;
 
 console.log(`
 THROWAWAY PROTOTYPE: build-tool module with instance-owned runtime configuration
@@ -75,6 +79,7 @@ State
   Template input:          /src/views/Greeting.astro
   Sikka compiler output:   raw render-code string
   Generated artifact:      /dist/views/Greeting.sikka.mjs
+  Module exports:          named render and stream functions; no default export
   Module wrapper owner:    the build tool
   Build-time configuration: Template loading, component resolution, source maps
   Runtime configuration:   the Sikka instance passed with Function.call()
