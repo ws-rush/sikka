@@ -23,11 +23,10 @@ __out += '</main>';
 return __out;`;
 
 const artifactGraph = `const artifacts = await compile(['views/Home.astro'], {
-  read(id) {
-    // Build-tool-owned Template loading.
-  },
-  resolve(specifier, importer) {
-    // '../ui/Card.astro' from 'views/Home.astro' → 'ui/Card.astro'
+  resolver(request, importer) {
+    // Build-tool-owned resolution and Template loading.
+    // '../ui/Card.astro' from 'views/Home.astro' →
+    // { id: 'ui/Card.astro', source: '...' }
   },
 });
 
@@ -70,6 +69,19 @@ export async function* stream(props, slots = {}) {
   // It uses the same Sikka receiver and yields equivalent Rendered HTML.
 }`;
 
+const sourceModeUse = `import { Sikka } from 'sikka/runtime';
+
+const sikka = new Sikka({
+  mode: 'source',
+  resolver(request, importer) {
+    // 'home' → { id: 'views/Home.astro', source: '...' }
+    // '../ui/Card.astro' from 'views/Home.astro' →
+    // { id: 'ui/Card.astro', source: '...' }
+  },
+});
+
+sikka.render('home', { name: 'Ada' }); // synchronous Rendered HTML`;
+
 const applicationUse = `import { Sikka } from 'sikka/runtime';
 import * as home from './views/Home.sikka.mjs';
 
@@ -94,10 +106,11 @@ THROWAWAY PROTOTYPE: standalone artifact compiler and build-tool output
 
 State
   Entry key:               home → views/Home.astro
-  Source-mode Render:      synchronous; the host provides locally available Template source
+  Source-mode Render:      synchronous; a resolver provides locally available Template source
+  Source resolver result:  { id, source } for an entry name or Component import
   Discovered Component:    ui/Card.astro (from its import; no components directory)
   Compiler API:            standalone compile(); no instance compile() or compileToString()
-  Compiler I/O:            injected read and resolve only
+  Compiler I/O:            injected resolver only
   Compiler result:         artifacts with raw renderString, streamString, and Component edges
   Output I/O:              build tool only
   Output paths:            views/Home.sikka.mjs and ui/Card.sikka.mjs
@@ -121,18 +134,22 @@ ${buildToolStep}
 4. Generated module written by the build tool
 ${generatedByBuildTool}
 
-5. Application use
+5. Source-mode application use
+${sourceModeUse}
+
+6. Precompiled-mode application use
 ${applicationUse}
 
 Confirmed direction
   The standalone compile() is the sole public build-time compiler; its artifact
   strings replace compileToString(). It follows Frontmatter Component imports from
   the supplied entry Templates. It returns artifacts but never writes files. A build
-  tool turns every artifact into its matching .sikka.mjs file. Source-mode Renders
-  compile locally available Template source at runtime and stay synchronous; they are
-  not strict-CSP safe. In precompiled mode, the application renders a named entry
-  such as 'home'; its resolver returns an already-loaded generated module, and Sikka
-  invokes that module with itself as receiver. The host may lazy-load before
+  tool turns every artifact into its matching .sikka.mjs file. In source mode, one
+  synchronous resolver maps an entry name or Component import to its identity and
+  locally available Template source. Source-mode Renders compile that source at
+  runtime and are not strict-CSP safe. In precompiled mode, the application renders a
+  named entry such as 'home'; its resolver returns an already-loaded generated module,
+  and Sikka invokes that module with itself as receiver. The host may lazy-load before
   registration, but Sikka does not dynamically import modules. Only generated
   modules run under strict CSP.
 `);
