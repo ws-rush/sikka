@@ -69,7 +69,7 @@ export async function* stream(props, slots = {}) {
   // It uses the same Sikka receiver and yields equivalent Rendered HTML.
 }`;
 
-const sourceModeUse = `import { Sikka } from 'sikka/runtime';
+const sourceModeUse = `import { Sikka } from 'sikka';
 
 const sikka = new Sikka({
   mode: 'source',
@@ -82,7 +82,7 @@ const sikka = new Sikka({
 
 sikka.render('home', { name: 'Ada' }); // synchronous Rendered HTML`;
 
-const applicationUse = `import { Sikka } from 'sikka/runtime';
+const applicationUse = `import { Sikka } from 'sikka';
 import * as home from './views/Home.sikka.mjs';
 
 // The host chooses the entry-key convention and loads artifacts. It can
@@ -116,6 +116,7 @@ State
   Output I/O:              build tool only
   Output paths:            views/Home.sikka.mjs and ui/Card.sikka.mjs
   Module exports:          named render and stream functions; no default export
+  Generated helper ABI:    sikka/runtime
   Application invocation:  sikka.render('home', props) and sikka.stream('home', props)
   Artifact invocation:     artifact.render.call(sikka, props) and artifact.stream.call(sikka, props)
   CSP:                     static ESM only; no eval or Function constructor
@@ -153,6 +154,7 @@ Confirmed direction
   runtime and are not strict-CSP safe. In precompiled mode, the application renders a
   named entry such as 'home'; its resolver returns an already-loaded generated module,
   and Sikka invokes that module with itself as receiver. The host may lazy-load before
-  registration, but Sikka does not dynamically import modules. Only generated
+  registration, but Sikka does not dynamically import modules. Generated modules
+  import their shared helpers from the stable sikka/runtime ABI. Only generated
   modules run under strict CSP.
 `);
