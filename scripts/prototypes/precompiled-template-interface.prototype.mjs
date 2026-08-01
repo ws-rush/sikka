@@ -108,6 +108,7 @@ State
   Entry key:               home → views/Home.astro
   Source-mode Render:      synchronous; a resolver provides locally available Template source
   Source resolver result:  { id, source } for an entry name or Component import
+  Component discovery:     Frontmatter imports only; no registered global Components
   Discovered Component:    ui/Card.astro (from its import; no components directory)
   Compiler API:            standalone compile(); no instance compile() or compileToString()
   Compiler I/O:            injected resolver only
@@ -142,8 +143,10 @@ ${applicationUse}
 
 Confirmed direction
   The standalone compile() is the sole public build-time compiler; its artifact
-  strings replace compileToString(). It follows Frontmatter Component imports from
-  the supplied entry Templates. It returns artifacts but never writes files. A build
+  strings replace compileToString(). Components are discovered only through
+  Frontmatter imports; loadComponent() and registerComponent() do not exist. It
+  follows those imports from the supplied entry Templates. It returns artifacts but
+  never writes files. A build
   tool turns every artifact into its matching .sikka.mjs file. In source mode, one
   synchronous resolver maps an entry name or Component import to its identity and
   locally available Template source. Source-mode Renders compile that source at
