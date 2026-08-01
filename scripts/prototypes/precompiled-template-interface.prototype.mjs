@@ -94,6 +94,7 @@ THROWAWAY PROTOTYPE: standalone artifact compiler and build-tool output
 
 State
   Entry key:               home → views/Home.astro
+  Source-mode Render:      synchronous; the host provides locally available Template source
   Discovered Component:    ui/Card.astro (from its import; no components directory)
   Compiler API:            standalone compile(); no instance compile() or compileToString()
   Compiler I/O:            injected read and resolve only
@@ -127,9 +128,11 @@ Confirmed direction
   The standalone compile() is the sole public build-time compiler; its artifact
   strings replace compileToString(). It follows Frontmatter Component imports from
   the supplied entry Templates. It returns artifacts but never writes files. A build
-  tool turns every artifact into its matching .sikka.mjs file. In precompiled mode, the application renders a named
-  entry such as 'home'; its resolver returns an already-loaded generated module, and
-  Sikka invokes that module with itself as receiver. The host may lazy-load before
+  tool turns every artifact into its matching .sikka.mjs file. Source-mode Renders
+  compile locally available Template source at runtime and stay synchronous; they are
+  not strict-CSP safe. In precompiled mode, the application renders a named entry
+  such as 'home'; its resolver returns an already-loaded generated module, and Sikka
+  invokes that module with itself as receiver. The host may lazy-load before
   registration, but Sikka does not dynamically import modules. Only generated
   modules run under strict CSP.
 `);
