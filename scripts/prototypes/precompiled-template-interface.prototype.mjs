@@ -1,110 +1,123 @@
 /*
  * THROWAWAY PROTOTYPE — not production code or a Sikka API commitment.
  *
- * Question: can a build tool turn Sikka's raw compile string into a strict-CSP
- * module whose render policy comes from the Sikka instance passed at Render time?
+ * Question: can standalone compile() follow Frontmatter imports, return a complete
+ * artifact graph without output I/O, and let a build tool write strict-CSP modules?
  * Run: node scripts/prototypes/precompiled-template-interface.prototype.mjs
  */
 
 const templateSource = `---
-const { name, items } = Astro.props;
+import Card from '../ui/Card.astro';
+const { name } = Astro.props;
 ---
-<main><h1>{name}</h1><ul>{items.map((item) => <li>{item}</li>)}</ul></main>`;
+<main><h1>{name}</h1><Card /> </main>`;
 
-const rawRenderBody = `let __out = '';
+const rawRenderString = `let __out = '';
 const Astro = { props, slots };
-const { name, items } = Astro.props;
+const { name } = Astro.props;
 __out += '<main><h1>';
 __out += __escape(name);
-__out += '</h1><ul>';
-for (const item of items) __out += '<li>' + __escape(item) + '</li>';
-__out += '</ul></main>';
+__out += '</h1>';
+__out += __components.Card.call(this, {}, {});
+__out += '</main>';
 return __out;`;
 
-const buildToolStep = `const compiler = new Sikka({
-  // Build-only configuration: component resolution and Template loading.
-  resolvePath,
-  readFile,
+const artifactGraph = `const artifacts = await compile(['views/Home.astro'], {
+  read(id) {
+    // Build-tool-owned Template loading.
+  },
+  resolve(specifier, importer) {
+    // '../ui/Card.astro' from 'views/Home.astro' → 'ui/Card.astro'
+  },
 });
 
-const { renderString, streamString } = compiler.compileToString(templateSource);
-// Both are raw Sikka render-code strings, not ESM modules.
+// compile() returns no files and performs no output I/O.
+// It follows every Frontmatter Component import recursively.
+// artifacts contains one entry for Home and one for Card.`;
 
-const moduleSource = wrapSikkaRenderStrings({
-  renderString,
-  streamString,
-  componentImports,
-  sourceMap,
-});
-await host.write('/dist/views/Greeting.sikka.mjs', moduleSource);`;
+const artifact = `{
+  id: 'views/Home.astro',
+  renderString: ${JSON.stringify(rawRenderString)},
+  streamString: '/* distinct generated Streaming render body */',
+  components: [{ localName: 'Card', id: 'ui/Card.astro' }],
+}`;
 
-const generatedByBuildTool = `// /dist/views/Greeting.sikka.mjs
-// The build tool owns this wrapper around Sikka's raw render string.
+const buildToolStep = `for (const artifact of artifacts) {
+  const outputId = artifact.id.replace(/\\.astro$/, '.sikka.mjs');
+  const moduleSource = wrapSikkaRenderStrings(artifact, {
+    outputId,
+    outputFor: (id) => id.replace(/\\.astro$/, '.sikka.mjs'),
+  });
+  await host.write(outputId, moduleSource);
+}`;
+
+const generatedByBuildTool = `// views/Home.sikka.mjs
+// The build tool generated this wrapper from the Home artifact.
+import { render as renderCard } from '../ui/Card.sikka.mjs';
 import { escapeHtml } from 'sikka/runtime';
 
+const __components = { Card: renderCard };
+
 export function render(props, slots = {}) {
-  // The caller supplies this Sikka instance with Function.call().
   const config = this.config;
   const __escape = config.autoEscape === false ? String : escapeHtml;
 
-  ${rawRenderBody.replaceAll('\n', '\n  ')}
+  ${rawRenderString.replaceAll('\n', '\n  ')}
 }
 
 export async function* stream(props, slots = {}) {
-  const config = this.config;
-  const __escape = config.autoEscape === false ? String : escapeHtml;
-
-  // The build tool wraps streamString here.
-  // It yields the same Rendered HTML semantics as render().
+  // The wrapper places artifact.streamString here.
+  // It uses the same Sikka receiver and yields equivalent Rendered HTML.
 }`;
 
 const applicationUse = `import { Sikka } from 'sikka/runtime';
-import { render, stream } from './dist/views/Greeting.sikka.mjs';
+import { render, stream } from './views/Home.sikka.mjs';
 
-const escaped = new Sikka({ autoEscape: true });
-const raw = new Sikka({ autoEscape: false });
+const sikka = new Sikka({ autoEscape: true });
 
-render.call(escaped, { name: 'Ada & <Lin>', items: ['one'] });
-// '<main><h1>Ada &amp; &lt;Lin&gt;</h1><ul><li>one</li></ul></main>'
+render.call(sikka, { name: 'Ada & <Lin>' });
+// '<main><h1>Ada &amp; &lt;Lin&gt;</h1>...</main>'
 
-render.call(raw, { name: 'Ada & <Lin>', items: ['one'] });
-// '<main><h1>Ada & <Lin></h1><ul><li>one</li></ul></main>'
-
-for await (const chunk of stream.call(escaped, { name: 'Ada', items: [] })) {
+for await (const chunk of stream.call(sikka, { name: 'Ada' })) {
   send(chunk);
 }`;
 
 console.log(`
-THROWAWAY PROTOTYPE: build-tool module with instance-owned runtime configuration
+THROWAWAY PROTOTYPE: standalone artifact compiler and build-tool output
 
 State
-  Template input:          /src/views/Greeting.astro
-  Sikka compiler output:   raw renderString and streamString code strings
-  Generated artifact:      /dist/views/Greeting.sikka.mjs
+  Entry Template:          views/Home.astro
+  Discovered Component:    ui/Card.astro (from its import; no components directory)
+  Compiler I/O:            injected read and resolve only
+  Compiler result:         artifacts with raw renderString, streamString, and Component edges
+  Output I/O:              build tool only
+  Output paths:            views/Home.sikka.mjs and ui/Card.sikka.mjs
   Module exports:          named render and stream functions; no default export
   Standard invocation:     render.call(sikka, props) and stream.call(sikka, props)
-  Module wrapper owner:    the build tool
-  Build-time configuration: Template loading, component resolution, source maps
-  Runtime configuration:   the Sikka instance passed with Function.call()
   CSP:                     static ESM only; no eval or Function constructor
-  Render behavior:         the passed instance controls escaping and filtering
 
-0. Template source
+0. Entry Template source
 ${templateSource}
 
-1. Build-tool use of compileToString()
+1. Standalone compiler use
+${artifactGraph}
+
+2. An artifact returned by compile()
+${artifact}
+
+3. Build-tool file emission
 ${buildToolStep}
 
-2. The module generated by the build tool
+4. Generated module written by the build tool
 ${generatedByBuildTool}
 
-3. Application use
+5. Application use
 ${applicationUse}
 
 Confirmed direction
-  Sikka emits an object containing raw renderString and streamString code strings.
-  Build tools turn them into modules. The compiled module reads render behavior from
-  the Sikka instance passed with Function.call(), following Eta's receiver model.
-  Build-only configuration cannot move to Render time because it has already resolved
-  the Template and its Components.
+  compile() follows Frontmatter Component imports from the supplied entry Templates.
+  It returns artifacts but never writes files. A build tool turns every artifact into
+  its matching .sikka.mjs file. The Sikka runtime receives either source Templates
+  or generated modules according to its mode; only generated modules run under
+  strict CSP.
 `);
