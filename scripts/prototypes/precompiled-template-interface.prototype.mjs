@@ -22,7 +22,17 @@ __out += __components.Card.call(this, {}, {});
 __out += '</main>';
 return __out;`;
 
-const artifactGraph = `const artifacts = await compile(['views/Home.astro'], {
+const rawStreamString = `const Astro = { props, slots };
+const { name } = Astro.props;
+yield '<main><h1>';
+yield __escape(name);
+yield '</h1>';
+for await (const __chunk of __streamComponents.Card.call(this, {}, {})) {
+  yield __chunk;
+}
+yield '</main>';`;
+
+const artifactGraph = `const artifacts = compile(['views/Home.astro'], {
   resolver(request, importer) {
     // Build-tool-owned resolution and Template loading.
     // '../ui/Card.astro' from 'views/Home.astro' →
@@ -37,7 +47,7 @@ const artifactGraph = `const artifacts = await compile(['views/Home.astro'], {
 const artifact = `{
   id: 'views/Home.astro',
   renderString: ${JSON.stringify(rawRenderString)},
-  streamString: '/* distinct generated Streaming render body */',
+  streamString: ${JSON.stringify(rawStreamString)},
   components: [{ localName: 'Card', id: 'ui/Card.astro' }],
 }`;
 
@@ -52,10 +62,11 @@ const buildToolStep = `for (const artifact of artifacts) {
 
 const generatedByBuildTool = `// views/Home.sikka.mjs
 // The build tool generated this wrapper from the Home artifact.
-import { render as renderCard } from '../ui/Card.sikka.mjs';
+import { render as renderCard, stream as streamCard } from '../ui/Card.sikka.mjs';
 import { escapeHtml } from 'sikka/runtime';
 
 const __components = { Card: renderCard };
+const __streamComponents = { Card: streamCard };
 
 export function render(props, slots = {}) {
   const config = this.config;
@@ -65,8 +76,10 @@ export function render(props, slots = {}) {
 }
 
 export async function* stream(props, slots = {}) {
-  // The wrapper places artifact.streamString here.
-  // It uses the same Sikka receiver and yields equivalent Rendered HTML.
+  const config = this.config;
+  const __escape = config.autoEscape === false ? String : escapeHtml;
+
+  ${rawStreamString.replaceAll('\n', '\n  ')}
 }`;
 
 const sourceModeUse = `import { Sikka } from 'sikka';
@@ -116,6 +129,7 @@ State
   Output I/O:              build tool only
   Output paths:            views/Home.sikka.mjs and ui/Card.sikka.mjs
   Module exports:          named render and stream functions; no default export
+  Streaming render:        a distinct body flushes static HTML and Component boundaries
   Generated helper ABI:    sikka/runtime
   Application invocation:  sikka.render('home', props) and sikka.stream('home', props)
   Artifact invocation:     artifact.render.call(sikka, props) and artifact.stream.call(sikka, props)
