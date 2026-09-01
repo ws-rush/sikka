@@ -144,14 +144,22 @@ describe('Syntax Contract', () => {
   for (const case_ of syntaxContractCases) {
     if (case_.modes.includes('source')) {
       it(`${case_.id} renders in source mode`, () => {
-        assertRenderedHtml(case_, sourceSikka(case_).render(case_.id, case_.props));
+        const sikka = sourceSikka(case_);
+        if (case_.streaming === 'await-only') {
+          expect(() => sikka.render(case_.id, case_.props)).toThrow(
+            /Sikka Frontmatter await.*stream/
+          );
+        } else {
+          assertRenderedHtml(case_, sikka.render(case_.id, case_.props));
+        }
       });
 
-      if (case_.streaming === 'same-html') {
-        it(`${case_.id} streams the same Rendered HTML in source mode`, async () => {
+      if (case_.streaming) {
+        it(`${case_.id} streams expected HTML in source mode`, async () => {
           const sikka = sourceSikka(case_);
           const html = await collectHtml(sikka.stream(case_.id, case_.props));
-          expect(html).toBe(sikka.render(case_.id, case_.props));
+          if (case_.streaming === 'same-html')
+            expect(html).toBe(sikka.render(case_.id, case_.props));
           assertRenderedHtml(case_, html);
         });
       }
@@ -160,14 +168,21 @@ describe('Syntax Contract', () => {
     if (case_.modes.includes('precompiled')) {
       it(`${case_.id} renders in precompiled mode`, async () => {
         const sikka = await precompiledSikka(case_);
-        assertRenderedHtml(case_, sikka.render(case_.id, case_.props));
+        if (case_.streaming === 'await-only') {
+          expect(() => sikka.render(case_.id, case_.props)).toThrow(
+            /Sikka Frontmatter await.*stream/
+          );
+        } else {
+          assertRenderedHtml(case_, sikka.render(case_.id, case_.props));
+        }
       });
 
-      if (case_.streaming === 'same-html') {
-        it(`${case_.id} streams the same Rendered HTML in precompiled mode`, async () => {
+      if (case_.streaming) {
+        it(`${case_.id} streams expected HTML in precompiled mode`, async () => {
           const sikka = await precompiledSikka(case_);
           const html = await collectHtml(sikka.stream(case_.id, case_.props));
-          expect(html).toBe(sikka.render(case_.id, case_.props));
+          if (case_.streaming === 'same-html')
+            expect(html).toBe(sikka.render(case_.id, case_.props));
           assertRenderedHtml(case_, html);
         });
       }

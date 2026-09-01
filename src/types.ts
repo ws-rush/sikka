@@ -86,6 +86,8 @@ export interface TemplateAST {
 /** The raw JS/TS source extracted from between the `---` fences. */
 export interface FrontmatterNode {
   source: string;
+  /** Whether the Frontmatter contains an `await` expression. */
+  hasAwait: boolean;
 }
 
 /** A component import recorded from the frontmatter. */
