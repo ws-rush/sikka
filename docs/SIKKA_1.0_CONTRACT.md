@@ -80,6 +80,23 @@ Every documented construct has exactly one classification:
 Diagnostic categories and relevant construct or canonical Template identity are
 Stable. Exact diagnostic message wording is not Stable API.
 
+## HTML attributes
+
+For native HTML tags, `null` and `undefined` omit an attribute. Empty strings
+emit the valueless form (`<input disabled>`). Standard boolean attributes are
+present only for truthy values; other attributes stringify values, including
+`false` and `0`, then escape them unless `autoEscape: false` is set. The standard
+boolean set is `allowfullscreen`, `async`, `autofocus`, `autoplay`, `checked`,
+`controls`, `default`, `defer`, `disabled`, `formnovalidate`, `hidden`, `inert`,
+`ismap`, `itemscope`, `loop`, `multiple`, `muted`, `nomodule`, `novalidate`,
+`open`, `playsinline`, `readonly`, `required`, `reversed`, and `selected`.
+
+A hyphenated custom element is an HTML tag, but does not apply native boolean
+rules: boolean-looking values stringify. Direct attributes and spread objects
+evaluate left-to-right. Later ordinary keys replace earlier ones, while a later
+nullish ordinary value removes the key. This applies equally to regular and
+Streaming renders, source Templates, and Precompiled Templates.
+
 ## Portable Syntax Contract cases
 
 The portable corpus is the semantic oracle used by source and precompiled
