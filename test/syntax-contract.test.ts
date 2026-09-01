@@ -8,6 +8,13 @@ import {
   validateSyntaxContractCases,
 } from './syntax-contract.js';
 
+function sourceSikka(case_: (typeof syntaxContractCases)[number]): Sikka {
+  return new Sikka({
+    mode: 'source',
+    resolver: (request) => ({ id: request, source: case_.template }),
+  });
+}
+
 describe('Syntax Contract', () => {
   it('validates the portable case manifest', () => {
     validateSyntaxContractCases(syntaxContractCases);
@@ -52,12 +59,12 @@ describe('Syntax Contract', () => {
     if (!case_.modes.includes('source')) continue;
 
     it(`${case_.id} renders in source mode`, () => {
-      assertRenderedHtml(case_, new Sikka().renderString(case_.template, case_.props));
+      assertRenderedHtml(case_, sourceSikka(case_).render(case_.id, case_.props));
     });
 
     if (case_.streaming === 'same-html') {
       it(`${case_.id} streams the same Rendered HTML in source mode`, async () => {
-        const html = await collectHtml(new Sikka().streamString(case_.template, case_.props));
+        const html = await collectHtml(sourceSikka(case_).stream(case_.id, case_.props));
         assertRenderedHtml(case_, html);
       });
     }

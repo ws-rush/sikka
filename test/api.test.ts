@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
 import { Sikka } from '../src/index.js';
+import type { SourceModeOptions, SourceTemplate } from '../src/index.js';
 import {
   renderStream,
   renderStreamChunks,
@@ -61,6 +62,66 @@ describe('Sikka', () => {
       sikka.compile('<div>a</div>');
       expect(getCount).toBe(2);
       expect(setCount).toBe(2);
+    });
+  });
+
+  describe('named source mode', () => {
+    it('requires a resolver', () => {
+      expect(() => new Sikka({ mode: 'source' } as SourceModeOptions)).toThrow(
+        'Source mode requires a synchronous resolver'
+      );
+    });
+
+    it('resolves a root entry without an importer', () => {
+      const requests: [string, string | undefined][] = [];
+      const sikka = new Sikka({
+        mode: 'source',
+        resolver: (request, importer) => {
+          requests.push([request, importer]);
+          return { id: '/templates/page.astro', source: '<h1>{Astro.props.title}</h1>' };
+        },
+      });
+      expect(sikka.render('home', { title: 'Hello' })).toBe('<h1>Hello</h1>');
+      expect(requests).toEqual([['home', undefined]]);
+    });
+
+    it('streams a named Template', async () => {
+      const sikka = new Sikka({
+        mode: 'source',
+        resolver: () => ({ id: 'page', source: '<p>{Astro.props.value}</p>' }),
+      });
+      expect(await collectHtml(sikka.stream('page', { value: 'streamed' }))).toBe(
+        '<p>streamed</p>'
+      );
+    });
+
+    it('uses canonical identities for caching and invalidation', () => {
+      let source = '<p>first</p>';
+      const sikka = new Sikka({
+        cache: true,
+        mode: 'source',
+        resolver: () => ({ id: 'canonical-page', source }),
+      });
+      expect(sikka.render('page')).toBe('<p>first</p>');
+      source = '<p>second</p>';
+      expect(sikka.render('page')).toBe('<p>first</p>');
+      sikka.invalidate('canonical-page');
+      expect(sikka.render('page')).toBe('<p>second</p>');
+    });
+
+    it('reports resolver request and canonical identity context', () => {
+      const failed = new Sikka({
+        mode: 'source',
+        resolver: () => {
+          throw new Error('unavailable');
+        },
+      });
+      const invalid = new Sikka({
+        mode: 'source',
+        resolver: () => ({ id: 'page', source: null }) as unknown as SourceTemplate,
+      });
+      expect(() => failed.render('home')).toThrow(/home.*unavailable/);
+      expect(() => invalid.render('home')).toThrow(/home.*canonical identity.*page/);
     });
   });
 
