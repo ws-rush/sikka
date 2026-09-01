@@ -251,17 +251,17 @@ describe('Sikka', () => {
             return {
               id: 'page',
               source:
-                '---\nimport { First, Second } from "shared";\n---\n<First /><Second /><GlobalOnly />',
+                '---\nimport { First, Second } from "shared.astro";\n---\n<First /><Second /><GlobalOnly />',
             };
           }
-          if (request === 'shared') return { id: 'shared', source: '<i>shared</i>' };
+          if (request === 'shared.astro') return { id: 'shared.astro', source: '<i>shared</i>' };
           throw new Error('unexpected Component request');
         },
       });
       sikka.loadComponent('GlobalOnly', '<b>global</b>');
 
       expect(sikka.render('page')).toBe('<i>shared</i><i>shared</i><GlobalOnly />');
-      expect(setKeys.filter((key) => key === 'shared')).toEqual(['shared']);
+      expect(setKeys.filter((key) => key === 'shared.astro')).toEqual(['shared.astro']);
     });
 
     it('reports nested missing, invalid, and circular Component identities', () => {
@@ -290,8 +290,11 @@ describe('Sikka', () => {
       const circular = new Sikka({
         mode: 'source',
         resolver: (request) => {
-          if (request === 'a') return { id: 'a-id', source: '---\nimport B from "b";\n---\n<B />' };
-          if (request === 'b') return { id: 'b-id', source: '---\nimport A from "a";\n---\n<A />' };
+          if (request === 'a')
+            return { id: 'a-id', source: '---\nimport B from "./b.astro";\n---\n<B />' };
+          if (request === './b.astro')
+            return { id: 'b-id', source: '---\nimport A from "./a.astro";\n---\n<A />' };
+          if (request === './a.astro') return { id: 'a-id', source: '' };
           throw new Error('unexpected');
         },
       });
