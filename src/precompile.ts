@@ -75,7 +75,7 @@ function visit(
     const parsed = parse(template.source);
     if (!parsed.ok) throw new Error(`ParseError in ${template.id}: ${parsed.error.message}`);
 
-    const compiled = compileSources(parsed.ast);
+    const compiled = compileSources(parsed.ast, template.id);
     if (!compiled.ok) throw new Error(`CompileError in ${template.id}: ${compiled.error.message}`);
 
     const components = parsed.ast.imports.map(({ localName, specifier }) => {

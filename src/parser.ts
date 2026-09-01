@@ -119,10 +119,10 @@ function skipFrontmatterNewline(source: string, bodyStart: number): number {
 
 function collectImports(fmSource: string): ComponentImport[] {
   const imports: ComponentImport[] = [];
-  const re = /^\s*import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/gm;
+  const re = /^\s*import(?:\s+([\s\S]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
   let match: RegExpExecArray | null;
   while ((match = re.exec(fmSource)) !== null) {
-    collectImportClause(match[1].trim(), match[2], imports);
+    collectImportClause(match[1]?.trim() ?? '', match[2], imports);
   }
   return imports;
 }
@@ -132,11 +132,19 @@ function collectImportClause(
   specifier: string,
   imports: ComponentImport[]
 ): void {
-  if (importClause.startsWith('type ')) return;
+  if (isTypeOnlyImport(importClause)) return;
+  const start = imports.length;
   if (collectNamespaceImport(importClause, specifier, imports)) return;
   for (const part of splitImportClause(importClause)) {
     collectImportPart(part, specifier, imports);
   }
+  if (imports.length === start) imports.push({ localName: '', specifier, isComponent: false });
+}
+
+function isTypeOnlyImport(importClause: string): boolean {
+  if (importClause.startsWith('type ')) return true;
+  const parts = importClause.replaceAll(/[{}]/g, '').split(',');
+  return parts.length > 0 && parts.every((part) => part.trim().startsWith('type '));
 }
 
 function collectNamespaceImport(
@@ -145,7 +153,7 @@ function collectNamespaceImport(
   imports: ComponentImport[]
 ): boolean {
   if (!importClause.startsWith('* as ')) return false;
-  imports.push({ localName: importClause.slice(5).trim(), specifier });
+  imports.push(componentImport(importClause.slice(5).trim(), specifier));
   return true;
 }
 
@@ -185,13 +193,18 @@ function collectNamedImports(part: string, specifier: string, imports: Component
   const namedParts = part.slice(1).replace(/}$/, '').split(',');
   for (const named of namedParts) {
     const localName = /(?:\s+as\s+)?(\w+)$/.exec(named.trim())?.[1];
-    if (localName) imports.push({ localName, specifier });
+    if (localName && !named.trim().startsWith('type '))
+      imports.push(componentImport(localName, specifier));
   }
 }
 
 function collectDefaultImport(part: string, specifier: string, imports: ComponentImport[]): void {
   const localName = /(\w+)$/.exec(part)?.[1];
-  if (localName) imports.push({ localName, specifier });
+  if (localName) imports.push(componentImport(localName, specifier));
+}
+
+function componentImport(localName: string, specifier: string): ComponentImport {
+  return { localName, specifier, isComponent: specifier.endsWith('.astro') };
 }
 
 // ─── Body parser ─────────────────────────────────────────────────────────────
