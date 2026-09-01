@@ -60,6 +60,23 @@ const { value } = Astro.props;
     streaming: 'same-html',
   },
   {
+    id: 'component-and-tag-classification',
+    template: `---
+import Box from './box.astro';
+const Tag = 'my-toggle';
+const div = 'ignored';
+---
+<Box label="self" /><Box label="child"><b>slot</b></Box><Tag selected={false} /><Tag enabled={true}>tag child</Tag><div>lowercase</div><Unbound x={false}>literal</Unbound>`,
+    components: {
+      './box.astro': '<section data-label={Astro.props.label}><slot /></section>',
+    },
+    props: {},
+    expectedHtml:
+      '<section data-label="self"></section><section data-label="child"><b>slot</b></section><my-toggle selected="false"></my-toggle><my-toggle enabled="true">tag child</my-toggle><div>lowercase</div><Unbound x="false">literal</Unbound>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
     id: 'attribute-source-order-and-collisions',
     template: `---
 const first = { id: "first", title: "first" };

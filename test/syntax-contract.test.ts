@@ -7,9 +7,10 @@ import {
   assertRenderedHtml,
   syntaxContractCases,
   validateSyntaxContractCases,
+  type SyntaxContractCase,
 } from './syntax-contract.js';
 
-type ContractCase = (typeof syntaxContractCases)[number];
+type ContractCase = SyntaxContractCase;
 
 function templateFor(case_: ContractCase, request: string): { id: string; source: string } {
   const source = request === case_.id ? case_.template : case_.components?.[request];
@@ -112,6 +113,33 @@ describe('Syntax Contract', () => {
       ])
     ).toThrow(/Duplicate Syntax Contract case ID/);
   });
+
+  for (const value of ['false', 'null', 'undefined', '0', '{}']) {
+    const invalidComponent: ContractCase = {
+      id: `invalid-component-${value.replaceAll(/[^a-z0-9]/g, '') || 'object'}`,
+      template: `---\nconst Broken = ${value};\n---\n<Broken />`,
+      props: {},
+      expectedHtml: '',
+      modes: ['source', 'precompiled'],
+      streaming: 'same-html',
+    };
+
+    it(`rejects bound non-Component ${value} in source mode`, async () => {
+      const sikka = sourceSikka(invalidComponent);
+      expect(() => sikka.render(invalidComponent.id)).toThrow(/Invalid Component Broken/);
+      await expect(collectHtml(sikka.stream(invalidComponent.id))).rejects.toThrow(
+        /Invalid Component Broken/
+      );
+    });
+
+    it(`rejects bound non-Component ${value} in precompiled mode`, async () => {
+      const sikka = await precompiledSikka(invalidComponent);
+      expect(() => sikka.render(invalidComponent.id)).toThrow(/Invalid Component Broken/);
+      await expect(collectHtml(sikka.stream(invalidComponent.id))).rejects.toThrow(
+        /Invalid Component Broken/
+      );
+    });
+  }
 
   for (const case_ of syntaxContractCases) {
     if (case_.modes.includes('source')) {

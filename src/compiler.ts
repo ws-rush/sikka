@@ -835,16 +835,12 @@ function emitElement(
   target = '__out'
 ): string[] {
   if (!node.tag || node.tag === 'Fragment') return emitFragment(node, components, options, target);
-  if (isComponentElement(node, components))
-    return emitComponentCall(node, components, options, target);
+  if (isComponentElement(node)) return emitComponentCall(node, components, options, target);
   return emitHtmlElement(node, components, options, target);
 }
 
-function isComponentElement(
-  node: ElementNode,
-  components: Record<string, RenderFunction>
-): boolean {
-  return node.tag in components || /^[A-Z]/.test(node.tag);
+function isComponentElement(node: ElementNode): boolean {
+  return /^[A-Z]/.test(node.tag);
 }
 
 function emitHtmlElement(
@@ -854,7 +850,7 @@ function emitHtmlElement(
   target: string
 ): string[] {
   const attributes = partitionElementAttributes(node.attrs);
-  if (isVoidOrDeclaration(node.tag)) {
+  if (isVoidOrDeclaration(node.tag) || (node.selfClosing && /^[A-Z]/.test(node.tag))) {
     const lines = emitElementOpeningTag(node.tag, attributes, components, options, target);
     lines.push(`${target} += ${node.tag.startsWith('!') ? '">"' : '" />"'};`);
     return lines;
@@ -982,8 +978,8 @@ function staticAttribute(
   options: CompileOptions | undefined,
   tag?: string
 ): string {
-  if (value === true || value === '' || (tag && isNativeBooleanAttribute(tag, name)))
-    return ` ${name}`;
+  if (value === true) return tag?.includes('-') ? ` ${name}="true"` : ` ${name}`;
+  if (value === '' || (tag && isNativeBooleanAttribute(tag, name))) return ` ${name}`;
   const output = options?.autoEscape === false ? value : escapeHtml(value);
   return ` ${name}="${output}"`;
 }
@@ -1088,12 +1084,53 @@ function emitSpreadOpeningTag(
   closeScope = true,
   supportsContentDirectives = false
 ): string[] {
+  return emitCollectedOpeningTag(
+    JSON.stringify('<' + tag),
+    JSON.stringify(tag.includes('-')),
+    attrs,
+    components,
+    options,
+    target,
+    closeScope,
+    supportsContentDirectives
+  );
+}
+
+function emitDynamicOpeningTag(
+  tag: string,
+  attrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  return emitCollectedOpeningTag(
+    `"<" + ${tag}`,
+    `${tag}.includes("-")`,
+    attrs,
+    components,
+    options,
+    target
+  );
+}
+
+function emitCollectedOpeningTag(
+  opening: string,
+  customElement: string,
+  attrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string,
+  closeScope = true,
+  supportsContentDirectives = false
+): string[] {
   const lines = [
-    `${target} += ${JSON.stringify('<' + tag)};`,
+    `${target} += ${opening};`,
     `{`,
     `  const __attrs = Object.create(null);`,
     `  const __attrOrder = [];`,
     `  const __seenAttrs = Object.create(null);`,
+    `  const __bare = {};`,
+    `  const __isCustomElement = ${customElement};`,
     `  const __classes = [];`,
     `  const __styles = [];`,
     ...(supportsContentDirectives
@@ -1112,7 +1149,7 @@ function emitSpreadOpeningTag(
   ];
   for (const attr of attrs)
     lines.push(...emitSpreadAttribute(attr, components, options, supportsContentDirectives));
-  lines.push(...emitCollectedSpreadValues(tag, target));
+  lines.push(...emitCollectedSpreadValues(target));
   if (closeScope) lines.push(`}`);
   return lines;
 }
@@ -1229,14 +1266,14 @@ function spreadOrdinaryAttributeValue(
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined
 ): string {
-  if (attr.value === true) return '""';
+  if (attr.value === true) return '__bare';
   if (typeof attr.value === 'string') return JSON.stringify(attr.value);
   return `(${transformExpression(attr.value, components, options)})`;
 }
 
-function emitCollectedSpreadValues(tag: string, target: string): string[] {
+function emitCollectedSpreadValues(target: string): string[] {
   const emit = (value: string) => `${target} += ${value};`;
-  const booleans = tag.includes('-') ? '' : [...NATIVE_BOOLEAN_ATTRIBUTES].join(',');
+  const booleans = [...NATIVE_BOOLEAN_ATTRIBUTES].join(',');
   const classes = [
     `  const __finalCls = __classes.filter(Boolean).join(' ');`,
     `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
@@ -1249,8 +1286,11 @@ function emitCollectedSpreadValues(tag: string, target: string): string[] {
     `  for (const __k of __attrOrder) {`,
     `    if (!Object.hasOwn(__attrs, __k)) continue;`,
     `    const __v = __attrs[__k];`,
-    `    if (__v === "") ${emit('" " + __escape(__k)')}`,
-    `    else if (${JSON.stringify(',' + booleans + ',')}.includes("," + __k + ",")) {`,
+    `    if (__v === __bare) {`,
+    `      if (__isCustomElement) ${emit('" " + __escape(__k) + \'="true"\'')}`,
+    `      else ${emit('" " + __escape(__k)')}`,
+    `    } else if (__v === "") ${emit('" " + __escape(__k)')}`,
+    `    else if (!__isCustomElement && ${JSON.stringify(',' + booleans + ',')}.includes("," + __k + ",")) {`,
     `      if (__v) ${emit('" " + __escape(__k)')}`,
     `    } else ${emit('" " + __escape(__k) + \'="\' + __escape(String(__v)) + \'"\'')}`,
     `  }`,
@@ -1327,77 +1367,26 @@ function emitTextDirective(
     : [emit(`__escape(${transformExpression(attr.value, components, options)})`)];
 }
 
-function emitAttr(
-  attr: AttrNode | SpreadAttrNode,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
-  target = '__out'
-): string[] {
-  return 'type' in attr
-    ? emitSpreadAttr(attr, components, options, target)
-    : emitNamedAttr(attr, components, options, target);
-}
-
-function emitSpreadAttr(
-  attr: SpreadAttrNode,
+function emitDynamicHtmlElement(
+  node: ElementNode,
+  tag: string,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
   target: string
 ): string[] {
-  const emit = (value: string) => `${target} += ${value};`;
-  return [
-    `{`,
-    `  const __spread = (${transformExpression(attr.expression, components, options)});`,
-    `  for (const __k in __spread) {`,
-    `    const __val = __spread[__k];`,
-    `    if (__k === "class" || __k === "className" || __k === "class:list") {`,
-    `      ${emit(`" class=\\"" + __escape(__classList(__val)) + "\\""`)}`,
-    `    } else if (__k === "style" && typeof __val === "object") {`,
-    `      ${emit(`" style=\\"" + __escape(__styleObject(__val)) + "\\""`)}`,
-    `    } else if (__val === true) {`,
-    `      ${emit(`" " + __escape(__k)`)}`,
-    `    } else if (__val !== false && __val != null) {`,
-    `      ${emit(`" " + __escape(__k) + '="' + __escape(__val) + '"'`)}`,
-    `    }`,
-    `  }`,
-    `}`,
-  ];
-}
-
-function emitNamedAttr(
-  attr: AttrNode,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
-  target: string
-): string[] {
-  if (attr.value === true) return [emitTargetValue(target, JSON.stringify(' ' + attr.name))];
-  if (typeof attr.value === 'string') {
-    return [emitTargetValue(target, JSON.stringify(' ' + attr.name + '="' + attr.value + '"'))];
-  }
-  return emitDynamicNamedAttr(attr, components, options, target);
-}
-
-function emitDynamicNamedAttr(
-  attr: AttrNode,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
-  target: string
-): string[] {
-  const source = transformExpression(attr.value as ExpressionNode, components, options);
-  const expression = dynamicAttributeExpression(attr.name, source);
-  return [emitTargetValue(target, expression)];
-}
-
-function dynamicAttributeExpression(name: string, source: string): string {
-  if (name === 'class:list')
-    return JSON.stringify(` class="`) + ` + __escape(__classList(${source})) + "\\""`;
-  if (name === 'style')
-    return JSON.stringify(` style="`) + ` + __escape(__styleObject(${source})) + "\\""`;
-  return JSON.stringify(` ${name}="`) + ` + __escape(${source}) + "\\""`;
-}
-
-function emitTargetValue(target: string, value: string): string {
-  return `${target} += ${value};`;
+  const attributes = partitionElementAttributes(node.attrs);
+  const lines = emitDynamicOpeningTag(tag, attributes.standardAttrs, components, options, target);
+  const isVoid = `${JSON.stringify([...VOID_ELEMENTS])}.includes(${tag}.toLowerCase()) || ${tag}.startsWith("!")`;
+  lines.push(
+    `if (${isVoid}) {`,
+    `  ${target} += ${tag}.startsWith("!") ? ">" : " />";`,
+    `} else {`,
+    `  ${target} += ">";`,
+    ...emitElementContent(node, attributes, components, options, target).map((line) => '  ' + line),
+    `  ${target} += "</" + ${tag} + ">";`,
+    `}`
+  );
+  return lines;
 }
 
 function emitComponentCall(
@@ -1411,7 +1400,8 @@ function emitComponentCall(
   const lines = [
     `{`,
     `  let __component = __components[${JSON.stringify(localName)}];`,
-    `  try { if (!__component && typeof ${localName} !== 'undefined') __component = ${localName}; } catch (e) {}`,
+    `  let __bound = __component !== undefined;`,
+    `  if (!__bound) try { __component = ${localName}; __bound = true; } catch (error) { if (!(error instanceof ReferenceError)) throw error; }`,
     `  if (typeof __component === 'function') {`,
     `    const __childSlots = {};`,
     ...emitComponentSlots(node.children, components, options),
@@ -1600,34 +1590,16 @@ function emitComponentFallbacks(
   options: CompileOptions | undefined,
   target: string
 ): string[] {
-  const lines = [
+  return [
     `  } else if (typeof __component === 'string') {`,
-    `${target} += "<" + __component;`,
-  ];
-  for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr, components, options, target).map((line) => '    ' + line));
-  }
-  lines.push(
-    `${target} += ">";`,
-    ...emitChildren(node.children, components, options, target, '    ')
-  );
-  lines.push(
-    `${target} += "</" + __component + ">";`,
+    ...emitDynamicHtmlElement(node, '__component', components, options, target).map(
+      (line) => '    ' + line
+    ),
+    `  } else if (!__bound) {`,
+    ...emitHtmlElement(node, components, options, target).map((line) => '    ' + line),
     `  } else {`,
-    `${target} += "<${node.tag}";`
-  );
-  for (const attr of node.attrs) {
-    lines.push(...emitAttr(attr, components, options, target).map((line) => '    ' + line));
-  }
-  if (node.selfClosing) lines.push(`${target} += " />";`);
-  else {
-    lines.push(
-      `${target} += ">";`,
-      ...emitChildren(node.children, components, options, target, '    ')
-    );
-    lines.push(`${target} += ${JSON.stringify(`</${node.tag}>`)};`);
-  }
-  return lines;
+    `    throw new TypeError(${JSON.stringify(`Invalid Component ${node.tag}: expected a Component or string tag`)});`,
+  ];
 }
 
 function transformExpression(
