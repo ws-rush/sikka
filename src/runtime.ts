@@ -25,7 +25,14 @@ export interface RuntimeHelpers {
   aggregateAssets: boolean;
 }
 
-type ClassListArg = string | Record<string, unknown> | ClassListArg[] | null | undefined | boolean;
+type ClassListArg =
+  | string
+  | Record<string, unknown>
+  | ClassListArg[]
+  | Set<ClassListArg>
+  | null
+  | undefined
+  | boolean;
 type StyleObjectArg =
   | string
   | Record<string, string | number | null | undefined>
@@ -58,8 +65,8 @@ function identity(value: unknown): unknown {
 // fallow-ignore-next-line complexity
 function classList(value: ClassListArg): string {
   if (typeof value === 'string') return value;
-  if (value instanceof Set) return Array.from(value).join(' ');
-  if (Array.isArray(value)) return value.map(classList).filter(Boolean).join(' ');
+  if (value instanceof Set || Array.isArray(value))
+    return Array.from(value, classList).filter(Boolean).join(' ');
   if (!value || typeof value !== 'object') return '';
   return Object.entries(value)
     .filter(([, enabled]) => enabled)

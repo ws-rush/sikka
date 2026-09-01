@@ -13,6 +13,7 @@ The [Sikka 1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) defines the normative 1.0 t
 - **Runtime-agnostic**: Works in Node.js, Bun, Deno, and the browser. No dependencies on Node.js built-ins.
 - **Fast**: Templates are compiled once and cached for high performance.
 - **Secure**: Automatic HTML escaping for all interpolated values to protect against XSS.
+- **Predictable attributes**: `class`, `className`, and `class:list` merge in source order.
 - **Component-driven**: Built-in support for component composition and slots.
 - **Typed**: Written in TypeScript with full type support for props and slots.
 

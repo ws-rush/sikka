@@ -250,6 +250,11 @@ const { a, ...rest } = Astro.props;
 
 ### `class:list`
 
+`class`, `className`, and direct or spread `class:list` values merge in source
+order into one escaped `class` attribute. Lists recursively flatten arrays and
+Sets, include strings and truthy object keys, retain duplicates, and omit falsy
+values; an empty result omits the attribute.
+
 ```astro
 <!-- 1. Object with bool keys -->
 <div class:list={{ a: true }} />

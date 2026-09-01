@@ -39,7 +39,14 @@ interface CompileOptions {
   precompiled?: boolean;
 }
 
-type ClassListArg = string | Record<string, unknown> | ClassListArg[] | null | undefined | boolean;
+type ClassListArg =
+  | string
+  | Record<string, unknown>
+  | ClassListArg[]
+  | Set<ClassListArg>
+  | null
+  | undefined
+  | boolean;
 type StyleObjectArg =
   | string
   | Record<string, string | number | null | undefined>
@@ -104,8 +111,8 @@ function expressionEscapeHelper(options?: CompileOptions): typeof escapeHtml {
 
 function classListHelper(arg: ClassListArg): string {
   if (typeof arg === 'string') return arg;
-  if (arg instanceof Set) return Array.from(arg).join(' ');
-  if (Array.isArray(arg)) return arg.map(classListHelper).filter(Boolean).join(' ');
+  if (arg instanceof Set || Array.isArray(arg))
+    return Array.from(arg, classListHelper).filter(Boolean).join(' ');
   return classListObject(arg);
 }
 
@@ -807,16 +814,17 @@ function emitAssetNode(
   target: string
 ): string[] {
   if (options?.aggregateAssets) return [];
-  const lines = attrs.every(isStaticAttribute)
-    ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, target)
-    : emitSpreadOpeningTag(
-        tag,
-        attrs,
-        attrs.some((attr) => 'type' in attr),
-        components,
-        options,
-        target
-      );
+  const lines =
+    attrs.every(isStaticAttribute) && !attrs.some((attr) => isClassAttribute(attr.name))
+      ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, target)
+      : emitSpreadOpeningTag(
+          tag,
+          attrs,
+          attrs.some((attr) => 'type' in attr),
+          components,
+          options,
+          target
+        );
   lines.push(`${target} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
   return options?.precompiled ? ['if (!__aggregateAssets) {', ...lines, '}'] : lines;
 }
@@ -862,7 +870,11 @@ function emitElementOpeningTag(
   options: CompileOptions | undefined,
   target: string
 ): string[] {
-  if (!attributes.hasSpread && attributes.standardAttrs.every(isStaticAttribute)) {
+  if (
+    !attributes.hasSpread &&
+    attributes.standardAttrs.every(isStaticAttribute) &&
+    !attributes.standardAttrs.some((attr) => isClassAttribute(attr.name))
+  ) {
     return emitStaticOpeningTag(tag, attributes.standardAttrs as AttrNode[], options, target);
   }
   return emitSpreadOpeningTag(
@@ -1139,14 +1151,10 @@ function emitCollectedSpreadValues(
 ): string[] {
   const emit = (value: string) => `${target} += ${value};`;
   const booleans = tag.includes('-') ? '' : [...NATIVE_BOOLEAN_ATTRIBUTES].join(',');
-  const classes = hasSpread
-    ? [
-        `  const __finalCls = __classes.filter(Boolean).join(' ');`,
-        `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
-      ]
-    : attrs
-        .filter((attr): attr is AttrNode => !('type' in attr) && isClassAttribute(attr.name))
-        .map((_, index) => `  ${emit(`' class="' + __escape(__classes[${index}]) + '"'`)}`);
+  const classes = [
+    `  const __finalCls = __classes.filter(Boolean).join(' ');`,
+    `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
+  ];
   const styles = hasSpread
     ? [
         `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`,

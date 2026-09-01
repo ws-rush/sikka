@@ -76,6 +76,51 @@ const right = { get id() { seen.push("right"); return "right"; } };
     streaming: 'same-html',
   },
   {
+    id: 'class-direct-before-spread',
+    template: `---
+const list = new Set(["set", false, ["set-nested"]]);
+const spread = { class: "spread", "class:list": ["spread-list", { spreadObject: true, off: false }] };
+---
+<div class="direct&<" className="direct-name" class:list={["list", ["nested"], { object: true, omitted: false }, list]} {...spread}></div>`,
+    props: {},
+    expectedHtml:
+      '<div class="direct&amp;&lt; direct-name list nested object set set-nested spread spread-list spreadObject"></div>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'class-spread-before-direct',
+    template: `---
+const spread = { class: "spread", className: "spread-name", "class:list": ["spread-list", { spreadObject: true }] };
+---
+<div {...spread} class="direct" className="direct-name" class:list={["list", ["nested"], { object: true, omitted: false }]}></div>`,
+    props: {},
+    expectedHtml:
+      '<div class="spread spread-name spread-list spreadObject direct direct-name list nested object"></div>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'class-without-escaping',
+    template: '<div class={Astro.props.name} class:list={Astro.props.list}></div>',
+    props: { name: 'direct&<', list: ['list&<'] },
+    expectedHtml: '<div class="direct&< list&<"></div>',
+    modes: ['source', 'precompiled'],
+    autoEscape: false,
+    streaming: 'same-html',
+  },
+  {
+    id: 'class-all-falsy-omitted',
+    template: `---
+const spread = { class: "", className: null, "class:list": [false, null, 0, {}] };
+---
+<div class={false} className={undefined} class:list={[false, [], {}]} {...spread}></div>`,
+    props: {},
+    expectedHtml: '<div></div>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
     id: 'body-only-template',
     template: '<main>body</main>',
     props: {},
