@@ -36,28 +36,32 @@ instance that invokes them.
 
 ## Stable precompile API
 
-`compile(entries, { resolver })` is the sole public build API and is exported
-from `sikka/precompile`. It is synchronous, follows Frontmatter Component
-imports recursively, and never writes output files. Its resolver uses the same
-`(request, importer?) -> { id, source }` contract as source mode.
+`compile(entry, { resolver })` is the sole public build API and is exported
+from `sikka/precompile`. It is synchronous, resolves exactly one entry through
+the same `(request, importer?) -> { id, source }` contract as source mode, and
+never writes output files or evaluates generated source.
 
-Each returned artifact has its canonical `id`, distinct raw `renderString` and
-`streamString` bodies, and Component edges (`localName` and canonical target
-`id`). Build tools own output paths, module wrapping, import-specifier
-rewriting, and all output I/O. The conventional emitted suffix is
-`*.sikka.mjs`.
+The versioned `PrecompileArtifact` has its canonical `id`, distinct raw
+`renderString` and `streamString` bodies, and direct Frontmatter Component
+edges (`localName` and source `specifier`). This single-Template boundary does
+not resolve Component edges; graph traversal and canonical Component targets
+are a later contract. Build tools own output paths, module wrapping,
+import-specifier rewriting, and all output I/O. The conventional emitted suffix
+is `*.sikka.mjs`.
 
 ## Generated-runtime ABI
 
-A generated module has named `render` and `stream` exports and no default
-export. It statically imports Component artifacts and shared helpers only from
-`sikka/runtime`; that public subpath is the versioned generated-code helper
-ABI. Generated functions run with the invoking `Sikka` instance as `this`.
+`sikka/runtime` is the versioned generated-code helper ABI. It exports
+`RUNTIME_ABI_VERSION` and `runtime(receiver)`. A static generated module imports
+only `runtime` from this subpath, calls it with `this`, and binds its returned
+`escape`, `RawHtml`, `components`, `classList`, `styleObject`, and `filter`
+helpers before running an artifact body. Thus regular and Streaming exports
+receive behavior from their invoking `Sikka` receiver without rebuilding an
+artifact.
 
-`stream` has a distinct async-generator body. It preserves source order,
-flushes static HTML, awaits and yields Component boundaries, and produces the
-same final Rendered HTML as `render`. Precompiled rendering performs no string
-evaluation and is the strict-CSP path.
+A generated module has named `render` and `stream` exports and no default
+export. `stream` uses its distinct async-generator body. Precompiled rendering
+performs no string evaluation and is the strict-CSP path.
 
 ## Syntax Contract classifications
 

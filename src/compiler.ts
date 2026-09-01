@@ -1598,3 +1598,23 @@ function buildStreamingFunctionBody(
     'if (__buf) { yield __buf; }'
   );
 }
+
+/** Builds unevaluated regular and Streaming render bodies for `sikka/precompile`. */
+export function compileSources(
+  ast: TemplateAST
+): { ok: true; renderString: string; streamString: string } | { ok: false; error: CompileError } {
+  try {
+    // Generated modules select filtering from their runtime receiver.
+    const options = { autoFilter: true };
+    return {
+      ok: true,
+      renderString: buildFunctionBody(ast, {}, options, '__out', 'return __out;'),
+      streamString: buildStreamingFunctionBody(ast, {}, options),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: { message: error instanceof Error ? error.message : String(error) },
+    };
+  }
+}
