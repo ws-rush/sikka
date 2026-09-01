@@ -25,12 +25,12 @@ function wrap(artifact: PrecompileArtifact, componentUrl: (id: string) => string
   return `import { runtime } from ${JSON.stringify(runtime)};
 ${links}
 export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
   const __components = { ${regularComponents.join(', ')} };
 ${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
   const __components = { ${streamingComponents.join(', ')} };
 ${artifact.streamString}
 }`;
@@ -163,6 +163,49 @@ describe('sikka/precompile', () => {
     );
     expect(await renderedStream({ stream: () => sikka.stream('page', { name: '<Ada>' }) })).toBe(
       '<main>before<section><b>&lt;Ada&gt;</b><i>slot</i></section>after</main>'
+    );
+
+    const configured = new Sikka({
+      autoEscape: false,
+      autoFilter: true,
+      filterFunction: (value) => (typeof value === 'string' ? value.toUpperCase() : value),
+      mode: 'precompiled',
+      resolver: () => page,
+    });
+    const configuredHtml = '<main>before<section><b><ADA></b><i>slot</i></section>after</main>';
+    expect(configured.render('page', { name: '<Ada>' })).toBe(configuredHtml);
+    expect(
+      await renderedStream({ stream: () => configured.stream('page', { name: '<Ada>' }) })
+    ).toBe(configuredHtml);
+  });
+
+  it('applies aggregateAssets at precompiled render time', async () => {
+    const template = '<script>const x = 1;</script><p>{Astro.props.name}</p>';
+    const [artifact] = compile('page', {
+      resolver: () => ({ id: 'page', source: template }),
+    });
+    const module = await import(generatedModules([artifact]).get('page') as string);
+    const options = {
+      aggregateAssets: true,
+      autoEscape: false,
+      autoFilter: true,
+      filterFunction: (value: unknown) => (typeof value === 'string' ? value.toUpperCase() : value),
+    };
+    const source = new Sikka({
+      ...options,
+      mode: 'source',
+      resolver: () => ({ id: 'page', source: template }),
+    });
+    const precompiled = new Sikka({ ...options, mode: 'precompiled', resolver: () => module });
+    const expected = '<p><ADA></p>';
+
+    expect(source.render('page', { name: '<ada>' })).toBe(expected);
+    expect(await renderedStream({ stream: (props) => source.stream('page', props) })).toBe(
+      expected
+    );
+    expect(precompiled.render('page', { name: '<ada>' })).toBe(expected);
+    expect(await renderedStream({ stream: (props) => precompiled.stream('page', props) })).toBe(
+      expected
     );
   });
 

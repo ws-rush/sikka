@@ -31,8 +31,11 @@ from Frontmatter imports. Global Component registration and instance
 compilation are not part of the Stable API.
 
 Source mode dynamically compiles Template source and is not the strict-CSP
-path. Precompiled modules receive runtime configuration from the `Sikka`
-instance that invokes them.
+path. Source regular and Streaming compilation caches are separate and keyed by
+canonical identity. `invalidate(id)` removes both entries and `invalidate()`
+clears both caches. `cache: true`, `cache: false`, `cacheSize`, and a supplied
+`Cache` retain their usual behavior. Precompiled modules receive runtime
+configuration from the `Sikka` instance that invokes them.
 
 ## Stable precompile API
 
@@ -57,10 +60,10 @@ canonical identities. The conventional emitted suffix is `*.sikka.mjs`.
 `sikka/runtime` is the versioned generated-code helper ABI. It exports
 `RUNTIME_ABI_VERSION` and `runtime(receiver)`. A static generated module imports
 only `runtime` from this subpath, calls it with `this`, and binds its returned
-`escape`, `RawHtml`, `components`, `classList`, `styleObject`, and `filter`
-helpers before running an artifact body. Thus regular and Streaming exports
-receive behavior from their invoking `Sikka` receiver without rebuilding an
-artifact.
+`escape`, `RawHtml`, `components`, `classList`, `styleObject`, `filter`, and
+`aggregateAssets` helpers before running an artifact body. Thus regular and
+Streaming exports receive behavior from their invoking `Sikka` receiver without
+rebuilding an artifact.
 
 A generated module has named `render` and `stream` exports and no default
 export. `stream` uses its distinct async-generator body. Precompiled rendering
