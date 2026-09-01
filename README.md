@@ -95,9 +95,12 @@ for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
 }
 ```
 
-The resolver is synchronous. Hosts using asynchronous storage must preload and
-cache Template source before calling `render` or `stream`; Sikka does not own
-filesystem, path, or asynchronous loading behavior.
+The resolver is synchronous. Frontmatter Component imports call it with the import
+specifier and the importing Template's canonical identity, so the host owns all
+Component resolution. Source mode uses no Components directory or global registration;
+only actual Frontmatter imports compose Components. Hosts using asynchronous storage
+must preload and cache Template source before calling `render` or `stream`; Sikka does
+not own filesystem, path, or asynchronous loading behavior.
 
 ### Compiling and File Resolution
 
