@@ -351,7 +351,7 @@ Avoid using frontmatter for:
 
 ### Important limitation: imports in frontmatter
 
-In Sikka, frontmatter imports are intended for **`.astro` component composition**. Do not rely on frontmatter as a general-purpose module-loading system for arbitrary runtime logic.
+In Sikka, frontmatter imports are limited to **`.astro` component composition**. Type-only imports are ignored; every other import must target an `.astro` Component, so arbitrary runtime modules are rejected rather than executed.
 
 Recommended rule of thumb:
 

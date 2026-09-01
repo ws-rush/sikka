@@ -209,6 +209,53 @@ describe('sikka/precompile', () => {
     );
   });
 
+  it('keeps Component import forms as graph edges and ignores type-only imports', async () => {
+    const source = `---
+import Default from "./Card.astro";
+import { Named, Original as Aliased } from "./Card.astro";
+import Combined, { AlsoNamed } from "./Card.astro";
+import * as Namespace from "./Card.astro";
+import type { Data } from "./data.ts";
+---
+<Default /><Named /><Aliased /><Combined /><AlsoNamed /><Namespace />`;
+    const resolver = (request: string) => {
+      if (request === 'page') return { id: 'templates/page.astro', source };
+      if (request === './Card.astro') return { id: 'templates/Card.astro', source: '<i>card</i>' };
+      throw new Error(`Unexpected request: ${request}`);
+    };
+    const artifacts = compile('page', { resolver });
+    const page = artifacts.find(({ id }) => id === 'templates/page.astro') as PrecompileArtifact;
+    const names = ['Default', 'Named', 'Aliased', 'Combined', 'AlsoNamed', 'Namespace'];
+
+    expect(page.components.map(({ localName }) => localName)).toEqual(names);
+    const sourceSikka = new Sikka({ mode: 'source', resolver });
+    expect(sourceSikka.render('page')).toBe('<i>card</i>'.repeat(names.length));
+    const generated = await import(
+      generatedModules(artifacts).get('templates/page.astro') as string
+    );
+    expect(generated.render({})).toBe('<i>card</i>'.repeat(names.length));
+  });
+
+  it('rejects application-module imports with the same canonical identity in source and precompile', () => {
+    const resolver = (request: string) => {
+      if (request === 'page') {
+        return {
+          id: 'templates/page.astro',
+          source:
+            '---\nimport data from "./data.ts";\nconst title = "Page";\n---\n<h1>{title}</h1>',
+        };
+      }
+      throw new Error(`Application module must not resolve: ${request}`);
+    };
+    const source = new Sikka({ mode: 'source', resolver });
+    const diagnostic =
+      /Unsupported Frontmatter import.*data\.ts.*canonical Template.*templates\/page\.astro/;
+
+    expect(() => source.render('page')).toThrow(diagnostic);
+    expect(() => source.stream('page')).toThrow(diagnostic);
+    expect(() => compile('page', { resolver })).toThrow(diagnostic);
+  });
+
   it('reports graph resolution failures with identity context', () => {
     expect(() =>
       compile('missing', {

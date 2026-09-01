@@ -94,6 +94,8 @@ export interface ComponentImport {
   localName: string;
   /** The module specifier, e.g. `"./Button.astro"`. */
   specifier: string;
+  /** Whether this import has the `.astro` Component specifier required by Sikka. */
+  isComponent: boolean;
 }
 
 /** Union of all possible template body nodes. */

@@ -12,6 +12,7 @@ import { parse } from './parser.js';
 import {
   compile as internalCompile,
   compileStreaming as internalCompileStreaming,
+  unsupportedFrontmatterImport,
 } from './compiler.js';
 import { createCache } from './cache.js';
 
@@ -260,6 +261,7 @@ export class Sikka {
     if (cached) return cached;
 
     const ast = this.parseTemplate(template.source, template.id);
+    this.throwUnsupportedFrontmatterImport(ast.imports, template.id);
     const components = this.resolveSourceComponents(
       ast.imports,
       template.id,
@@ -299,6 +301,7 @@ export class Sikka {
     if (known) return known;
 
     const ast = this.parseTemplate(template.source, template.id);
+    this.throwUnsupportedFrontmatterImport(ast.imports, template.id);
     const components = this.resolveSourceComponents(
       ast.imports,
       template.id,
@@ -311,6 +314,14 @@ export class Sikka {
     this.cache?.set(template.id, result.fn);
     compiled.set(template.id, result.fn);
     return result.fn;
+  }
+
+  private throwUnsupportedFrontmatterImport(
+    imports: TemplateAST['imports'],
+    templateId: string
+  ): void {
+    const error = unsupportedFrontmatterImport(imports, templateId);
+    if (error) throw new Error(`CompileError in ${templateId}: ${error.message}`);
   }
 
   private throwSourceCycle(

@@ -296,6 +296,20 @@ function parseComponentSource(
 
 export const compile = compileSync;
 
+/** Returns a diagnostic for a Frontmatter import that is not a Component. */
+export function unsupportedFrontmatterImport(
+  imports: ComponentImport[],
+  templateId?: string
+): CompileError | undefined {
+  const invalid = imports.find((item) => !item.isComponent);
+  if (!invalid) return undefined;
+  const context = templateId ? ` in canonical Template ${JSON.stringify(templateId)}` : '';
+  return {
+    message: `Unsupported Frontmatter import ${JSON.stringify(invalid.specifier)}${context}: only .astro Component imports are supported`,
+    specifier: invalid.specifier,
+  };
+}
+
 /**
  * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
@@ -306,6 +320,8 @@ function compileSync(ast: TemplateAST, options?: CompileSetupOptions): CompileRe
 }
 
 function resolveCompileOptions(ast: TemplateAST, options?: CompileSetupOptions): ResolveResult {
+  const importError = unsupportedFrontmatterImport(ast.imports, options?.basePath);
+  if (importError) return { ok: false, error: importError };
   return ast.imports.length === 0
     ? resolvedInitialComponents(options)
     : resolveImportedComponents(ast.imports, options);
@@ -1741,8 +1757,11 @@ function buildStreamingFunctionBody(
 
 /** Builds unevaluated regular and Streaming render bodies for `sikka/precompile`. */
 export function compileSources(
-  ast: TemplateAST
+  ast: TemplateAST,
+  templateId?: string
 ): { ok: true; renderString: string; streamString: string } | { ok: false; error: CompileError } {
+  const importError = unsupportedFrontmatterImport(ast.imports, templateId);
+  if (importError) return { ok: false, error: importError };
   try {
     // Generated modules select filtering from their runtime receiver.
     const options = { autoFilter: true, precompiled: true };

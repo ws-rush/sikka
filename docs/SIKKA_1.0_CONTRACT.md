@@ -122,8 +122,11 @@ The following Template structure is **Supported**:
   valid. Closing-fence and body whitespace is preserved except for the single
   newline immediately following a closing fence.
 - Frontmatter is Template setup only: local constants, local helper
-  declarations, `Astro.props`, and Component composition. It is not an
-  application module or browser-programming surface.
+  declarations, `Astro.props`, and `.astro` Component composition. Type-only
+  imports create no Component edge; every other import must target an `.astro`
+  Component or is rejected. Arbitrary data, framework, database, and
+  application-service imports are excluded. It is not an application module or
+  browser-programming surface.
 - Root text, elements, and Expressions need no wrapper element. `<>...</>` and
   `<Fragment>...</Fragment>` emit their children without wrapper markup.
 - HTML comments and declarations emit verbatim. Void HTML elements emit with a
