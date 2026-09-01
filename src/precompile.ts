@@ -3,7 +3,7 @@ import { parse } from './parser.js';
 import type { SourceResolver, SourceTemplate } from './types.js';
 
 /** The portable precompile-artifact ABI version. */
-export const PRECOMPILE_ABI_VERSION = 1;
+export const PRECOMPILE_ABI_VERSION = 2;
 
 /** A direct Frontmatter Component edge in a precompile artifact. */
 export interface PrecompileComponentEdge {
@@ -11,6 +11,8 @@ export interface PrecompileComponentEdge {
   localName: string;
   /** The Component request from the importing Template's Frontmatter. */
   specifier: string;
+  /** Canonical identity of the imported Component Template. */
+  id: string;
 }
 
 /**
@@ -28,48 +30,111 @@ export interface PrecompileArtifact {
   renderString: string;
   /** Distinct Streaming render async-generator function body. */
   streamString: string;
-  /** Direct Component imports. Graph traversal is intentionally host-owned for now. */
+  /** Direct Component imports and their canonical targets. */
   components: PrecompileComponentEdge[];
 }
 
 /** Options for the standalone synchronous precompiler. */
 export interface PrecompileOptions {
-  /** Resolves the one entry Template using Sikka's shared source contract. */
+  /** Resolves entries and Component imports using Sikka's shared source contract. */
   resolver: SourceResolver;
 }
 
 /**
- * Compiles one resolved Template into a portable artifact without constructing
- * Sikka or evaluating generated source.
+ * Compiles one or more entries and their Frontmatter-imported Component graph
+ * into portable artifacts without constructing Sikka or evaluating generated source.
  */
-export function compile(entry: string, options: PrecompileOptions): PrecompileArtifact {
-  const template = resolve(entry, options.resolver);
-  const parsed = parse(template.source);
-  if (!parsed.ok) throw new Error(`ParseError in ${template.id}: ${parsed.error.message}`);
+export function compile(
+  entries: string | readonly string[],
+  options: PrecompileOptions
+): PrecompileArtifact[] {
+  const requests = typeof entries === 'string' ? [entries] : entries;
+  if (requests.length === 0) throw new Error('GraphError: expected at least one entry request');
 
-  const compiled = compileSources(parsed.ast);
-  if (!compiled.ok) throw new Error(`CompileError in ${template.id}: ${compiled.error.message}`);
-
-  return {
-    abiVersion: PRECOMPILE_ABI_VERSION,
-    id: template.id,
-    renderString: compiled.renderString,
-    streamString: compiled.streamString,
-    components: parsed.ast.imports.map(({ localName, specifier }) => ({ localName, specifier })),
-  };
+  const artifacts = new Map<string, PrecompileArtifact>();
+  const visiting: string[] = [];
+  for (const request of requests) visit(request, undefined, options.resolver, artifacts, visiting);
+  return [...artifacts.values()];
 }
 
-function resolve(request: string, resolver: SourceResolver): SourceTemplate {
+// fallow-ignore-next-line complexity
+function visit(
+  request: string,
+  importer: string | undefined,
+  resolver: SourceResolver,
+  artifacts: Map<string, PrecompileArtifact>,
+  visiting: string[]
+): PrecompileArtifact {
+  const template = resolve(request, importer, resolver);
+  const known = artifacts.get(template.id);
+  if (known) return known;
+  if (visiting.includes(template.id)) throw cycleError(request, importer, visiting, template.id);
+
+  visiting.push(template.id);
+  try {
+    const parsed = parse(template.source);
+    if (!parsed.ok) throw new Error(`ParseError in ${template.id}: ${parsed.error.message}`);
+
+    const compiled = compileSources(parsed.ast);
+    if (!compiled.ok) throw new Error(`CompileError in ${template.id}: ${compiled.error.message}`);
+
+    const components = parsed.ast.imports.map(({ localName, specifier }) => {
+      const component = visit(specifier, template.id, resolver, artifacts, visiting);
+      return { localName, specifier, id: component.id };
+    });
+    const artifact: PrecompileArtifact = {
+      abiVersion: PRECOMPILE_ABI_VERSION,
+      id: template.id,
+      renderString: compiled.renderString,
+      streamString: compiled.streamString,
+      components,
+    };
+    artifacts.set(template.id, artifact);
+    return artifact;
+  } finally {
+    visiting.pop();
+  }
+}
+
+// fallow-ignore-next-line complexity
+function resolve(
+  request: string,
+  importer: string | undefined,
+  resolver: SourceResolver
+): SourceTemplate {
+  const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
   let template: unknown;
   try {
-    template = resolver(request);
+    template = resolver(request, importer);
   } catch (error) {
-    throw new Error(`ResolveError for ${JSON.stringify(request)}: ${message(error)}`, {
+    throw new Error(`ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`, {
       cause: error,
     });
   }
   if (isSourceTemplate(template)) return template;
-  throw new Error(`ResolveError: invalid result for ${JSON.stringify(request)}`);
+  const identity = sourceIdentity(template);
+  const suffix = identity === undefined ? '' : ` (canonical identity ${JSON.stringify(identity)})`;
+  throw new Error(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`);
+}
+
+function cycleError(
+  request: string,
+  importer: string | undefined,
+  visiting: string[],
+  identity: string
+): Error {
+  const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
+  const start = visiting.indexOf(identity);
+  const cycle = [...visiting.slice(start), identity];
+  return new Error(
+    `ResolveError for ${JSON.stringify(request)}${context}: circular component dependency ${cycle.join(' → ')}`
+  );
+}
+
+function sourceIdentity(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const identity = (value as Record<string, unknown>).id;
+  return typeof identity === 'string' ? identity : undefined;
 }
 
 // fallow-ignore-next-line complexity
@@ -77,7 +142,9 @@ function isSourceTemplate(value: unknown): value is SourceTemplate {
   if (!value || typeof value !== 'object') return false;
   const template = value as Record<string, unknown>;
   return (
-    typeof template.id === 'string' && template.id.length > 0 && typeof template.source === 'string'
+    typeof template.id === 'string' &&
+    template.id.trim().length > 0 &&
+    typeof template.source === 'string'
   );
 }
 
