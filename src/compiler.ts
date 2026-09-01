@@ -499,11 +499,18 @@ function buildFunctionBody(
 function buildFunctionPreamble(ast: TemplateAST, options?: CompileOptions): string[] {
   const varName = options?.varName || 'Astro';
   return [
+    ...buildPrecompiledRawHtmlPreamble(options),
     ...buildAstroPreamble(ast, varName),
     '',
     ...buildComponentPreamble(ast.imports),
     ...buildFrontmatterPreamble(ast.frontmatter.source),
   ];
+}
+
+function buildPrecompiledRawHtmlPreamble(options?: CompileOptions): string[] {
+  return options?.precompiled
+    ? ['const __RawHtml = (value) => ({ [Symbol.for("sikka.raw-html")]: true, value });']
+    : [];
 }
 
 function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
@@ -847,12 +854,65 @@ function emitHtmlElement(
   target: string
 ): string[] {
   const attributes = partitionElementAttributes(node.attrs);
-  const lines = emitElementOpeningTag(node.tag, attributes, components, options, target);
   if (isVoidOrDeclaration(node.tag)) {
+    const lines = emitElementOpeningTag(node.tag, attributes, components, options, target);
     lines.push(`${target} += ${node.tag.startsWith('!') ? '">"' : '" />"'};`);
     return lines;
   }
-  return emitNonVoidElement(node, attributes, lines, components, options, target);
+  return attributes.hasSpread || attributes.setHtml || attributes.setText
+    ? emitDirectiveElement(node, attributes, components, options, target)
+    : emitNonVoidElement(
+        node,
+        attributes,
+        emitElementOpeningTag(node.tag, attributes, components, options, target),
+        components,
+        options,
+        target
+      );
+}
+
+function emitDirectiveElement(
+  node: ElementNode,
+  attributes: ElementAttributeGroups,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  if (attributes.setHtml && attributes.setText)
+    throw new Error('Cannot use both set:html and set:text');
+  if (node.children.length > 0 && attributes.setHtml)
+    throw new Error('Cannot use set:html with children');
+  if (node.children.length > 0 && attributes.setText)
+    throw new Error('Cannot use set:text with children');
+
+  const lines = emitSpreadOpeningTag(
+    node.tag,
+    node.attrs,
+    true,
+    components,
+    options,
+    target,
+    false,
+    true
+  );
+  lines.push(`${target} += ">";`);
+  if (node.children.length > 0) {
+    lines.push(
+      `if (__hasSetHtml) throw new Error("Cannot use set:html with children");`,
+      `if (__hasSetText) throw new Error("Cannot use set:text with children");`,
+      ...emitChildren(node.children, components, options, target)
+    );
+  } else {
+    lines.push(
+      `if (__hasSetHtml) {`,
+      emitRawHtmlValue('__setHtml', target),
+      `} else if (__hasSetText) {`,
+      `${target} += __escape(__setText);`,
+      `}`
+    );
+  }
+  lines.push(`${target} += ${JSON.stringify(`</${node.tag}>`)};`, `}`);
+  return lines;
 }
 
 function emitElementOpeningTag(
@@ -1014,7 +1074,9 @@ function emitSpreadOpeningTag(
   hasSpread: boolean,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
-  target: string
+  target: string,
+  closeScope = true,
+  supportsContentDirectives = false
 ): string[] {
   const lines = [
     `${target} += ${JSON.stringify('<' + tag)};`,
@@ -1024,31 +1086,43 @@ function emitSpreadOpeningTag(
     `  const __seenAttrs = Object.create(null);`,
     `  const __classes = [];`,
     `  const __styles = [];`,
+    ...(supportsContentDirectives
+      ? [
+          `  let __hasSetHtml = false;`,
+          `  let __setHtml;`,
+          `  let __hasSetText = false;`,
+          `  let __setText;`,
+        ]
+      : []),
     `  const __setAttr = (__k, __v) => {`,
     `    if (__v == null) { delete __attrs[__k]; return; }`,
     `    if (!Object.hasOwn(__seenAttrs, __k)) { __seenAttrs[__k] = true; __attrOrder.push(__k); }`,
     `    __attrs[__k] = __v;`,
     `  };`,
   ];
-  for (const attr of attrs) lines.push(...emitSpreadAttribute(attr, components, options));
-  lines.push(...emitCollectedSpreadValues(tag, attrs, hasSpread, target), `}`);
+  for (const attr of attrs)
+    lines.push(...emitSpreadAttribute(attr, components, options, supportsContentDirectives));
+  lines.push(...emitCollectedSpreadValues(tag, attrs, hasSpread, target));
+  if (closeScope) lines.push(`}`);
   return lines;
 }
 
 function emitSpreadAttribute(
   attr: ElementAttribute,
   components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined
+  options: CompileOptions | undefined,
+  supportsContentDirectives: boolean
 ): string[] {
   return 'type' in attr
-    ? emitSpreadObject(attr, components, options)
-    : emitSpreadNamedAttribute(attr, components, options);
+    ? emitSpreadObject(attr, components, options, supportsContentDirectives)
+    : emitSpreadNamedAttribute(attr, components, options, supportsContentDirectives);
 }
 
 function emitSpreadObject(
   attr: SpreadAttrNode,
   components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined
+  options: CompileOptions | undefined,
+  supportsContentDirectives: boolean
 ): string[] {
   const source = transformExpression(attr.expression, components, options);
   return [
@@ -1056,7 +1130,15 @@ function emitSpreadObject(
     `    const __s = (${source});`,
     `    if (__s != null) for (const __k of Object.keys(Object(__s))) {`,
     `      const __v = __s[__k];`,
-    `      if (__k === "class" || __k === "className" || __k === "class:list") {`,
+    `      if (__k === "set:html") {`,
+    ...(supportsContentDirectives
+      ? [`        __hasSetHtml = true;`, `        __setHtml = __v;`]
+      : [`        __setAttr(__k, __v);`]),
+    `      } else if (__k === "set:text") {`,
+    ...(supportsContentDirectives
+      ? [`        throw new Error("CompileError: Spread set:text is not supported");`]
+      : [`        __setAttr(__k, __v);`]),
+    `      } else if (__k === "class" || __k === "className" || __k === "class:list") {`,
     `        __classes.push(__k === "class:list" ? __classList(__v) : __v);`,
     `      } else if (__k === "style") {`,
     `        __styles.push(typeof __v === "string" ? __v : __styleObject(__v));`,
@@ -1071,8 +1153,19 @@ function emitSpreadObject(
 function emitSpreadNamedAttribute(
   attr: AttrNode,
   components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined
+  options: CompileOptions | undefined,
+  supportsContentDirectives: boolean
 ): string[] {
+  if (supportsContentDirectives && attr.name === 'set:html')
+    return [
+      `  __hasSetHtml = true;`,
+      `  __setHtml = ${spreadOrdinaryAttributeValue(attr, components, options)};`,
+    ];
+  if (supportsContentDirectives && attr.name === 'set:text')
+    return [
+      `  __hasSetText = true;`,
+      `  __setText = ${spreadOrdinaryAttributeValue(attr, components, options)};`,
+    ];
   if (isClassAttribute(attr.name)) return emitSpreadClassAttribute(attr, components, options);
   if (attr.name === 'style') return emitSpreadStyleAttribute(attr, components, options);
   return emitSpreadOrdinaryAttribute(attr, components, options);
