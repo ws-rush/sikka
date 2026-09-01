@@ -70,25 +70,21 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<div style="z-index:99"></div>');
     });
 
-    it('renders null values as "null" string', () => {
-      const html = render('<div style={{ color: null }} />');
-      expect(html).toBe('<div style="color:null"></div>');
+    it('omits nullish and empty values', () => {
+      const html = render('<div style={{ color: null, background: undefined, padding: "" }} />');
+      expect(html).toBe('<div></div>');
     });
 
-    it('renders undefined values as "undefined" string', () => {
-      const html = render('<div style={{ color: undefined }} />');
-      expect(html).toBe('<div style="color:undefined"></div>');
+    it('omits boolean values while retaining zero', () => {
+      const html = render('<div style={{ hidden: false, enabled: true, zIndex: 0 }} />');
+      expect(html).toBe('<div style="z-index:0"></div>');
     });
 
-    it('renders empty string values', () => {
-      const html = render('<div style={{ color: "" }} />');
-      expect(html).toBe('<div style="color:"></div>');
-    });
-
-    it('combines style string with style object', () => {
-      const html = render('<div style="margin:0" style={{ padding: "10px" }} />');
-      expect(html).toContain('margin:0');
-      expect(html).toContain('padding:10px');
+    it('combines style strings and objects in source order', () => {
+      const html = render(
+        '---\nconst first = { style: { marginTop: 0 } };\nconst second = { style: "color:red;" };\n---\n<div style="display:block;" {...first} style={{ padding: "10px" }} {...second} />'
+      );
+      expect(html).toBe('<div style="display:block;margin-top:0;padding:10px;color:red"></div>');
     });
 
     it('renders quotes in values', () => {
@@ -256,9 +252,9 @@ describe('Syntax: Built-in Directives', () => {
   });
 
   describe('style Edge Cases', () => {
-    it('uses custom toString when defined', () => {
+    it('uses custom toString as the complete style value', () => {
       const html = render('<div style={{ toString: () => "color:red" }} />');
-      expect(html).toContain('color:red');
+      expect(html).toBe('<div style="color:red"></div>');
     });
   });
 

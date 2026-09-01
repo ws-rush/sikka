@@ -280,7 +280,7 @@ values; an empty result omits the attribute.
 <div class:list={arr.push('a') && arr} />
 ```
 
-### `style` Object
+### `style` values
 
 ```astro
 <!-- 1. CamelCase properties -->
@@ -289,9 +289,9 @@ values; an empty result omits the attribute.
 <div style={{ "--custom": "10px" }} />
 <!-- 3. Numeric values (no auto px) -->
 <div style={{ zIndex: 99 }} />
-<!-- 4. Null/undef values -->
-<div style={{ color: null }} />
-<!-- 5. Combined with style string -->
+<!-- 4. Nullish, boolean, and empty values are omitted -->
+<div style={{ color: null, visible: false, padding: "" }} />
+<!-- 5. Combined with style string in source order -->
 <div style="margin:0" style={{ padding: 0 }} />
 <!-- 6. Quotes in values -->
 <div style={{ fontFamily: '"Inter"' }} />
@@ -306,6 +306,11 @@ values; an empty result omits the attribute.
 <!-- 11. Object toString -->
 <div style={{ toString: () => "color:red" }} />
 ```
+
+Style strings and objects merge in source order into one escaped `style`
+attribute. Object keys are kebab-cased except custom properties; string and
+numeric values (including `0`) remain, while nullish, boolean, and empty values
+are omitted. A custom `toString` supplies the object's complete style value.
 
 ### `set:html` and `set:text`
 

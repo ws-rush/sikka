@@ -121,6 +121,36 @@ const spread = { class: "", className: null, "class:list": [false, null, 0, {}] 
     streaming: 'same-html',
   },
   {
+    id: 'style-source-order-and-filtering',
+    template: `---
+const first = { style: { marginTop: 0, ignored: null, enabled: true, empty: "" } };
+const second = { style: 'color:red;content:"<&;' };
+---
+<div style="display:block;" {...first} style={{ padding: 1 }} {...second} style={{ "--token": 0, hidden: false }} />`,
+    props: {},
+    expectedHtml:
+      '<div style="display:block;margin-top:0;padding:1;color:red;content:&quot;&lt;&amp;;--token:0"></div>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'static-style-strings',
+    template: '<div style="margin:0;" style=";padding:1px;;" />',
+    props: {},
+    expectedHtml: '<div style="margin:0;padding:1px"></div>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'style-without-auto-escaping',
+    template: '<div style={Astro.props.value} />',
+    props: { value: 'content:"<&' },
+    expectedHtml: '<div style="content:"<&"></div>',
+    modes: ['source', 'precompiled'],
+    autoEscape: false,
+    streaming: 'same-html',
+  },
+  {
     id: 'body-only-template',
     template: '<main>body</main>',
     props: {},
