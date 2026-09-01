@@ -85,7 +85,10 @@ function extractFrontmatter(
 }
 
 function emptyFrontmatter(): { ok: true; result: FrontmatterResult } {
-  return { ok: true, result: { frontmatter: { source: '' }, imports: [], bodyStart: 0 } };
+  return {
+    ok: true,
+    result: { frontmatter: { source: '', hasAwait: false }, imports: [], bodyStart: 0 },
+  };
 }
 
 function extractFrontmatterContent(
@@ -104,7 +107,7 @@ function extractFrontmatterContent(
   return {
     ok: true,
     result: {
-      frontmatter: { source: fmSource },
+      frontmatter: { source: fmSource, hasAwait: hasAwait(fmSource) },
       imports: collectImports(fmSource),
       bodyStart: skipFrontmatterNewline(source, closeIndex + 4),
     },
@@ -113,6 +116,12 @@ function extractFrontmatterContent(
 
 function skipFrontmatterNewline(source: string, bodyStart: number): number {
   return source[bodyStart] === '\n' ? bodyStart + 1 : bodyStart;
+}
+
+function hasAwait(source: string): boolean {
+  return /\bawait\b/.test(
+    source.replace(/\/\*[\s\S]*?\*\/|\/\/.*|(['"`])(?:\\.|(?!\1)[^\\])*\1/g, '')
+  );
 }
 
 // ─── Import collection ────────────────────────────────────────────────────────

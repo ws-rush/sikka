@@ -296,6 +296,16 @@ function parseComponentSource(
 
 export const compile = compileSync;
 
+/** Returns a diagnostic when regular rendering cannot execute Frontmatter await. */
+export function unsupportedFrontmatterAwait(ast: TemplateAST): CompileError | undefined {
+  return ast.frontmatter.hasAwait
+    ? {
+        message:
+          'Sikka Frontmatter await is only supported during Streaming renders; use stream() instead',
+      }
+    : undefined;
+}
+
 /** Returns a diagnostic for a Frontmatter import that is not a Component. */
 export function unsupportedFrontmatterImport(
   imports: ComponentImport[],
@@ -314,6 +324,8 @@ export function unsupportedFrontmatterImport(
  * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
  */
 function compileSync(ast: TemplateAST, options?: CompileSetupOptions): CompileResult {
+  const awaitError = unsupportedFrontmatterAwait(ast);
+  if (awaitError) return { ok: false, error: awaitError };
   const result = resolveCompileOptions(ast, options);
   if (!result.ok) return result;
   return compileAST(ast, { ...options, components: result.components });
@@ -1767,7 +1779,9 @@ export function compileSources(
     const options = { autoFilter: true, precompiled: true };
     return {
       ok: true,
-      renderString: buildFunctionBody(ast, {}, options, '__out', 'return __out;'),
+      renderString: ast.frontmatter.hasAwait
+        ? `throw new Error(${JSON.stringify(unsupportedFrontmatterAwait(ast)?.message)});`
+        : buildFunctionBody(ast, {}, options, '__out', 'return __out;'),
       streamString: buildStreamingFunctionBody(ast, {}, options),
     };
   } catch (error) {

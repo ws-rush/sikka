@@ -16,7 +16,7 @@ export interface SyntaxContractCase {
   expectedHtml: string;
   modes: readonly SyntaxContractMode[];
   autoEscape?: boolean;
-  streaming?: 'same-html';
+  streaming?: 'same-html' | 'await-only';
 }
 
 export const syntaxContractCases: readonly SyntaxContractCase[] = [
@@ -194,6 +194,18 @@ function uppercase(value) { return value.toUpperCase(); }
     expectedHtml: 'Hello, ADA!',
     modes: ['source', 'precompiled'],
     streaming: 'same-html',
+  },
+  {
+    id: 'frontmatter-await-streaming-only',
+    template: `---
+let greeting = 'Hello';
+greeting += await Promise.resolve(', Ada!');
+---
+<p>{greeting}</p>`,
+    props: {},
+    expectedHtml: '<p>Hello, Ada!</p>',
+    modes: ['source', 'precompiled'],
+    streaming: 'await-only',
   },
   {
     id: 'root-content',
@@ -440,7 +452,9 @@ function isSyntaxContractCase(value: unknown): value is SyntaxContractCase {
     typeof case_.expectedHtml === 'string' &&
     isModes(case_.modes) &&
     (case_.autoEscape === undefined || typeof case_.autoEscape === 'boolean') &&
-    (case_.streaming === undefined || case_.streaming === 'same-html')
+    (case_.streaming === undefined ||
+      case_.streaming === 'same-html' ||
+      case_.streaming === 'await-only')
   );
 }
 

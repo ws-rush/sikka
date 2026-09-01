@@ -211,7 +211,7 @@ for await (const chunk of gen) {
 
 Streaming supports:
 
-- **Async frontmatter**: `await` expressions in frontmatter are fully supported
+- **Async frontmatter**: `await` expressions in frontmatter are supported only by `stream()` and `streamString()`; regular `render()` calls fail with a Sikka diagnostic directing callers to stream
 - **Static flushing**: Static HTML is yielded immediately without waiting for dynamic content
 - **Component boundaries**: Component calls are awaited and yielded as single chunks
 - **Independent caching**: Streaming functions are cached separately from sync functions
