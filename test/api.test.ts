@@ -123,6 +123,116 @@ describe('Sikka', () => {
       expect(() => failed.render('home')).toThrow(/home.*unavailable/);
       expect(() => invalid.render('home')).toThrow(/home.*canonical identity.*page/);
     });
+
+    it('composes imported Components with Props and Slots in regular and Streaming renders', async () => {
+      const requests: [string, string | undefined][] = [];
+      const sikka = new Sikka({
+        mode: 'source',
+        resolver: (request, importer) => {
+          requests.push([request, importer]);
+          if (request === 'page') {
+            return {
+              id: '/app/page.astro',
+              source:
+                '---\nimport Layout from "./layout.astro";\n---\n<Layout title={Astro.props.title}><strong slot="header">Head</strong><p>Body</p></Layout>',
+            };
+          }
+          if (request === './layout.astro' && importer === '/app/page.astro') {
+            return {
+              id: '/app/components/layout.astro',
+              source:
+                '---\nimport { Title as Heading } from "../parts/title.astro";\n---\n<section><Heading text={Astro.props.title} /><header><slot name="header" /></header><main><slot /></main></section>',
+            };
+          }
+          if (request === '../parts/title.astro' && importer === '/app/components/layout.astro') {
+            return { id: '/app/parts/title.astro', source: '<h1>{Astro.props.text}</h1>' };
+          }
+          throw new Error('missing Template');
+        },
+      });
+      const html =
+        '<section><h1>Hello</h1><header><strong>Head</strong></header><main><p>Body</p></main></section>';
+
+      expect(sikka.render('page', { title: 'Hello' })).toBe(html);
+      expect(await collectHtml(sikka.stream('page', { title: 'Hello' }))).toBe(html);
+      expect(requests).toEqual([
+        ['page', undefined],
+        ['./layout.astro', '/app/page.astro'],
+        ['../parts/title.astro', '/app/components/layout.astro'],
+        ['page', undefined],
+        ['./layout.astro', '/app/page.astro'],
+        ['../parts/title.astro', '/app/components/layout.astro'],
+      ]);
+    });
+
+    it('uses only Frontmatter imports and compiles a canonical Component once per graph', () => {
+      const setKeys: string[] = [];
+      const cached = new Map<string, unknown>();
+      const sikka = new Sikka({
+        cache: {
+          get: (key) => cached.get(key) as never,
+          set: (key, fn) => {
+            setKeys.push(key);
+            cached.set(key, fn);
+          },
+          delete: (key) => cached.delete(key),
+          clear: () => cached.clear(),
+        },
+        mode: 'source',
+        resolver: (request) => {
+          if (request === 'page') {
+            return {
+              id: 'page',
+              source:
+                '---\nimport { First, Second } from "shared";\n---\n<First /><Second /><GlobalOnly />',
+            };
+          }
+          if (request === 'shared') return { id: 'shared', source: '<i>shared</i>' };
+          throw new Error('unexpected Component request');
+        },
+      });
+      sikka.loadComponent('GlobalOnly', '<b>global</b>');
+
+      expect(sikka.render('page')).toBe('<i>shared</i><i>shared</i><GlobalOnly />');
+      expect(setKeys.filter((key) => key === 'shared')).toEqual(['shared']);
+    });
+
+    it('reports nested missing, invalid, and circular Component identities', () => {
+      const missing = new Sikka({
+        mode: 'source',
+        resolver: (request) =>
+          request === 'page'
+            ? {
+                id: 'page-id',
+                source: '---\nimport Missing from "./missing.astro";\n---\n<Missing />',
+              }
+            : (() => {
+                throw new Error('not found');
+              })(),
+      });
+      const invalid = new Sikka({
+        mode: 'source',
+        resolver: (request) =>
+          request === 'page'
+            ? {
+                id: 'page-id',
+                source: '---\nimport Broken from "./broken.astro";\n---\n<Broken />',
+              }
+            : ({ id: 'broken-id', source: null } as unknown as SourceTemplate),
+      });
+      const circular = new Sikka({
+        mode: 'source',
+        resolver: (request) => {
+          if (request === 'a') return { id: 'a-id', source: '---\nimport B from "b";\n---\n<B />' };
+          if (request === 'b') return { id: 'b-id', source: '---\nimport A from "a";\n---\n<A />' };
+          throw new Error('unexpected');
+        },
+      });
+
+      expect(() => missing.render('page')).toThrow(/missing\.astro.*page-id.*not found/);
+      expect(() => invalid.render('page')).toThrow(/broken\.astro.*page-id.*broken-id/);
+      expect(() => circular.render('a')).toThrow(/a.*b-id.*a-id.*b-id.*a-id/);
+    });
   });
 
   describe('renderString', () => {

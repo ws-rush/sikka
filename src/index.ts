@@ -229,14 +229,72 @@ export class Sikka {
     compiler: TemplateCompiler<T>,
     cache: TemplateCache
   ): T {
-    return this.compileTemplate(
-      () => template.source,
+    const cached = cache?.get(template.id) as T | undefined;
+    if (cached) return cached;
+
+    const ast = this.parseTemplate(template.source, template.id);
+    const components = this.resolveSourceComponents(
+      ast.imports,
       template.id,
+      new Set([template.id]),
+      new Map()
+    );
+    const result = compiler(ast, { ...this.options, components, basePath: template.id });
+    if (!result.ok) throw new Error(`CompileError in ${template.id}: ${result.error.message}`);
+
+    cache?.set(template.id, result.fn as RenderFunction);
+    return result.fn;
+  }
+
+  private resolveSourceComponents(
+    imports: TemplateAST['imports'],
+    importer: string,
+    ancestors: Set<string>,
+    compiled: Map<string, RenderFunction>
+  ): Record<string, RenderFunction> {
+    const components: Record<string, RenderFunction> = {};
+    const source = this.sourceOptions() as SourceModeOptions;
+    for (const { localName, specifier } of imports) {
+      const template = this.resolveSource(specifier, source, importer);
+      if (ancestors.has(template.id))
+        this.throwSourceCycle(specifier, importer, ancestors, template.id);
+      components[localName] = this.compileSourceComponent(template, ancestors, compiled);
+    }
+    return components;
+  }
+
+  private compileSourceComponent(
+    template: SourceTemplate,
+    ancestors: Set<string>,
+    compiled: Map<string, RenderFunction>
+  ): RenderFunction {
+    const known = compiled.get(template.id) ?? this.cache?.get(template.id);
+    if (known) return known;
+
+    const ast = this.parseTemplate(template.source, template.id);
+    const components = this.resolveSourceComponents(
+      ast.imports,
       template.id,
-      this.options,
-      compiler,
-      cache,
-      template.id
+      new Set([...ancestors, template.id]),
+      compiled
+    );
+    const result = internalCompile(ast, { ...this.options, components, basePath: template.id });
+    if (!result.ok) throw new Error(`CompileError in ${template.id}: ${result.error.message}`);
+
+    this.cache?.set(template.id, result.fn);
+    compiled.set(template.id, result.fn);
+    return result.fn;
+  }
+
+  private throwSourceCycle(
+    request: string,
+    importer: string,
+    ancestors: Set<string>,
+    identity: string
+  ): never {
+    throw new Error(
+      `ResolveError for ${JSON.stringify(request)} imported by canonical identity ${JSON.stringify(importer)}: ` +
+        `circular component dependency ${[...ancestors, identity].join(' → ')}`
     );
   }
 
@@ -312,19 +370,29 @@ export class Sikka {
     return this.options.mode === 'source' ? undefined : this.options;
   }
 
-  private resolveSource(request: string, options: SourceModeOptions): SourceTemplate {
+  private resolveSource(
+    request: string,
+    options: SourceModeOptions,
+    importer?: string
+  ): SourceTemplate {
+    const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
     let template: unknown;
     try {
-      template = options.resolver(request);
+      template = options.resolver(request, importer);
     } catch (error) {
-      throw new Error(`ResolveError for ${JSON.stringify(request)}: ${errorMessage(error)}`, {
-        cause: error,
-      });
+      throw new Error(
+        `ResolveError for ${JSON.stringify(request)}${context}: ${errorMessage(error)}`,
+        {
+          cause: error,
+        }
+      );
     }
     if (!isSourceTemplate(template)) {
       const identity = sourceIdentity(template);
       const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
-      throw new Error(`ResolveError: invalid result for ${JSON.stringify(request)}${suffix}`);
+      throw new Error(
+        `ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`
+      );
     }
     return template;
   }
