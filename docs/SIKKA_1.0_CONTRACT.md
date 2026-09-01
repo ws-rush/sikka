@@ -103,6 +103,12 @@ The following Template structure is **Supported**:
 - `Astro.props` is the supplied Props object in both source and Precompiled
   Templates. `Astro.slots.has(name)` and `Astro.slots.render(name)` retain the
   documented Component Slot presence and rendering behavior.
+- Component attributes are Props; immediate children are Slot content. Unslotted
+  children and `slot="default"` supply the default Slot, while named children
+  supply the matching Slot. Content for each Slot preserves source order and
+  unused supplied Slots render nothing. Fallback content renders only when its
+  Slot is absent: an empty Fragment, nullish Expression, empty string, or
+  whitespace child is present and therefore suppresses Fallback content.
 
 The broader Astro Frontmatter module model, client directives, hydration,
 framework components, browser behavior, and other `Astro` globals are

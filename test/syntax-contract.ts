@@ -125,6 +125,37 @@ function uppercase(value) { return value.toUpperCase(); }
     modes: ['source', 'precompiled'],
     streaming: 'same-html',
   },
+  {
+    id: 'slot-routing-order-and-fallback',
+    template: `---
+import Layout from './layout.astro';
+---
+<Layout label="kept"><i>first</i><b slot="named">third</b><em slot="default">second</em><u slot="named">fourth</u><span slot="unused">hidden</span></Layout>`,
+    components: {
+      './layout.astro':
+        '<section data-label={Astro.props.label}><slot /><slot name="named" /><slot name="missing">fallback</slot></section>',
+    },
+    props: {},
+    expectedHtml:
+      '<section data-label="kept"><i>first</i><em>second</em><b>third</b><u>fourth</u>fallback</section>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'slot-presence-suppresses-fallback',
+    template: `---
+import Empty from './empty.astro';
+---
+<Empty><Fragment></Fragment><Fragment slot="fragment"></Fragment><Fragment slot="null">{null}</Fragment><Fragment slot="undefined">{undefined}</Fragment><Fragment slot="empty">{""}</Fragment><Fragment slot="whitespace"> </Fragment></Empty>`,
+    components: {
+      './empty.astro':
+        '<slot>default</slot>|<slot name="fragment">fragment</slot>|<slot name="null">null</slot>|<slot name="undefined">undefined</slot>|<slot name="empty">empty</slot>|<slot name="whitespace">whitespace</slot>',
+    },
+    props: {},
+    expectedHtml: '||||| ',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
   expressionCase('expression-null', 'null', ''),
   expressionCase('expression-undefined', 'undefined', ''),
   expressionCase('expression-true', 'true', ''),
