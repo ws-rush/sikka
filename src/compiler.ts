@@ -2,7 +2,7 @@
  * Compiler
  */
 
-import { escapeHtml, RawHtml } from './escape.js';
+import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 import { parse, VOID_ELEMENTS } from './parser.js';
 import type {
   TemplateAST,
@@ -53,6 +53,7 @@ type CompileSetupOptions = CompileOptions & {
 };
 
 interface RuntimeHelpers {
+  escapeHelper: (val: unknown) => string;
   classListHelper: (arg: ClassListArg) => string;
   styleObjectHelper: (arg: StyleObjectArg) => string;
   filterHelper: (val: unknown) => unknown;
@@ -60,12 +61,17 @@ interface RuntimeHelpers {
 
 function createRuntimeHelpers(options?: CompileOptions): RuntimeHelpers {
   return {
+    escapeHelper: expressionEscapeHelper(options),
     classListHelper,
     styleObjectHelper,
     filterHelper: options?.autoFilter
       ? options.filterFunction || ((value: unknown) => value)
       : (value: unknown) => value,
   };
+}
+
+function expressionEscapeHelper(options?: CompileOptions): typeof escapeHtml {
+  return options?.autoEscape === false ? stringifyHtml : escapeHtml;
 }
 
 function classListHelper(arg: ClassListArg): string {
@@ -431,7 +437,7 @@ function executeSyncFunction(
     return syncFn(
       props,
       slots,
-      escapeHtml,
+      helpers.escapeHelper,
       RawHtml,
       components,
       helpers.classListHelper,
@@ -705,18 +711,12 @@ function isCommentExpression(source: string): boolean {
 }
 
 function applyExpressionOptions(source: string, options: CompileOptions | undefined): string {
-  let expression = source;
-  if (shouldFilterExpression(options)) expression = `__filter(${expression})`;
-  if (shouldEscapeExpression(options)) expression = `__escape(${expression})`;
-  return expression;
+  const expression = shouldFilterExpression(options) ? `__filter(${source})` : source;
+  return `__escape(${expression})`;
 }
 
 function shouldFilterExpression(options: CompileOptions | undefined): boolean {
   return options?.autoFilter === true;
-}
-
-function shouldEscapeExpression(options: CompileOptions | undefined): boolean {
-  return options?.autoEscape !== false;
 }
 
 function emitSlotNode(
@@ -1587,7 +1587,7 @@ function createStreamingRenderFunction(
     streamingFn(
       props,
       slots ?? {},
-      escapeHtml,
+      helpers.escapeHelper,
       RawHtml,
       components,
       helpers.classListHelper,

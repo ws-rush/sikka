@@ -14,6 +14,7 @@ export interface SyntaxContractCase {
   props: { [key: string]: PortableValue };
   expectedHtml: string;
   modes: readonly SyntaxContractMode[];
+  autoEscape?: boolean;
   streaming?: 'same-html';
 }
 
@@ -33,7 +34,63 @@ const { name, items } = Astro.props;
     modes: ['source', 'precompiled'],
     streaming: 'same-html',
   },
+  expressionCase('expression-null', 'null', ''),
+  expressionCase('expression-undefined', 'undefined', ''),
+  expressionCase('expression-true', 'true', ''),
+  expressionCase('expression-false', 'false', ''),
+  expressionCase('expression-zero', '0', '0'),
+  expressionCase('expression-negative-zero', '-0', '0'),
+  expressionCase('expression-nan', 'NaN', 'NaN'),
+  expressionCase('expression-positive-infinity', 'Infinity', 'Infinity'),
+  expressionCase('expression-negative-infinity', '-Infinity', '-Infinity'),
+  expressionCase('expression-bigint', '100n', '100'),
+  expressionCase(
+    'expression-array-flattening',
+    "['a', [null, true, [false, 'b', , undefined]], 'c']",
+    'abc'
+  ),
+  expressionCase('expression-object', '({ value: 1 })', '[object Object]'),
+  {
+    id: 'expression-function',
+    template: `---
+function expressionFunction() {}
+---
+<p>{expressionFunction}</p>`,
+    props: {},
+    expectedHtml: '<p>function expressionFunction() {}</p>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'expression-string-escaping',
+    template: '<p>{Astro.props.value}</p>',
+    props: { value: '&<>"\'' },
+    expectedHtml: '<p>&amp;&lt;&gt;&quot;&#39;</p>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  expressionCase('expression-zero-and', "0 && '<span/>'", '0'),
+  {
+    id: 'expression-coercion-without-escaping',
+    template: "<p>{[0, false, null, ['<i>', undefined], 'x']}</p>",
+    props: {},
+    expectedHtml: '<p>0<i>x</p>',
+    modes: ['source', 'precompiled'],
+    autoEscape: false,
+    streaming: 'same-html',
+  },
 ];
+
+function expressionCase(id: string, expression: string, expected: string): SyntaxContractCase {
+  return {
+    id,
+    template: `<p>{${expression}}</p>`,
+    props: {},
+    expectedHtml: `<p>${expected}</p>`,
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  };
+}
 
 export function validateSyntaxContractCases(cases: readonly unknown[]): void {
   const ids = new Set<string>();
@@ -60,6 +117,7 @@ function isSyntaxContractCase(value: unknown): value is SyntaxContractCase {
     isPortableRecord(case_.props) &&
     typeof case_.expectedHtml === 'string' &&
     isModes(case_.modes) &&
+    (case_.autoEscape === undefined || typeof case_.autoEscape === 'boolean') &&
     (case_.streaming === undefined || case_.streaming === 'same-html')
   );
 }

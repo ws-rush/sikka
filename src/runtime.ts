@@ -1,4 +1,4 @@
-import { escapeHtml, RawHtml } from './escape.js';
+import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 
 /** The generated-runtime ABI version. */
 export const RUNTIME_ABI_VERSION = 1;
@@ -39,7 +39,7 @@ type StyleObjectArg =
 export function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers {
   const options = receiver?.options ?? receiver;
   return {
-    escape: options?.autoEscape === false ? unescapedHtml : escapeHtml,
+    escape: options?.autoEscape === false ? stringifyHtml : escapeHtml,
     RawHtml,
     components: options?.components ?? {},
     classList,
@@ -50,10 +50,6 @@ export function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers {
 
 function identity(value: unknown): unknown {
   return value;
-}
-
-function unescapedHtml(value: unknown): string {
-  return value instanceof RawHtml ? value.value : String(value);
 }
 
 // fallow-ignore-next-line complexity

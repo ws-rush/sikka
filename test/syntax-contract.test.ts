@@ -12,6 +12,7 @@ import {
 function sourceSikka(case_: (typeof syntaxContractCases)[number]): Sikka {
   return new Sikka({
     mode: 'source',
+    autoEscape: case_.autoEscape,
     resolver: (request) => ({ id: request, source: case_.template }),
   });
 }
@@ -31,7 +32,11 @@ export async function* stream(props, slots = {}) {
 ${artifact.streamString}
 }`;
   const module = await import(`data:text/javascript,${encodeURIComponent(source)}`);
-  return new Sikka({ mode: 'precompiled', resolver: () => module });
+  return new Sikka({
+    mode: 'precompiled',
+    autoEscape: case_.autoEscape,
+    resolver: () => module,
+  });
 }
 
 describe('Syntax Contract', () => {
