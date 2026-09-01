@@ -30,7 +30,7 @@ const { name, items } = Astro.props;
     },
     expectedHtml:
       '<h1>Hello, Ada &amp; &lt;Lin&gt;!</h1><ul><li>first &amp; &lt;second&gt;</li><li>third</li></ul>',
-    modes: ['source'],
+    modes: ['source', 'precompiled'],
     streaming: 'same-html',
   },
 ];

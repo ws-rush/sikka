@@ -122,6 +122,34 @@ Component `render` and `stream` exports separately, calls `runtime(this)`, and
 exposes named `render` and `stream` exports. The receiver supplies runtime
 behavior; generated Templates do not evaluate source strings.
 
+### Named Precompiled Templates
+
+Load generated modules in the host, then resolve them synchronously by entry key.
+Sikka never dynamically imports, compiles, or evaluates a precompiled Template;
+the resolver must return an already-loaded module with named `render` and `stream`
+exports.
+
+```ts
+const modules = new Map([['home', await import('./generated/home.sikka.mjs')]]);
+const sikka = new Sikka({
+  mode: 'precompiled',
+  resolver(entry) {
+    const module = modules.get(entry);
+    if (!module) throw new Error(`Unknown loaded Template: ${entry}`);
+    return module;
+  },
+});
+
+const html = sikka.render('home', { title: 'Hello' });
+for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
+  // write chunk
+}
+```
+
+The configured `Sikka` instance is the receiver for both exports, so generated
+modules use its runtime behavior. Hosts that lazy-load artifacts do so before
+adding them to their resolver.
+
 ### Compiling and File Resolution
 
 To load templates from the file system, provide `views`, `readFile`, and `resolvePath` in the options:
@@ -248,9 +276,11 @@ Creates a configured engine instance.
 
 #### `options`
 
-- `views`: Base directory for templates.
-- `readFile`: Sync function to read file content from disk.
-- `resolvePath`: Sync/Async function to resolve import paths.
+- `mode: 'source'`: Render named source Templates through a synchronous `resolver`.
+- `mode: 'precompiled'`: Render named already-loaded generated modules through a synchronous `resolver`.
+- `views`: Base directory for legacy file templates.
+- `readFile`: Sync function to read legacy file content from disk.
+- `resolvePath`: Sync/Async function to resolve legacy import paths.
 - `varName`: Name of the global variable (default: `"Astro"`).
 - `debug`: Enable runtime error debugging.
 - `cache`: Enable template caching.

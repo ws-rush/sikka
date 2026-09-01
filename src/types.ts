@@ -57,6 +57,23 @@ export interface SourceModeOptions extends SikkaRuntimeOptions {
   resolver: SourceResolver;
 }
 
+/** A statically generated Template module that has already been loaded by its host. */
+export interface PrecompiledModule {
+  /** Named regular Render export. */
+  render(props: Record<string, unknown>, slots?: Record<string, string>): string;
+  /** Named Streaming render export. */
+  stream(props: Record<string, unknown>, slots?: Record<string, string>): AsyncGenerator<string>;
+}
+
+/** Synchronously resolves an entry key to an already-loaded generated module. */
+export type PrecompiledResolver = (entry: string) => PrecompiledModule;
+
+/** Options for named precompiled Template rendering. */
+export interface PrecompiledModeOptions extends SikkaRuntimeOptions {
+  mode: 'precompiled';
+  resolver: PrecompiledResolver;
+}
+
 // ─── AST types ────────────────────────────────────────────────────────────────
 
 /** The root AST node produced by the parser. */

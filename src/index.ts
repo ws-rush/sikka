@@ -1,4 +1,6 @@
 import type {
+  PrecompiledModeOptions,
+  PrecompiledModule,
   RenderFunction,
   SikkaOptions,
   SourceModeOptions,
@@ -13,9 +15,16 @@ import {
 } from './compiler.js';
 import { createCache } from './cache.js';
 
-export type { SourceModeOptions, SourceResolver, SourceTemplate } from './types.js';
+export type {
+  PrecompiledModeOptions,
+  PrecompiledModule,
+  PrecompiledResolver,
+  SourceModeOptions,
+  SourceResolver,
+  SourceTemplate,
+} from './types.js';
 
-type RuntimeOptions = SikkaOptions | SourceModeOptions;
+type RuntimeOptions = SikkaOptions | SourceModeOptions | PrecompiledModeOptions;
 type CompilerOptions = RuntimeOptions & {
   components: Record<string, RenderFunction>;
   basePath?: string;
@@ -74,6 +83,15 @@ function isSourceTemplate(value: unknown): value is SourceTemplate {
   return !!template && isTemplateIdentity(template.id) && typeof template.source === 'string';
 }
 
+function isPrecompiledModule(value: unknown): value is PrecompiledModule {
+  const module = sourceTemplateRecord(value);
+  return !!module && typeof module.render === 'function' && typeof module.stream === 'function';
+}
+
+function isAsyncIterable(value: unknown): value is AsyncGenerator<string> {
+  return !!value && typeof (value as AsyncIterable<string>)[Symbol.asyncIterator] === 'function';
+}
+
 function sourceIdentity(value: unknown): string | undefined {
   const template = sourceTemplateRecord(value);
   return template && typeof template.id === 'string' ? template.id : undefined;
@@ -84,7 +102,7 @@ function errorMessage(error: unknown): string {
 }
 
 function legacyReadFile(options: RuntimeOptions): SikkaOptions['readFile'] | undefined {
-  return options.mode === 'source' ? undefined : options.readFile;
+  return options.mode === undefined ? options.readFile : undefined;
 }
 
 export class Sikka {
@@ -95,6 +113,9 @@ export class Sikka {
   constructor(private options: RuntimeOptions = {}) {
     if (options.mode === 'source' && typeof options.resolver !== 'function') {
       throw new Error('Source mode requires a synchronous resolver');
+    }
+    if (options.mode === 'precompiled' && typeof options.resolver !== 'function') {
+      throw new Error('Precompiled mode requires a synchronous resolver');
     }
     const caches = createTemplateCaches(options);
     this.cache = caches.cache;
@@ -119,6 +140,9 @@ export class Sikka {
    * @param props - Data object to pass as `Astro.props`.
    */
   render(name: string, props: Record<string, unknown> = {}): string {
+    const precompiled = this.precompiledOptions();
+    if (precompiled) return this.renderPrecompiled(name, props, precompiled);
+
     const source = this.sourceOptions();
     const fn = source
       ? this.compileSource(this.resolveSource(name, source), internalCompile, this.cache)
@@ -147,6 +171,9 @@ export class Sikka {
    * @param props - Data object to pass as `Astro.props`.
    */
   stream(name: string, props: Record<string, unknown> = {}): AsyncGenerator<string> {
+    const precompiled = this.precompiledOptions();
+    if (precompiled) return this.streamPrecompiled(name, props, precompiled);
+
     const source = this.sourceOptions();
     const fn = source
       ? this.compileSource(
@@ -366,8 +393,67 @@ export class Sikka {
     return this.options.mode === 'source' ? this.options : undefined;
   }
 
+  private precompiledOptions(): PrecompiledModeOptions | undefined {
+    return this.options.mode === 'precompiled' ? this.options : undefined;
+  }
+
+  private renderPrecompiled(
+    entry: string,
+    props: Record<string, unknown>,
+    options: PrecompiledModeOptions
+  ): string {
+    const html = this.resolvePrecompiled(entry, options).render.call(this, props, {});
+    if (typeof html !== 'string') {
+      throw new Error(
+        `PrecompiledError for entry ${JSON.stringify(entry)}: generated render() must return HTML synchronously`
+      );
+    }
+    return html;
+  }
+
+  private streamPrecompiled(
+    entry: string,
+    props: Record<string, unknown>,
+    options: PrecompiledModeOptions
+  ): AsyncGenerator<string> {
+    const stream = this.resolvePrecompiled(entry, options).stream.call(this, props, {});
+    if (!isAsyncIterable(stream)) {
+      throw new Error(
+        `PrecompiledError for entry ${JSON.stringify(entry)}: generated stream() must return an async iterable`
+      );
+    }
+    return stream;
+  }
+
+  // fallow-ignore-next-line complexity
+  private resolvePrecompiled(entry: string, options: PrecompiledModeOptions): PrecompiledModule {
+    let module: unknown;
+    try {
+      module = options.resolver(entry);
+    } catch (error) {
+      throw new Error(
+        `ResolveError for precompiled entry ${JSON.stringify(entry)}: ${errorMessage(error)}`,
+        {
+          cause: error,
+        }
+      );
+    }
+    if (module === undefined || module === null) {
+      throw new Error(
+        `ResolveError for precompiled entry ${JSON.stringify(entry)}: resolver returned no loaded module`
+      );
+    }
+    if (!isPrecompiledModule(module)) {
+      throw new Error(
+        `PrecompiledError for entry ${JSON.stringify(entry)}: invalid generated module ABI; ` +
+          'expected named render() and stream() exports'
+      );
+    }
+    return module;
+  }
+
   private legacyOptions(): SikkaOptions | undefined {
-    return this.options.mode === 'source' ? undefined : this.options;
+    return this.options.mode === undefined ? this.options : undefined;
   }
 
   private resolveSource(

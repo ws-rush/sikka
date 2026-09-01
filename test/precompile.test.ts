@@ -150,6 +150,20 @@ describe('sikka/precompile', () => {
     expect(page.render.call(new Sikka({ autoEscape: false }), { name: '<Ada>' })).toBe(
       '<main>before<section><b><Ada></b><i>slot</i></section>after</main>'
     );
+
+    const sikka = new Sikka({
+      mode: 'precompiled',
+      resolver(entry) {
+        if (entry === 'page') return page;
+        throw new Error(`Unknown loaded module: ${entry}`);
+      },
+    });
+    expect(sikka.render('page', { name: '<Ada>' })).toBe(
+      '<main>before<section><b>&lt;Ada&gt;</b><i>slot</i></section>after</main>'
+    );
+    expect(await renderedStream({ stream: () => sikka.stream('page', { name: '<Ada>' }) })).toBe(
+      '<main>before<section><b>&lt;Ada&gt;</b><i>slot</i></section>after</main>'
+    );
   });
 
   it('reports graph resolution failures with identity context', () => {
