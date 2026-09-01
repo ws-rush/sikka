@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
 import { Sikka } from '../src/index.js';
-import type { SourceModeOptions, SourceTemplate } from '../src/index.js';
+import type {
+  PrecompiledModeOptions,
+  PrecompiledModule,
+  SourceModeOptions,
+  SourceTemplate,
+} from '../src/index.js';
 import {
   renderStream,
   renderStreamChunks,
@@ -232,6 +237,62 @@ describe('Sikka', () => {
       expect(() => missing.render('page')).toThrow(/missing\.astro.*page-id.*not found/);
       expect(() => invalid.render('page')).toThrow(/broken\.astro.*page-id.*broken-id/);
       expect(() => circular.render('a')).toThrow(/a.*b-id.*a-id.*b-id.*a-id/);
+    });
+  });
+
+  describe('named precompiled mode', () => {
+    it('requires a resolver', () => {
+      expect(() => new Sikka({ mode: 'precompiled' } as PrecompiledModeOptions)).toThrow(
+        'Precompiled mode requires a synchronous resolver'
+      );
+    });
+
+    it('renders and streams an already-loaded module with Sikka as its receiver', async () => {
+      const receivers: { render?: unknown; stream?: unknown } = {};
+      const output = (async function* () {
+        yield '<p>streamed</p>';
+      })();
+      const module: PrecompiledModule = {
+        render(this: unknown) {
+          receivers.render = this;
+          return '<p>rendered</p>';
+        },
+        stream(this: unknown) {
+          receivers.stream = this;
+          return output;
+        },
+      };
+      const sikka = new Sikka({ mode: 'precompiled', resolver: () => module });
+
+      expect(sikka.render('home')).toBe('<p>rendered</p>');
+      expect(receivers.render).toBe(sikka);
+      expect(sikka.stream('home')).toBe(output);
+      expect(receivers.stream).toBe(sikka);
+    });
+
+    it('reports missing entries and generated-module ABI failures', () => {
+      const missing = new Sikka({
+        mode: 'precompiled',
+        resolver: () => undefined as unknown as PrecompiledModule,
+      });
+      const malformed = new Sikka({
+        mode: 'precompiled',
+        resolver: () => ({ render: () => '' }) as unknown as PrecompiledModule,
+      });
+      const invalidStream = new Sikka({
+        mode: 'precompiled',
+        resolver: () =>
+          ({
+            render: () => '',
+            stream: () => 'not an async iterable',
+          }) as unknown as PrecompiledModule,
+      });
+
+      expect(() => missing.render('home')).toThrow(
+        /ResolveError.*precompiled entry.*home.*loaded module/
+      );
+      expect(() => malformed.render('home')).toThrow(/PrecompiledError.*home.*ABI.*render.*stream/);
+      expect(() => invalidStream.stream('home')).toThrow(/PrecompiledError.*home.*async iterable/);
     });
   });
 
