@@ -5,6 +5,8 @@
 > [!WARNING]
 > This project is currently under **heavy development**. APIs and internal behaviors are subject to significant changes as we optimize for performance and expand Astro syntax support.
 
+The [Sikka 1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) defines the normative 1.0 target.
+
 ## Features
 
 - **Astro-like syntax**: Use familiar `.astro` components, frontmatter, and JSX-like template bodies.
