@@ -98,7 +98,9 @@ for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
 The resolver is synchronous. Frontmatter Component imports call it with the import
 specifier and the importing Template's canonical identity, so the host owns all
 Component resolution. Source mode uses no Components directory or global registration;
-only actual Frontmatter imports compose Components. Hosts using asynchronous storage
+only actual Frontmatter imports compose Components. Its regular and Streaming
+compilation caches are separate, use the canonical identity, and are both cleared
+by `invalidate(id)` (or entirely by `invalidate()`). Hosts using asynchronous storage
 must preload and cache Template source before calling `render` or `stream`; Sikka does
 not own filesystem, path, or asynchronous loading behavior.
 
@@ -147,7 +149,8 @@ for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
 ```
 
 The configured `Sikka` instance is the receiver for both exports, so generated
-modules use its runtime behavior. Hosts that lazy-load artifacts do so before
+modules use its runtime behavior (`autoEscape`, filtering, and `aggregateAssets`)
+instead of build-time configuration. Hosts that lazy-load artifacts do so before
 adding them to their resolver.
 
 ### Compiling and File Resolution
@@ -283,10 +286,12 @@ Creates a configured engine instance.
 - `resolvePath`: Sync/Async function to resolve legacy import paths.
 - `varName`: Name of the global variable (default: `"Astro"`).
 - `debug`: Enable runtime error debugging.
-- `cache`: Enable template caching.
+- `cache`: Enable template caching, or provide a custom `Cache`.
+- `cacheSize`: Bound the compilation cache with LRU eviction.
 - `autoEscape`: Enable HTML escaping (default: `true`).
 - `autoFilter`: Enable automatic value filtering.
 - `filterFunction`: Custom filter for interpolated values.
+- `aggregateAssets`: Omit `<script>` and `<style>` output.
 
 ### `sikka.renderString(template, props?): string`
 

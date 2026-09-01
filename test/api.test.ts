@@ -114,6 +114,68 @@ describe('Sikka', () => {
       expect(sikka.render('page')).toBe('<p>second</p>');
     });
 
+    it('caches and invalidates regular and Streaming Templates by canonical identity', async () => {
+      let source = '<p>first</p>';
+      const sikka = new Sikka({
+        cache: true,
+        mode: 'source',
+        resolver: () => ({ id: 'canonical-page', source }),
+      });
+
+      expect(sikka.render('first-alias')).toBe('<p>first</p>');
+      expect(await collectHtml(sikka.stream('second-alias'))).toBe('<p>first</p>');
+      source = '<p>second</p>';
+      expect(sikka.render('third-alias')).toBe('<p>first</p>');
+      expect(await collectHtml(sikka.stream('fourth-alias'))).toBe('<p>first</p>');
+
+      sikka.invalidate('canonical-page');
+      expect(sikka.render('first-alias')).toBe('<p>second</p>');
+      expect(await collectHtml(sikka.stream('second-alias'))).toBe('<p>second</p>');
+
+      source = '<p>third</p>';
+      sikka.invalidate();
+      expect(sikka.render('first-alias')).toBe('<p>third</p>');
+      expect(await collectHtml(sikka.stream('second-alias'))).toBe('<p>third</p>');
+    });
+
+    it('retains enabled, disabled, bounded, and custom caching in source mode', () => {
+      let source = '<p>first</p>';
+      const resolver = () => ({ id: 'page', source });
+
+      const enabled = new Sikka({ cache: true, mode: 'source', resolver });
+      enabled.render('page');
+      source = '<p>second</p>';
+      expect(enabled.render('page')).toBe('<p>first</p>');
+
+      const disabled = new Sikka({ cache: false, mode: 'source', resolver });
+      expect(disabled.render('page')).toBe('<p>second</p>');
+
+      let version = 0;
+      const bounded = new Sikka({
+        cache: true,
+        cacheSize: 1,
+        mode: 'source',
+        resolver: (request) => ({ id: request, source: `<p>${request}-${++version}</p>` }),
+      });
+      expect(bounded.render('a')).toBe('<p>a-1</p>');
+      bounded.render('b');
+      expect(bounded.render('a')).toBe('<p>a-3</p>');
+
+      const keys: string[] = [];
+      const custom = new Sikka({
+        cache: {
+          get: () => undefined,
+          set: (key) => keys.push(key),
+          delete: () => {},
+          clear: () => {},
+        },
+        mode: 'source',
+        resolver,
+      });
+      custom.render('alias');
+      expect(keys).toEqual(['page']);
+    });
+
     it('reports resolver request and canonical identity context', () => {
       const failed = new Sikka({
         mode: 'source',

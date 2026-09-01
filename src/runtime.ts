@@ -1,13 +1,14 @@
 import { escapeHtml, RawHtml } from './escape.js';
 
 /** The generated-runtime ABI version. */
-export const RUNTIME_ABI_VERSION = 1;
+export const RUNTIME_ABI_VERSION = 2;
 
 /** Runtime behavior supplied by a generated module's receiver. */
 export interface RuntimeReceiver {
   autoEscape?: boolean;
   autoFilter?: boolean;
   filterFunction?: (value: unknown) => unknown;
+  aggregateAssets?: boolean;
   components?: Record<string, import('./types.js').RenderFunction>;
   /** Runtime options, as carried by a Sikka receiver. */
   options?: Omit<RuntimeReceiver, 'options'>;
@@ -21,6 +22,7 @@ export interface RuntimeHelpers {
   classList: (value: ClassListArg) => string;
   styleObject: (value: StyleObjectArg) => string;
   filter: (value: unknown) => unknown;
+  aggregateAssets: boolean;
 }
 
 type ClassListArg = string | Record<string, unknown> | ClassListArg[] | null | undefined | boolean;
@@ -45,6 +47,7 @@ export function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers {
     classList,
     styleObject,
     filter: options?.autoFilter ? (options.filterFunction ?? identity) : identity,
+    aggregateAssets: options?.aggregateAssets === true,
   };
 }
 

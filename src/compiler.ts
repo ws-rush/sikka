@@ -774,6 +774,7 @@ function emitStaticSlot(
   return lines;
 }
 
+// fallow-ignore-next-line complexity
 function emitAssetNode(
   tag: 'script' | 'style',
   content: string,
@@ -787,7 +788,7 @@ function emitAssetNode(
   const lines = [emit(JSON.stringify(`<${tag}`))];
   for (const attr of attrs) lines.push(...emitAttr(attr, components, options, target));
   lines.push(emit(`">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)}`));
-  return lines;
+  return options?.precompiled ? ['if (!__aggregateAssets) {', ...lines, '}'] : lines;
 }
 
 function emitElement(

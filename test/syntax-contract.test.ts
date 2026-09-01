@@ -23,11 +23,11 @@ async function precompiledSikka(case_: (typeof syntaxContractCases)[number]): Pr
   const runtime = new URL('../src/runtime.ts', import.meta.url).href;
   const source = `import { runtime } from ${JSON.stringify(runtime)};
 export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
 ${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
 ${artifact.streamString}
 }`;
   const module = await import(`data:text/javascript,${encodeURIComponent(source)}`);
