@@ -11,6 +11,7 @@ export type SyntaxContractMode = 'source' | 'precompiled';
 export interface SyntaxContractCase {
   id: string;
   template: string;
+  components?: { readonly [request: string]: string };
   props: { [key: string]: PortableValue };
   expectedHtml: string;
   modes: readonly SyntaxContractMode[];
@@ -30,6 +31,96 @@ const { name, items } = Astro.props;
     },
     expectedHtml:
       '<h1>Hello, Ada &amp; &lt;Lin&gt;!</h1><ul><li>first &amp; &lt;second&gt;</li><li>third</li></ul>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'body-only-template',
+    template: '<main>body</main>',
+    props: {},
+    expectedHtml: '<main>body</main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'empty-frontmatter',
+    template: '---\n---\n<main>body</main>',
+    props: {},
+    expectedHtml: '<main>body</main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'frontmatter-local-setup',
+    template: `---
+const greeting = 'Hello';
+function uppercase(value) { return value.toUpperCase(); }
+---
+{greeting}, {uppercase(Astro.props.name)}!`,
+    props: { name: 'Ada' },
+    expectedHtml: 'Hello, ADA!',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'root-content',
+    template: 'before<div>middle</div>after',
+    props: {},
+    expectedHtml: 'before<div>middle</div>after',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'fragments-flatten',
+    template: '<><span>left</span><Fragment><span>right</span></Fragment></>',
+    props: {},
+    expectedHtml: '<span>left</span><span>right</span>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'comment-and-declaration',
+    template: '<!DOCTYPE html><!-- note --><main>body</main>',
+    props: {},
+    expectedHtml: '<!DOCTYPE html><!-- note --><main>body</main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'element-and-asset-normalization',
+    template:
+      '<br><img src="image.png"><div /><script>const value = "<tag>";</script><style>.x { color: red; }</style>',
+    props: {},
+    expectedHtml:
+      '<br /><img src="image.png" /><div></div><script>const value = "<tag>";</script><style>.x { color: red; }</style>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'whitespace-preserved',
+    template: '<div>\n\t<span>body</span>\n</div>',
+    props: {},
+    expectedHtml: '<div>\n\t<span>body</span>\n</div>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'astro-props',
+    template: '<p>{Astro.props.title}</p>',
+    props: { title: 'Sikka' },
+    expectedHtml: '<p>Sikka</p>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'astro-slots',
+    template: '---\nimport Layout from "./layout.astro";\n---\n<Layout><b>content</b></Layout>',
+    components: {
+      './layout.astro':
+        '<section>{Astro.slots.has("default") ? Astro.slots.render("default") : "none"}</section>',
+    },
+    props: {},
+    expectedHtml: '<section><b>content</b></section>',
     modes: ['source', 'precompiled'],
     streaming: 'same-html',
   },
@@ -57,10 +148,20 @@ function isSyntaxContractCase(value: unknown): value is SyntaxContractCase {
     typeof case_.id === 'string' &&
     /^[a-z][a-z0-9-]*$/.test(case_.id) &&
     typeof case_.template === 'string' &&
+    (case_.components === undefined || isComponents(case_.components)) &&
     isPortableRecord(case_.props) &&
     typeof case_.expectedHtml === 'string' &&
     isModes(case_.modes) &&
     (case_.streaming === undefined || case_.streaming === 'same-html')
+  );
+}
+
+function isComponents(value: unknown): value is { readonly [request: string]: string } {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.values(value).every((source) => typeof source === 'string')
   );
 }
 

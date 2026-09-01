@@ -9,28 +9,65 @@ import {
   validateSyntaxContractCases,
 } from './syntax-contract.js';
 
-function sourceSikka(case_: (typeof syntaxContractCases)[number]): Sikka {
+type ContractCase = (typeof syntaxContractCases)[number];
+
+function templateFor(case_: ContractCase, request: string): { id: string; source: string } {
+  const source = request === case_.id ? case_.template : case_.components?.[request];
+  if (source === undefined) throw new Error(`Unknown Template: ${request}`);
+  return { id: request, source };
+}
+
+function sourceSikka(case_: ContractCase): Sikka {
   return new Sikka({
     mode: 'source',
-    resolver: (request) => ({ id: request, source: case_.template }),
+    resolver: (request) => templateFor(case_, request),
   });
 }
 
-async function precompiledSikka(case_: (typeof syntaxContractCases)[number]): Promise<Sikka> {
-  const [artifact] = compile(case_.id, {
-    resolver: (request) => ({ id: request, source: case_.template }),
-  });
+function wrap(
+  artifact: ReturnType<typeof compile>[number],
+  componentUrl: (id: string) => string
+): string {
+  const components = artifact.components.map((component, index) => ({
+    ...component,
+    render: `__component_${index}_render`,
+    stream: `__component_${index}_stream`,
+  }));
+  const imports = components
+    .map(
+      ({ id, render, stream }) =>
+        `import { render as ${render}, stream as ${stream} } from ${JSON.stringify(componentUrl(id))};`
+    )
+    .join('\n');
   const runtime = new URL('../src/runtime.ts', import.meta.url).href;
-  const source = `import { runtime } from ${JSON.stringify(runtime)};
+  return `import { runtime } from ${JSON.stringify(runtime)};
+${imports}
 export function render(props, slots = {}) {
   const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const __components = { ${components.map(({ localName, render }) => `${JSON.stringify(localName)}: ${render}`).join(', ')} };
 ${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
   const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const __components = { ${components.map(({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`).join(', ')} };
 ${artifact.streamString}
 }`;
-  const module = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+}
+
+async function precompiledSikka(case_: ContractCase): Promise<Sikka> {
+  const artifacts = compile(case_.id, { resolver: (request) => templateFor(case_, request) });
+  const byId = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+  const urls = new Map<string, string>();
+  const moduleUrl = (id: string): string => {
+    const known = urls.get(id);
+    if (known) return known;
+    const artifact = byId.get(id);
+    if (!artifact) throw new Error(`Missing artifact: ${id}`);
+    const url = `data:text/javascript,${encodeURIComponent(wrap(artifact, moduleUrl))}`;
+    urls.set(id, url);
+    return url;
+  };
+  const module = await import(moduleUrl(case_.id));
   return new Sikka({ mode: 'precompiled', resolver: () => module });
 }
 
@@ -45,6 +82,7 @@ describe('Syntax Contract', () => {
         {
           id: 'invalid',
           template: '<p />',
+          components: [],
           props: {},
           expectedHtml: '<p></p>',
           modes: [],
@@ -82,7 +120,9 @@ describe('Syntax Contract', () => {
 
       if (case_.streaming === 'same-html') {
         it(`${case_.id} streams the same Rendered HTML in source mode`, async () => {
-          const html = await collectHtml(sourceSikka(case_).stream(case_.id, case_.props));
+          const sikka = sourceSikka(case_);
+          const html = await collectHtml(sikka.stream(case_.id, case_.props));
+          expect(html).toBe(sikka.render(case_.id, case_.props));
           assertRenderedHtml(case_, html);
         });
       }
@@ -97,7 +137,9 @@ describe('Syntax Contract', () => {
       if (case_.streaming === 'same-html') {
         it(`${case_.id} streams the same Rendered HTML in precompiled mode`, async () => {
           const sikka = await precompiledSikka(case_);
-          assertRenderedHtml(case_, await collectHtml(sikka.stream(case_.id, case_.props)));
+          const html = await collectHtml(sikka.stream(case_.id, case_.props));
+          expect(html).toBe(sikka.render(case_.id, case_.props));
+          assertRenderedHtml(case_, html);
         });
       }
     }

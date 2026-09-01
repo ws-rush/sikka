@@ -5,16 +5,6 @@ import { render } from './helpers.js';
 
 describe('Syntax: Elements, Components, Fragments & Spreading', () => {
   describe('Fragments', () => {
-    it('renders fragment shorthand without wrapper tag', () => {
-      const html = render('<><span>a</span><span>b</span></>');
-      expect(html).toBe('<span>a</span><span>b</span>');
-    });
-
-    it('renders explicit Fragment without wrapper tag', () => {
-      const html = render('<Fragment><span>a</span></Fragment>');
-      expect(html).toBe('<span>a</span>');
-    });
-
     it('renders Fragment with set:html', () => {
       const html = render('<Fragment set:html="<b>3</b>" />');
       expect(html).toBe('<b>3</b>');
@@ -63,11 +53,6 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     it('renders Fragment inside <head>', () => {
       const html = render('<head><><title>7</title></></head>');
       expect(html).toBe('<head><title>7</title></head>');
-    });
-
-    it('renders Fragment inside <script> as raw text (not parsed as JSX)', () => {
-      const html = render('<script>/* <></> */</script>');
-      expect(html).toBe('<script>/* <></> */</script>');
     });
 
     it('throws CompileError for attributes on <>', () => {
@@ -159,23 +144,6 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
   });
 
   describe('Elements — Edge Cases', () => {
-    it('renders void elements as self-closing', () => {
-      expect(render('<br>')).toBe('<br />');
-      expect(render('<hr>')).toBe('<hr />');
-      expect(render('<img src="test.png">')).toBe('<img src="test.png" />');
-      expect(render('<input type="text">')).toBe('<input type="text" />');
-    });
-
-    it('renders self-closing void elements', () => {
-      expect(render('<br />')).toBe('<br />');
-      expect(render('<img src="a.png" />')).toBe('<img src="a.png" />');
-    });
-
-    it('renders self-closing non-void elements with open/close tags', () => {
-      expect(render('<div />')).toBe('<div></div>');
-      expect(render('<span />')).toBe('<span></span>');
-    });
-
     it('renders boolean attribute without value', () => {
       const html = render('<input disabled>');
       expect(html).toBe('<input disabled />');
@@ -225,21 +193,6 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     it('renders deeply nested HTML (4+ levels)', () => {
       const html = render('<div><p><span><b>deep</b></span></p></div>');
       expect(html).toBe('<div><p><span><b>deep</b></span></p></div>');
-    });
-
-    it('preserves whitespace/tabs/newlines in template', () => {
-      const html = render('<div>\n\t<span>a</span>\n</div>');
-      expect(html).toBe('<div>\n\t<span>a</span>\n</div>');
-    });
-
-    it('preserves HTML comments in output', () => {
-      const html = render('<!-- hello --><div>hi</div>');
-      expect(html).toBe('<!-- hello --><div>hi</div>');
-    });
-
-    it('renders DOCTYPE', () => {
-      const html = render('<!DOCTYPE html>');
-      expect(html).toContain('DOCTYPE');
     });
 
     it('preserves SVG case-sensitive attributes', () => {
@@ -323,24 +276,6 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
     it('parses attribute value with equals sign', () => {
       const html = render('<div data-x="a=b">hi</div>');
       expect(html).toContain('a=b');
-    });
-
-    it('parses multiple void elements', () => {
-      const html = render('<br><hr><img src="x.png">');
-      expect(html).toContain('<br />');
-      expect(html).toContain('<hr />');
-      expect(html).toContain('<img src="x.png" />');
-    });
-
-    it('parses DOCTYPE', () => {
-      const html = render('<!DOCTYPE html>');
-      expect(html).toContain('DOCTYPE');
-    });
-
-    it('preserves HTML comments in output', () => {
-      const html = render('<!-- comment --><div>hi</div>');
-      expect(html).toContain('<!-- comment -->');
-      expect(html).toContain('hi');
     });
 
     it('renders unquoted attribute value', () => {
