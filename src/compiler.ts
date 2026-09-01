@@ -35,6 +35,8 @@ interface CompileOptions {
   resolvePath?: (base: string, specifier: string) => string | Promise<string>;
   /** Whether to aggregate <script> and <style> tags. */
   aggregateAssets?: boolean;
+  /** Generated bodies call statically linked Component exports directly. */
+  precompiled?: boolean;
 }
 
 type ClassListArg = string | Record<string, unknown> | ClassListArg[] | null | undefined | boolean;
@@ -1308,7 +1310,7 @@ function emitComponentCall(
     `  if (typeof __component === 'function') {`,
     `    const __childSlots = {};`,
     ...emitComponentSlots(node.children, components, options),
-    ...emitResolvedComponentCall(localName, props, target),
+    ...emitResolvedComponentCall(localName, props, target, options),
     ...emitComponentFallbacks(node, components, options, target),
     `  }`,
     `}`,
@@ -1413,17 +1415,30 @@ function getSlotName(
     : transformExpression(attr.value, components, options);
 }
 
-function emitResolvedComponentCall(localName: string, props: string, target: string): string[] {
+// fallow-ignore-next-line complexity
+function emitResolvedComponentCall(
+  localName: string,
+  props: string,
+  target: string,
+  options?: CompileOptions
+): string[] {
   if (target === STREAMING_TARGET) {
-    return [
-      `    if (__buf) { yield __buf; __buf = ""; }`,
-      `    yield await __component(${props}, __childSlots);`,
-    ];
+    return options?.precompiled
+      ? [
+          `    if (__buf) { yield __buf; __buf = ""; }`,
+          `    yield* __component.call(this, ${props}, __childSlots);`,
+        ]
+      : [
+          `    if (__buf) { yield __buf; __buf = ""; }`,
+          `    yield await __component(${props}, __childSlots);`,
+        ];
   }
-  return [
-    `    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`,
-    `    ${target} += __component.renderSync(${props}, __childSlots);`,
-  ];
+  return options?.precompiled
+    ? [`    ${target} += __component.call(this, ${props}, __childSlots);`]
+    : [
+        `    if (!__component.renderSync) throw new Error("Component " + ${JSON.stringify(localName)} + " does not support synchronous rendering.");`,
+        `    ${target} += __component.renderSync(${props}, __childSlots);`,
+      ];
 }
 
 function emitComponentFallbacks(
@@ -1605,7 +1620,7 @@ export function compileSources(
 ): { ok: true; renderString: string; streamString: string } | { ok: false; error: CompileError } {
   try {
     // Generated modules select filtering from their runtime receiver.
-    const options = { autoFilter: true };
+    const options = { autoFilter: true, precompiled: true };
     return {
       ok: true,
       renderString: buildFunctionBody(ast, {}, options, '__out', 'return __out;'),

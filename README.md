@@ -102,23 +102,25 @@ only actual Frontmatter imports compose Components. Hosts using asynchronous sto
 must preload and cache Template source before calling `render` or `stream`; Sikka does
 not own filesystem, path, or asynchronous loading behavior.
 
-### Precompile one Template
+### Precompile Template graphs
 
-Build tools can compile one named Template without constructing `Sikka` or
-performing output I/O. The returned versioned artifact contains raw regular and
-Streaming function bodies plus direct Frontmatter Component edges; the host
-owns ESM wrapping, Component linking, and file writes.
+Build tools can compile one or more named Template entries and their Frontmatter
+Component graphs without constructing `Sikka` or performing output I/O. Each
+canonical Template produces one versioned artifact. Its Component edges record
+the local binding, source specifier, and target canonical identity; the host
+owns ESM wrapping, static Component linking, and file writes.
 
 ```ts
 import { compile } from 'sikka/precompile';
 
-const artifact = compile('home', { resolver });
+const artifacts = compile(['home', 'about'], { resolver });
 // artifact.id, artifact.renderString, artifact.streamString, artifact.components
 ```
 
-A wrapped module imports generated helpers only from `sikka/runtime`, calls
-`runtime(this)`, and exposes named `render` and `stream` exports. The receiver
-supplies runtime behavior; generated Templates do not evaluate source strings.
+A wrapped module imports generated helpers from `sikka/runtime`, static-links
+Component `render` and `stream` exports separately, calls `runtime(this)`, and
+exposes named `render` and `stream` exports. The receiver supplies runtime
+behavior; generated Templates do not evaluate source strings.
 
 ### Compiling and File Resolution
 

@@ -36,18 +36,21 @@ instance that invokes them.
 
 ## Stable precompile API
 
-`compile(entry, { resolver })` is the sole public build API and is exported
-from `sikka/precompile`. It is synchronous, resolves exactly one entry through
-the same `(request, importer?) -> { id, source }` contract as source mode, and
-never writes output files or evaluates generated source.
+`compile(entries, { resolver })` is the sole public build API and is exported
+from `sikka/precompile`. It is synchronous, accepts one entry request or a
+non-empty list, follows Frontmatter Component imports through the same
+`(request, importer?) -> { id, source }` contract as source mode, and never
+writes output files or evaluates generated source.
 
-The versioned `PrecompileArtifact` has its canonical `id`, distinct raw
-`renderString` and `streamString` bodies, and direct Frontmatter Component
-edges (`localName` and source `specifier`). This single-Template boundary does
-not resolve Component edges; graph traversal and canonical Component targets
-are a later contract. Build tools own output paths, module wrapping,
-import-specifier rewriting, and all output I/O. The conventional emitted suffix
-is `*.sikka.mjs`.
+It returns one versioned `PrecompileArtifact` for each canonical Template
+identity. Each artifact has its canonical `id`, distinct raw `renderString` and
+`streamString` bodies, and direct Frontmatter Component edges (`localName`,
+source `specifier`, and target canonical `id`). Build tools own output paths,
+module wrapping, import-specifier rewriting, and all output I/O. Regular bodies
+call statically linked Component `render` exports; Streaming bodies delegate to
+Component `stream` exports. Missing requests, invalid canonical identities, and
+cycles fail with graph diagnostics that include the relevant request and
+canonical identities. The conventional emitted suffix is `*.sikka.mjs`.
 
 ## Generated-runtime ABI
 
