@@ -1,5 +1,7 @@
 # AGENTS.md
 
+use /ponytail always
+
 ## Issue Tracker
 
 use github as issues tracker.

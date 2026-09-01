@@ -106,4 +106,17 @@ describe('Syntax: Astro Global', () => {
       expect(html).toBe('<div>valid</div>');
     });
   });
+
+  describe('Astro.slots', () => {
+    it('renders a provided slot', () => {
+      const sikka = new Sikka();
+      sikka.loadComponent(
+        'Layout',
+        '<div>{Astro.slots.has("default") ? Astro.slots.render("default") : "none"}</div>'
+      );
+      expect(sikka.renderString('<Layout><b>content</b></Layout>')).toBe(
+        '<div><b>content</b></div>'
+      );
+    });
+  });
 });

@@ -119,7 +119,7 @@ function isTopLevelImportComma(char, braceDepth) {
     return char === ',' && braceDepth === 0;
 }
 function collectNamedImports(part, specifier, imports) {
-    const namedParts = part.slice(1, part.endsWith('}') ? -1 : undefined).split(',');
+    const namedParts = part.slice(1).replace(/}$/, '').split(',');
     for (const named of namedParts) {
         const localName = /(?:\s+as\s+)?(\w+)$/.exec(named.trim())?.[1];
         if (localName)
