@@ -97,8 +97,15 @@ boolean set is `allowfullscreen`, `async`, `autofocus`, `autoplay`, `checked`,
 A hyphenated custom element is an HTML tag, but does not apply native boolean
 rules: boolean-looking values stringify. Direct attributes and spread objects
 evaluate left-to-right. Later ordinary keys replace earlier ones, while a later
-nullish ordinary value removes the key. This applies equally to regular and
-Streaming renders, source Templates, and Precompiled Templates.
+nullish ordinary value removes the key.
+
+`style` strings and objects merge in source order into one `style` attribute,
+separated by one semicolon. Object keys use kebab-case except CSS custom
+properties, which are unchanged. String and numeric values, including `0`, are
+retained; nullish, boolean, and empty-string values are omitted. An object with
+a custom `toString` uses that string as its complete style value. The merged
+value follows `autoEscape`. This applies equally to direct and spread values,
+regular and Streaming renders, source Templates, and Precompiled Templates.
 
 ## Template structure and Astro global
 

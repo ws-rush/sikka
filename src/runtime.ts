@@ -26,11 +26,7 @@ export interface RuntimeHelpers {
 }
 
 type ClassListArg = string | Record<string, unknown> | ClassListArg[] | null | undefined | boolean;
-type StyleObjectArg =
-  | string
-  | Record<string, string | number | null | undefined>
-  | null
-  | undefined;
+type StyleObjectArg = string | Record<string, unknown> | null | undefined;
 
 /**
  * Returns the stable helper set for a generated module. Generated `render` and
@@ -72,8 +68,9 @@ function styleObject(value: StyleObjectArg): string {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return '';
   if (typeof value.toString === 'function' && value.toString !== Object.prototype.toString)
-    return value.toString();
+    return String(value.toString());
   return Object.entries(value)
+    .filter(([, item]) => item != null && typeof item !== 'boolean' && item !== '')
     .map(([name, item]) => `${name.replace(/[A-Z]/g, toKebabCase)}:${item}`)
     .join(';');
 }

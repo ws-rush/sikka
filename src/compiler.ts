@@ -40,11 +40,7 @@ interface CompileOptions {
 }
 
 type ClassListArg = string | Record<string, unknown> | ClassListArg[] | null | undefined | boolean;
-type StyleObjectArg =
-  | string
-  | Record<string, string | number | null | undefined>
-  | null
-  | undefined;
+type StyleObjectArg = string | Record<string, unknown> | null | undefined;
 const STREAMING_TARGET = '__buf';
 const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
   'allowfullscreen',
@@ -123,11 +119,12 @@ function styleObjectHelper(arg: StyleObjectArg): string {
   return stringifiedStyleObject(arg);
 }
 
-function stringifiedStyleObject(arg: Record<string, string | number | null | undefined>): string {
+function stringifiedStyleObject(arg: Record<string, unknown>): string {
   if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
-    return arg.toString();
+    return String(arg.toString());
   }
   return Object.entries(arg)
+    .filter(([, value]) => value != null && typeof value !== 'boolean' && value !== '')
     .map(([key, value]) => `${key.replace(/[A-Z]/g, toKebabCase)}:${value}`)
     .join(';');
 }
@@ -887,9 +884,13 @@ function emitStaticOpeningTag(
 ): string[] {
   const ordinary = new Map<string, string | true>();
   const special: string[] = [];
-  for (const attr of attrs) addStaticAttribute(tag, attr, ordinary, special, options);
+  const styles: string[] = [];
+  for (const attr of attrs) addStaticAttribute(tag, attr, ordinary, special, styles, options);
+  const style = mergeStyleValues(styles);
   return [
-    `${target} += ${JSON.stringify(`<${tag}` + [...ordinary.values(), ...special].join(''))};`,
+    `${target} += ${JSON.stringify(
+      `<${tag}` + [...ordinary.values(), ...special, style && staticAttribute('style', style, options)].join('')
+    )};`,
   ];
 }
 
@@ -899,13 +900,14 @@ function addStaticAttribute(
   attr: AttrNode,
   ordinary: Map<string, string | true>,
   special: string[],
+  styles: string[],
   options: CompileOptions | undefined
 ): void {
   if (attr.value !== true && typeof attr.value !== 'string') return;
   if (isClassAttribute(attr.name)) {
     special.push(staticAttribute('class', attr.value, options));
   } else if (attr.name === 'style') {
-    special.push(staticAttribute('style', attr.value, options));
+    if (typeof attr.value === 'string') styles.push(attr.value);
   } else {
     ordinary.set(attr.name, staticAttribute(attr.name, attr.value, options, tag));
   }
@@ -922,6 +924,13 @@ function staticAttribute(
     return ` ${name}`;
   const output = options?.autoEscape === false ? value : escapeHtml(value);
   return ` ${name}="${output}"`;
+}
+
+function mergeStyleValues(values: string[]): string {
+  return values
+    .map((value) => value.trim().replace(/^;+|;+$/g, ''))
+    .filter(Boolean)
+    .join(';');
 }
 
 function isNativeBooleanAttribute(tag: string, name: string): boolean {
@@ -1147,14 +1156,10 @@ function emitCollectedSpreadValues(
     : attrs
         .filter((attr): attr is AttrNode => !('type' in attr) && isClassAttribute(attr.name))
         .map((_, index) => `  ${emit(`' class="' + __escape(__classes[${index}]) + '"'`)}`);
-  const styles = hasSpread
-    ? [
-        `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`,
-        `  if (__finalSty) ${emit("' style=\"' + __escape(__finalSty) + '\"'")}`,
-      ]
-    : attrs
-        .filter((attr): attr is AttrNode => !('type' in attr) && attr.name === 'style')
-        .map((_, index) => `  ${emit(`' style="' + __escape(__styles[${index}]) + '"'`)}`);
+  const styles = [
+    `  const __finalSty = __styles.map(__s => __s.trim().replace(/^;+|;+$/g, "")).filter(Boolean).join(";");`,
+    `  if (__finalSty) ${emit("' style=\"' + __escape(__finalSty) + '\"'")}`,
+  ];
   return [
     `  for (const __k of __attrOrder) {`,
     `    if (!Object.hasOwn(__attrs, __k)) continue;`,
