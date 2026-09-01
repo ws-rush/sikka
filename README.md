@@ -261,7 +261,7 @@ It achieves strong performance through:
 - **Slots**:
   - Default: `<slot />`
   - Named: `<slot name="header" />`
-  - Fallback content: `<slot>Default content</slot>`
+  - Fallback content: `<slot>Default content</slot>`; it renders only when no matching child was supplied. Empty Fragments, nullish Expressions, empty strings, and whitespace still count as supplied content.
 - **Conditional Rendering**: `{condition && <p>Visible</p>}` or `{condition ? <A /> : <B />}`.
 - **Loops**: `{items.map(item => <li>{item}</li>)}`.
 - **Special Tags**: `<script>` and `<style>` tags are preserved verbatim in the output.
