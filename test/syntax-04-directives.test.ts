@@ -29,36 +29,18 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<div class="a a"></div>');
     });
 
-    it('renders empty class attribute for falsy top-level (false)', () => {
-      const html = render('<div class:list={false} />');
-      expect(html).toBe('<div class=""></div>');
+    it('omits class for falsy values', () => {
+      for (const value of ['false', '0', '[]', '{}']) {
+        expect(render(`<div class:list={${value}} />`)).toBe('<div></div>');
+      }
     });
 
-    it('renders empty class attribute for 0', () => {
-      const html = render('<div class:list={0} />');
-      expect(html).toBe('<div class=""></div>');
+    it('merges class and class:list in source order', () => {
+      expect(render('<div class="x" class:list={["y"]} />')).toBe('<div class="x y"></div>');
     });
 
-    it('renders empty class attribute for empty array', () => {
-      const html = render('<div class:list={[]} />');
-      expect(html).toBe('<div class=""></div>');
-    });
-
-    it('renders empty class attribute for empty object', () => {
-      const html = render('<div class:list={{}} />');
-      expect(html).toBe('<div class=""></div>');
-    });
-
-    it('merges with static class attribute', () => {
-      const html = render('<div class="x" class:list={["y"]} />');
-      expect(html).toContain('class="x"');
-      expect(html).toContain('class="y"');
-    });
-
-    it('merges with className attribute', () => {
-      const html = render('<div className="x" class:list={["y"]} />');
-      expect(html).toContain('class="x"');
-      expect(html).toContain('class="y"');
+    it('merges className and class:list in source order', () => {
+      expect(render('<div className="x" class:list={["y"]} />')).toBe('<div class="x y"></div>');
     });
 
     it('renders dynamic string templates', () => {

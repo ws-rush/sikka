@@ -167,8 +167,8 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
       expect(render('<div data-x={null}>hi</div>')).toBe('<div>hi</div>');
     });
 
-    it('renders empty string attributes without a value', () => {
-      expect(render('<div class="">hi</div>')).toBe('<div class>hi</div>');
+    it('omits an empty class attribute', () => {
+      expect(render('<div class="">hi</div>')).toBe('<div>hi</div>');
     });
 
     it('renders multiple attributes on one element', () => {

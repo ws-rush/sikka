@@ -97,8 +97,14 @@ boolean set is `allowfullscreen`, `async`, `autofocus`, `autoplay`, `checked`,
 A hyphenated custom element is an HTML tag, but does not apply native boolean
 rules: boolean-looking values stringify. Direct attributes and spread objects
 evaluate left-to-right. Later ordinary keys replace earlier ones, while a later
-nullish ordinary value removes the key. This applies equally to regular and
-Streaming renders, source Templates, and Precompiled Templates.
+nullish ordinary value removes the key.
+
+`class`, `className`, and direct or spread `class:list` values merge in source
+evaluation order into one escaped `class` attribute. `class:list` recursively
+flattens arrays and Sets, includes strings and truthy object keys, omits falsy
+values, and retains duplicate tokens. No class attribute emits when the combined
+value is empty. This applies equally to regular and Streaming renders, source
+Templates, and Precompiled Templates.
 
 ## Template structure and Astro global
 
