@@ -80,11 +80,39 @@ Every documented construct has exactly one classification:
 Diagnostic categories and relevant construct or canonical Template identity are
 Stable. Exact diagnostic message wording is not Stable API.
 
+## Template structure and Astro global
+
+The following Template structure is **Supported**:
+
+- A Template has an optional opening Frontmatter fence (`---` on its own line)
+  followed by a root body. A body-only Template and empty Frontmatter are both
+  valid. Closing-fence and body whitespace is preserved except for the single
+  newline immediately following a closing fence.
+- Frontmatter is Template setup only: local constants, local helper
+  declarations, `Astro.props`, and Component composition. It is not an
+  application module or browser-programming surface.
+- Root text, elements, and Expressions need no wrapper element. `<>...</>` and
+  `<Fragment>...</Fragment>` emit their children without wrapper markup.
+- HTML comments and declarations emit verbatim. Void HTML elements emit with a
+  trailing ` />`; self-closing non-void elements emit an opening and closing
+  tag. `<script>` and `<style>` content emits verbatim between normal opening
+  and closing tags.
+- `Astro.props` is the supplied Props object in both source and Precompiled
+  Templates. `Astro.slots.has(name)` and `Astro.slots.render(name)` retain the
+  documented Component Slot presence and rendering behavior.
+
+The broader Astro Frontmatter module model, client directives, hydration,
+framework components, browser behavior, and other `Astro` globals are
+**explicitly unsupported** in Sikka 1.0. They do not acquire compatibility
+status from Astro documentation or current implementation behavior.
+
 ## Portable Syntax Contract cases
 
 The portable corpus is the semantic oracle used by source and precompiled
 runners. Its case data and assertion helpers use only runtime-neutral
-JavaScript values; no case depends on Node APIs.
+JavaScript values; no case depends on Node APIs. A case may include a
+request-keyed `components` record when its entry composes Components; those
+sources are resolved through the same source and precompiled graph paths.
 
 Every case requires:
 

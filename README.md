@@ -254,8 +254,9 @@ It achieves strong performance through:
 
 ## Syntax Features
 
-- **Frontmatter**: Use `---` fences at the top of the file for light template setup only, such as prop destructuring, small constants, and `.astro` component imports.
-- **JSX-like Body**: Standard HTML tags mixed with JavaScript expressions in curly braces `{...}`.
+- **Frontmatter**: Use `---` fences at the top of the file for light template setup only, such as prop destructuring, small constants, local helpers, and `.astro` component imports. It is not a browser or application-module surface.
+- **JSX-like Body**: Standard HTML tags mixed with JavaScript expressions in curly braces `{...}`. Body-only Templates, Fragments, comments, declarations, and root content are supported.
+- **Astro global**: `Astro.props` exposes supplied Props; Components retain `Astro.slots.has()` and `Astro.slots.render()`. Other Astro globals, client directives, hydration, framework behavior, and browser behavior are outside Sikka’s subset; see the [1.0 Syntax Contract](docs/SIKKA_1.0_CONTRACT.md).
 - **Component Composition**: Import `.astro` files in the frontmatter and use them as tags (e.g., `<MyComponent />`).
 - **Slots**:
   - Default: `<slot />`
