@@ -154,9 +154,8 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
       expect(html).toContain('disabled');
     });
 
-    it('renders dynamic boolean attribute false as empty string', () => {
-      const html = render('<input disabled={false}>');
-      expect(html).toContain('disabled');
+    it('omits a false native boolean attribute', () => {
+      expect(render('<input disabled={false}>')).toBe('<input />');
     });
 
     it('renders numeric attribute value as string', () => {
@@ -164,14 +163,12 @@ describe('Syntax: Elements, Components, Fragments & Spreading', () => {
       expect(html).toBe('<div data-count="42">hi</div>');
     });
 
-    it('renders null attribute value as empty string', () => {
-      const html = render('<div data-x={null}>hi</div>');
-      expect(html).toBe('<div data-x="">hi</div>');
+    it('omits a null attribute value', () => {
+      expect(render('<div data-x={null}>hi</div>')).toBe('<div>hi</div>');
     });
 
-    it('preserves empty string attribute', () => {
-      const html = render('<div class="">hi</div>');
-      expect(html).toBe('<div class="">hi</div>');
+    it('renders empty string attributes without a value', () => {
+      expect(render('<div class="">hi</div>')).toBe('<div class>hi</div>');
     });
 
     it('renders multiple attributes on one element', () => {

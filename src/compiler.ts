@@ -46,6 +46,33 @@ type StyleObjectArg =
   | null
   | undefined;
 const STREAMING_TARGET = '__buf';
+const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
+  'allowfullscreen',
+  'async',
+  'autofocus',
+  'autoplay',
+  'checked',
+  'controls',
+  'default',
+  'defer',
+  'disabled',
+  'formnovalidate',
+  'hidden',
+  'inert',
+  'ismap',
+  'itemscope',
+  'loop',
+  'multiple',
+  'muted',
+  'nomodule',
+  'novalidate',
+  'open',
+  'playsinline',
+  'readonly',
+  'required',
+  'reversed',
+  'selected',
+]);
 
 type CompileSetupOptions = CompileOptions & {
   fileReader?: (path: string) => string;
@@ -59,6 +86,7 @@ interface RuntimeHelpers {
   filterHelper: (val: unknown) => unknown;
 }
 
+// fallow-ignore-next-line complexity
 function createRuntimeHelpers(options?: CompileOptions): RuntimeHelpers {
   return {
     escapeHelper: expressionEscapeHelper(options),
@@ -584,11 +612,6 @@ function emitChildren(
 }
 
 type ElementAttribute = AttrNode | SpreadAttrNode;
-type DynamicAttribute = {
-  name: string;
-  value: ExpressionNode;
-  type?: 'list' | 'style';
-};
 type ElementAttributeGroups = {
   setHtml?: AttrNode;
   setText?: AttrNode;
@@ -784,10 +807,17 @@ function emitAssetNode(
   target: string
 ): string[] {
   if (options?.aggregateAssets) return [];
-  const emit = (value: string) => `${target} += ${value};`;
-  const lines = [emit(JSON.stringify(`<${tag}`))];
-  for (const attr of attrs) lines.push(...emitAttr(attr, components, options, target));
-  lines.push(emit(`">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)}`));
+  const lines = attrs.every(isStaticAttribute)
+    ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, target)
+    : emitSpreadOpeningTag(
+        tag,
+        attrs,
+        attrs.some((attr) => 'type' in attr),
+        components,
+        options,
+        target
+      );
+  lines.push(`${target} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
   return options?.precompiled ? ['if (!__aggregateAssets) {', ...lines, '}'] : lines;
 }
 
@@ -832,15 +862,70 @@ function emitElementOpeningTag(
   options: CompileOptions | undefined,
   target: string
 ): string[] {
-  return attributes.hasSpread
-    ? emitSpreadOpeningTag(tag, attributes.standardAttrs, components, options, target)
-    : emitStaticOpeningTag(
-        tag,
-        attributes.standardAttrs as AttrNode[],
-        components,
-        options,
-        target
-      );
+  if (!attributes.hasSpread && attributes.standardAttrs.every(isStaticAttribute)) {
+    return emitStaticOpeningTag(tag, attributes.standardAttrs as AttrNode[], options, target);
+  }
+  return emitSpreadOpeningTag(
+    tag,
+    attributes.standardAttrs,
+    attributes.hasSpread,
+    components,
+    options,
+    target
+  );
+}
+
+function isStaticAttribute(attr: ElementAttribute): attr is AttrNode {
+  return !('type' in attr) && (attr.value === true || typeof attr.value === 'string');
+}
+
+function emitStaticOpeningTag(
+  tag: string,
+  attrs: AttrNode[],
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const ordinary = new Map<string, string | true>();
+  const special: string[] = [];
+  for (const attr of attrs) addStaticAttribute(tag, attr, ordinary, special, options);
+  return [
+    `${target} += ${JSON.stringify(`<${tag}` + [...ordinary.values(), ...special].join(''))};`,
+  ];
+}
+
+// fallow-ignore-next-line complexity
+function addStaticAttribute(
+  tag: string,
+  attr: AttrNode,
+  ordinary: Map<string, string | true>,
+  special: string[],
+  options: CompileOptions | undefined
+): void {
+  if (attr.value !== true && typeof attr.value !== 'string') return;
+  if (isClassAttribute(attr.name)) {
+    special.push(staticAttribute('class', attr.value, options));
+  } else if (attr.name === 'style') {
+    special.push(staticAttribute('style', attr.value, options));
+  } else {
+    ordinary.set(attr.name, staticAttribute(attr.name, attr.value, options, tag));
+  }
+}
+
+// fallow-ignore-next-line complexity
+function staticAttribute(
+  name: string,
+  value: string | true,
+  options: CompileOptions | undefined,
+  tag?: string
+): string {
+  if (value === true || value === '' || (tag && isNativeBooleanAttribute(tag, name)))
+    return ` ${name}`;
+  const output = options?.autoEscape === false ? value : escapeHtml(value);
+  return ` ${name}="${output}"`;
+}
+
+function isNativeBooleanAttribute(tag: string, name: string): boolean {
+  return !tag.includes('-') && NATIVE_BOOLEAN_ATTRIBUTES.has(name);
 }
 
 function isVoidOrDeclaration(tag: string): boolean {
@@ -923,117 +1008,10 @@ function addStandardAttribute(result: ElementAttributeGroups, attr: ElementAttri
   if ('type' in attr) result.hasSpread = true;
 }
 
-function emitStaticOpeningTag(
-  tag: string,
-  attrs: AttrNode[],
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
-  target: string
-): string[] {
-  const { tagOpen, dynamicAttrs } = collectStaticOpeningAttributes(tag, attrs);
-  return [
-    `${target} += ${JSON.stringify(tagOpen)};`,
-    ...emitDynamicAttributes(dynamicAttrs, components, options, target),
-  ];
-}
-
-function collectStaticOpeningAttributes(
-  tag: string,
-  attrs: AttrNode[]
-): { tagOpen: string; dynamicAttrs: DynamicAttribute[] } {
-  let tagOpen = `<${tag}`;
-  const dynamicAttrs: DynamicAttribute[] = [];
-  for (const attr of attrs) {
-    const attribute = classifyStaticAttribute(attr);
-    if (typeof attribute === 'string') tagOpen += attribute;
-    else if (attribute) dynamicAttrs.push(attribute);
-  }
-  return { tagOpen, dynamicAttrs };
-}
-
-function classifyStaticAttribute(attr: AttrNode): string | DynamicAttribute | undefined {
-  const kind = specialAttributeKind(attr.name);
-  return kind ? classifySpecialStaticAttribute(attr, kind) : classifyOrdinaryStaticAttribute(attr);
-}
-
-const SPECIAL_ATTRIBUTE_KINDS: Record<string, 'class' | 'classList' | 'style' | undefined> = {
-  class: 'class',
-  className: 'class',
-  'class:list': 'classList',
-  style: 'style',
-};
-
-function specialAttributeKind(name: string): 'class' | 'classList' | 'style' | undefined {
-  return SPECIAL_ATTRIBUTE_KINDS[name];
-}
-
-function classifySpecialStaticAttribute(
-  attr: AttrNode,
-  kind: 'class' | 'classList' | 'style'
-): string | DynamicAttribute | undefined {
-  if (typeof attr.value === 'string')
-    return ` ${attributeOutputName(kind)}="${escapeHtml(attr.value)}"`;
-  if (attr.value === true) return undefined;
-  return { name: attributeOutputName(kind), value: attr.value, type: dynamicAttributeType(kind) };
-}
-
-function attributeOutputName(kind: 'class' | 'classList' | 'style'): 'class' | 'style' {
-  return kind === 'style' ? 'style' : 'class';
-}
-
-function dynamicAttributeType(kind: 'class' | 'classList' | 'style'): 'list' | 'style' | undefined {
-  if (kind === 'classList') return 'list';
-  return kind === 'style' ? 'style' : undefined;
-}
-
-function classifyOrdinaryStaticAttribute(attr: AttrNode): string | DynamicAttribute {
-  if (attr.value === true) return ` ${attr.name}`;
-  if (typeof attr.value === 'string') return ` ${attr.name}="${escapeHtml(attr.value)}"`;
-  return { name: attr.name, value: attr.value };
-}
-
-function emitDynamicAttributes(
-  attrs: DynamicAttribute[],
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
-  target: string
-): string[] {
-  return attrs.map((attr) => emitDynamicAttribute(attr, components, options, target));
-}
-
-function emitDynamicAttribute(
-  attr: DynamicAttribute,
-  components: Record<string, RenderFunction>,
-  options: CompileOptions | undefined,
-  target: string
-): string {
-  const source = transformExpression(attr.value, components, options);
-  if (attr.name === 'class') return emitDynamicClassAttribute(source, attr.type, target);
-  if (attr.name === 'style') return emitDynamicStyleAttribute(source, attr.type, target);
-  return `${target} += ${JSON.stringify(` ${attr.name}="`)} + __escape(${source}) + ${JSON.stringify('"')};`;
-}
-
-function emitDynamicClassAttribute(
-  source: string,
-  type: DynamicAttribute['type'],
-  target: string
-): string {
-  const value = type === 'list' ? `__classList(${source})` : source;
-  return `${target} += ${JSON.stringify(' class="')} + __escape(${value}) + ${JSON.stringify('"')};`;
-}
-
-function emitDynamicStyleAttribute(
-  source: string,
-  type: DynamicAttribute['type'],
-  target: string
-): string {
-  const value = type === 'style' ? `__styleObject(${source})` : source;
-  return `${target} += ${JSON.stringify(' style="')} + __escape(${value}) + ${JSON.stringify('"')};`;
-}
-
 function emitSpreadOpeningTag(
   tag: string,
   attrs: ElementAttribute[],
+  hasSpread: boolean,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined,
   target: string
@@ -1041,12 +1019,19 @@ function emitSpreadOpeningTag(
   const lines = [
     `${target} += ${JSON.stringify('<' + tag)};`,
     `{`,
-    `  const __attrs = {};`,
+    `  const __attrs = Object.create(null);`,
+    `  const __attrOrder = [];`,
+    `  const __seenAttrs = Object.create(null);`,
     `  const __classes = [];`,
     `  const __styles = [];`,
+    `  const __setAttr = (__k, __v) => {`,
+    `    if (__v == null) { delete __attrs[__k]; return; }`,
+    `    if (!Object.hasOwn(__seenAttrs, __k)) { __seenAttrs[__k] = true; __attrOrder.push(__k); }`,
+    `    __attrs[__k] = __v;`,
+    `  };`,
   ];
   for (const attr of attrs) lines.push(...emitSpreadAttribute(attr, components, options));
-  lines.push(...emitCollectedSpreadValues(target), `}`);
+  lines.push(...emitCollectedSpreadValues(tag, attrs, hasSpread, target), `}`);
   return lines;
 }
 
@@ -1069,15 +1054,14 @@ function emitSpreadObject(
   return [
     `  {`,
     `    const __s = (${source});`,
-    `    for (const __k in __s) {`,
+    `    if (__s != null) for (const __k of Object.keys(Object(__s))) {`,
+    `      const __v = __s[__k];`,
     `      if (__k === "class" || __k === "className" || __k === "class:list") {`,
-    `        __classes.push(__k === "class:list" ? __classList(__s[__k]) : __s[__k]);`,
+    `        __classes.push(__k === "class:list" ? __classList(__v) : __v);`,
     `      } else if (__k === "style") {`,
-    `        const __v = __s[__k];`,
-    `        if (typeof __v === "string") __styles.push(__v);`,
-    `        else __styles.push(__styleObject(__v));`,
+    `        __styles.push(typeof __v === "string" ? __v : __styleObject(__v));`,
     `      } else {`,
-    `        __attrs[__k] = __s[__k];`,
+    `        __setAttr(__k, __v);`,
     `      }`,
     `    }`,
     `  }`,
@@ -1114,6 +1098,7 @@ function emitSpreadStyleAttribute(
   return [`  __styles.push(${spreadAttributeValue(attr, '__styleObject', components, options)});`];
 }
 
+// fallow-ignore-next-line complexity
 function spreadAttributeValue(
   attr: AttrNode,
   helper: '__classList' | '__styleObject',
@@ -1122,7 +1107,8 @@ function spreadAttributeValue(
 ): string {
   if (attr.value === true) return '""';
   if (typeof attr.value === 'string') return JSON.stringify(attr.value);
-  return `${helper}(${transformExpression(attr.value, components, options)})`;
+  const source = transformExpression(attr.value, components, options);
+  return attr.name === 'class:list' || attr.name === 'style' ? `${helper}(${source})` : source;
 }
 
 function emitSpreadOrdinaryAttribute(
@@ -1130,8 +1116,9 @@ function emitSpreadOrdinaryAttribute(
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined
 ): string[] {
-  const name = JSON.stringify(attr.name);
-  return [`  __attrs[${name}] = ${spreadOrdinaryAttributeValue(attr, components, options)};`];
+  return [
+    `  __setAttr(${JSON.stringify(attr.name)}, ${spreadOrdinaryAttributeValue(attr, components, options)});`,
+  ];
 }
 
 function spreadOrdinaryAttributeValue(
@@ -1139,23 +1126,46 @@ function spreadOrdinaryAttributeValue(
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined
 ): string {
-  if (attr.value === true) return 'true';
-  if (typeof attr.value === 'string') return `new __RawHtml(${JSON.stringify(attr.value)})`;
+  if (attr.value === true) return '""';
+  if (typeof attr.value === 'string') return JSON.stringify(attr.value);
   return `(${transformExpression(attr.value, components, options)})`;
 }
 
-function emitCollectedSpreadValues(target: string): string[] {
+function emitCollectedSpreadValues(
+  tag: string,
+  attrs: ElementAttribute[],
+  hasSpread: boolean,
+  target: string
+): string[] {
   const emit = (value: string) => `${target} += ${value};`;
+  const booleans = tag.includes('-') ? '' : [...NATIVE_BOOLEAN_ATTRIBUTES].join(',');
+  const classes = hasSpread
+    ? [
+        `  const __finalCls = __classes.filter(Boolean).join(' ');`,
+        `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
+      ]
+    : attrs
+        .filter((attr): attr is AttrNode => !('type' in attr) && isClassAttribute(attr.name))
+        .map((_, index) => `  ${emit(`' class="' + __escape(__classes[${index}]) + '"'`)}`);
+  const styles = hasSpread
+    ? [
+        `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`,
+        `  if (__finalSty) ${emit("' style=\"' + __escape(__finalSty) + '\"'")}`,
+      ]
+    : attrs
+        .filter((attr): attr is AttrNode => !('type' in attr) && attr.name === 'style')
+        .map((_, index) => `  ${emit(`' style="' + __escape(__styles[${index}]) + '"'`)}`);
   return [
-    `  for (const __k in __attrs) {`,
+    `  for (const __k of __attrOrder) {`,
+    `    if (!Object.hasOwn(__attrs, __k)) continue;`,
     `    const __v = __attrs[__k];`,
-    `    if (__v === true) ${emit('" " + __escape(__k)')}`,
-    `    else if (__v !== false && __v != null) ${emit('" " + __escape(__k) + \'="\' + __escape(__v) + \'"\'')}`,
+    `    if (__v === "") ${emit('" " + __escape(__k)')}`,
+    `    else if (${JSON.stringify(',' + booleans + ',')}.includes("," + __k + ",")) {`,
+    `      if (__v) ${emit('" " + __escape(__k)')}`,
+    `    } else ${emit('" " + __escape(__k) + \'="\' + __escape(String(__v)) + \'"\'')}`,
     `  }`,
-    `  const __finalCls = __classes.filter(Boolean).join(' ');`,
-    `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
-    `  const __finalSty = __styles.map(s => typeof s === "string" ? s.trim().replace(/;$/, "") : s).filter(Boolean).join(';');`,
-    `  if (__finalSty) ${emit("' style=\"' + __escape(__finalSty) + '\"'")}`,
+    ...classes,
+    ...styles,
   ];
 }
 
