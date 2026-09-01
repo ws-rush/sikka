@@ -44,12 +44,12 @@ function wrap(
   return `import { runtime } from ${JSON.stringify(runtime)};
 ${imports}
 export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const { escape: __escape, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
   const __components = { ${components.map(({ localName, render }) => `${JSON.stringify(localName)}: ${render}`).join(', ')} };
 ${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const { escape: __escape, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
   const __components = { ${components.map(({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`).join(', ')} };
 ${artifact.streamString}
 }`;

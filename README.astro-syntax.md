@@ -314,6 +314,8 @@ are omitted. A custom `toString` supplies the object's complete style value.
 
 ### `set:html` and `set:text`
 
+`set:html` inserts its value verbatim. It is an application-author trust boundary, not sanitization; the spread `set:html` form has the same behavior.
+
 ```astro
 <!-- 1. set:html null / set:text undef -->
 <div set:html={null} set:text={undefined} />

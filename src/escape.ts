@@ -7,8 +7,10 @@
  */
 
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
+const RAW_HTML = Symbol.for('sikka.raw-html');
+
 export class RawHtml {
-  __isRawHtml = true;
+  [RAW_HTML] = true;
   constructor(public readonly value: string) {}
 }
 
@@ -19,7 +21,7 @@ const ESCAPE_TEST_RE = /[&<>"']/;
  */
 export function escapeHtml(value: unknown): string {
   if (typeof value === 'string') return escapeString(value);
-  if (value instanceof RawHtml) return value.value;
+  if (isRawHtml(value)) return value.value;
   if (Array.isArray(value)) return escapeArray(value);
   return escapeString(stringifyHtml(value));
 }
@@ -31,8 +33,18 @@ export function stringifyHtml(value: unknown): string {
 
 function stringifyValue(value: unknown): string {
   if (value == null || typeof value === 'boolean') return '';
-  if (value instanceof RawHtml) return value.value;
+  if (isRawHtml(value)) return value.value;
   return String(value);
+}
+
+function isRawHtml(value: unknown): value is { value: string } {
+  return (
+    value instanceof RawHtml ||
+    (!!value &&
+      typeof value === 'object' &&
+      (value as { [RAW_HTML]?: unknown })[RAW_HTML] === true &&
+      typeof (value as { value?: unknown }).value === 'string')
+  );
 }
 
 function escapeString(value: string): string {
