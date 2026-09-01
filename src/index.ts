@@ -1,6 +1,8 @@
 import type {
   RenderFunction,
   SikkaOptions,
+  SourceModeOptions,
+  SourceTemplate,
   StreamingRenderFunction,
   TemplateAST,
 } from './types.js';
@@ -11,7 +13,10 @@ import {
 } from './compiler.js';
 import { createCache } from './cache.js';
 
-type CompilerOptions = SikkaOptions & {
+export type { SourceModeOptions, SourceResolver, SourceTemplate } from './types.js';
+
+type RuntimeOptions = SikkaOptions | SourceModeOptions;
+type CompilerOptions = RuntimeOptions & {
   components: Record<string, RenderFunction>;
   basePath?: string;
   fileReader?: (path: string) => string;
@@ -27,25 +32,25 @@ type TemplateCompiler<T> = (
 type TemplateCache = ReturnType<typeof createCache> | null;
 type TemplateCaches = { cache: TemplateCache; streamCache: TemplateCache };
 
-function createTemplateCaches(options: SikkaOptions): TemplateCaches {
+function createTemplateCaches(options: RuntimeOptions): TemplateCaches {
   const cache = templateCacheFor(options);
   return { cache, streamCache: cache ? createCache(options.cacheSize) : null };
 }
 
-function templateCacheFor(options: SikkaOptions): TemplateCache {
+function templateCacheFor(options: RuntimeOptions): TemplateCache {
   if (cachingIsEnabled(options)) return createCache(options.cacheSize);
   return suppliedCache(options);
 }
 
-function cachingIsEnabled(options: SikkaOptions): boolean {
+function cachingIsEnabled(options: RuntimeOptions): boolean {
   return options.cache === true || cacheSizeEnablesCaching(options);
 }
 
-function cacheSizeEnablesCaching(options: SikkaOptions): boolean {
+function cacheSizeEnablesCaching(options: RuntimeOptions): boolean {
   return options.cache === undefined && Boolean(options.cacheSize);
 }
 
-function suppliedCache(options: SikkaOptions): TemplateCache {
+function suppliedCache(options: RuntimeOptions): TemplateCache {
   return typeof options.cache === 'object' ? options.cache : null;
 }
 
@@ -55,12 +60,42 @@ function invalidateCache(cache: TemplateCache, key: string | undefined): void {
   else cache.clear();
 }
 
+function sourceTemplateRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  return value as Record<string, unknown>;
+}
+
+function isTemplateIdentity(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isSourceTemplate(value: unknown): value is SourceTemplate {
+  const template = sourceTemplateRecord(value);
+  return !!template && isTemplateIdentity(template.id) && typeof template.source === 'string';
+}
+
+function sourceIdentity(value: unknown): string | undefined {
+  const template = sourceTemplateRecord(value);
+  return template && typeof template.id === 'string' ? template.id : undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function legacyReadFile(options: RuntimeOptions): SikkaOptions['readFile'] | undefined {
+  return options.mode === 'source' ? undefined : options.readFile;
+}
+
 export class Sikka {
   private cache: ReturnType<typeof createCache> | null;
   private streamCache: ReturnType<typeof createCache> | null;
   private globalComponents: Record<string, RenderFunction> = {};
 
-  constructor(private options: SikkaOptions = {}) {
+  constructor(private options: RuntimeOptions = {}) {
+    if (options.mode === 'source' && typeof options.resolver !== 'function') {
+      throw new Error('Source mode requires a synchronous resolver');
+    }
     const caches = createTemplateCaches(options);
     this.cache = caches.cache;
     this.streamCache = caches.streamCache;
@@ -84,7 +119,10 @@ export class Sikka {
    * @param props - Data object to pass as `Astro.props`.
    */
   render(name: string, props: Record<string, unknown> = {}): string {
-    const fn = this.compileFile(name);
+    const source = this.sourceOptions();
+    const fn = source
+      ? this.compileSource(this.resolveSource(name, source), internalCompile, this.cache)
+      : this.compileFile(name);
     return fn.renderSync(props, {});
   }
 
@@ -109,7 +147,14 @@ export class Sikka {
    * @param props - Data object to pass as `Astro.props`.
    */
   stream(name: string, props: Record<string, unknown> = {}): AsyncGenerator<string> {
-    const fn = this.compileStreamingFile(name);
+    const source = this.sourceOptions();
+    const fn = source
+      ? this.compileSource(
+          this.resolveSource(name, source),
+          internalCompileStreaming,
+          this.streamCache
+        )
+      : this.compileStreamingFile(name);
     return fn(props, {});
   }
 
@@ -179,6 +224,22 @@ export class Sikka {
     );
   }
 
+  private compileSource<T extends RenderFunction | StreamingRenderFunction>(
+    template: SourceTemplate,
+    compiler: TemplateCompiler<T>,
+    cache: TemplateCache
+  ): T {
+    return this.compileTemplate(
+      () => template.source,
+      template.id,
+      template.id,
+      this.options,
+      compiler,
+      cache,
+      template.id
+    );
+  }
+
   private compileFile(name: string): RenderFunction {
     const fullPath = this.resolveTemplatePath(name);
     return this.compileTemplate(
@@ -220,7 +281,7 @@ export class Sikka {
     loadSource: () => string,
     cacheKey: string,
     basePath: string,
-    options: SikkaOptions,
+    options: RuntimeOptions,
     compiler: TemplateCompiler<T>,
     cache: ReturnType<typeof createCache> | null,
     location?: string
@@ -232,7 +293,7 @@ export class Sikka {
       ...options,
       components: this.globalComponents,
       basePath,
-      fileReader: options.readFile,
+      fileReader: legacyReadFile(options),
     });
     if (!result.ok) {
       const suffix = location ? ` in ${location}` : '';
@@ -241,6 +302,31 @@ export class Sikka {
 
     cache?.set(cacheKey, result.fn as RenderFunction);
     return result.fn;
+  }
+
+  private sourceOptions(): SourceModeOptions | undefined {
+    return this.options.mode === 'source' ? this.options : undefined;
+  }
+
+  private legacyOptions(): SikkaOptions | undefined {
+    return this.options.mode === 'source' ? undefined : this.options;
+  }
+
+  private resolveSource(request: string, options: SourceModeOptions): SourceTemplate {
+    let template: unknown;
+    try {
+      template = options.resolver(request);
+    } catch (error) {
+      throw new Error(`ResolveError for ${JSON.stringify(request)}: ${errorMessage(error)}`, {
+        cause: error,
+      });
+    }
+    if (!isSourceTemplate(template)) {
+      const identity = sourceIdentity(template);
+      const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
+      throw new Error(`ResolveError: invalid result for ${JSON.stringify(request)}${suffix}`);
+    }
+    return template;
   }
 
   private parseTemplate(source: string, location?: string): TemplateAST {
@@ -252,17 +338,19 @@ export class Sikka {
   }
 
   private resolveTemplatePath(name: string): string {
-    return this.options.views && !name.startsWith('/') && !name.includes(':')
-      ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
+    const views = this.legacyOptions()?.views;
+    return views && !name.startsWith('/') && !name.includes(':')
+      ? `${views}/${name}`.replace(/\/+/g, '/')
       : name;
   }
 
   private readTemplateFile(path: string, method: 'render' | 'stream'): string {
-    if (!this.options.readFile) {
+    const readFile = this.legacyOptions()?.readFile;
+    if (!readFile) {
       throw new Error(`Sikka.${method}() requires options.readFile to be configured`);
     }
 
-    const content = this.options.readFile(path);
+    const content = readFile(path);
     if (content === undefined || content === null) {
       throw new Error(`Could not read file: ${path}`);
     }

@@ -10,14 +10,18 @@ export interface RenderFunction {
   renderSync(props: Record<string, unknown>, slots?: Record<string, string>): string;
 }
 
-/** Options accepted by `new Sikka()`. */
-export interface SikkaOptions {
-  /** Directory path for template resolution. */
-  views?: string;
-  /** Sync function to read file content. */
-  readFile?: (path: string) => string;
-  /** Sync/Async function to resolve paths. */
-  resolvePath?: (base: string, specifier: string) => string | Promise<string>;
+/** A named Template returned by a source-mode resolver. */
+export interface SourceTemplate {
+  /** Canonical Template identity for caches and diagnostics. */
+  id: string;
+  /** Template source to compile. */
+  source: string;
+}
+
+/** Resolves a Template request synchronously. */
+export type SourceResolver = (request: string, importer?: string) => SourceTemplate;
+
+interface SikkaRuntimeOptions {
   /** Custom name for the props variable (default: "Astro"). */
   varName?: string;
   /** Enables pretty-printing of runtime errors. */
@@ -34,6 +38,23 @@ export interface SikkaOptions {
   filterFunction?: (val: unknown) => unknown;
   /** Whether to aggregate <script> and <style> tags. */
   aggregateAssets?: boolean;
+}
+
+/** Legacy options accepted by the pre-1.0 API. */
+export interface SikkaOptions extends SikkaRuntimeOptions {
+  mode?: never;
+  /** Directory path for template resolution. */
+  views?: string;
+  /** Sync function to read file content. */
+  readFile?: (path: string) => string;
+  /** Sync/Async function to resolve paths. */
+  resolvePath?: (base: string, specifier: string) => string | Promise<string>;
+}
+
+/** Options for named source Template rendering. */
+export interface SourceModeOptions extends SikkaRuntimeOptions {
+  mode: 'source';
+  resolver: SourceResolver;
 }
 
 // ─── AST types ────────────────────────────────────────────────────────────────

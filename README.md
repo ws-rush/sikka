@@ -72,6 +72,33 @@ const html = await sikka.renderString(template, { name: 'World' });
 console.log(html); // <h1>Hello, World!</h1>
 ```
 
+### Named Source Templates
+
+Use explicit source mode to render a named Template through a synchronous resolver.
+The resolver returns the Template source and its canonical identity, which Sikka uses
+for caches and diagnostics.
+
+```typescript
+const templates = new Map([['home', '<h1>{Astro.props.title}</h1>']]);
+const sikka = new Sikka({
+  mode: 'source',
+  resolver(request) {
+    const source = templates.get(request);
+    if (source === undefined) throw new Error(`Unknown Template: ${request}`);
+    return { id: `templates/${request}.astro`, source };
+  },
+});
+
+const html = sikka.render('home', { title: 'Hello' });
+for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
+  // write chunk
+}
+```
+
+The resolver is synchronous. Hosts using asynchronous storage must preload and
+cache Template source before calling `render` or `stream`; Sikka does not own
+filesystem, path, or asynchronous loading behavior.
+
 ### Compiling and File Resolution
 
 To load templates from the file system, provide `views`, `readFile`, and `resolvePath` in the options:
