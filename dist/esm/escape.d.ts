@@ -14,5 +14,5 @@ export declare class RawHtml {
 /**
  * Escape an untrusted value for safe HTML insertion.
  */
-export declare function escapeHtml(v: unknown): string;
+export declare function escapeHtml(value: unknown): string;
 //# sourceMappingURL=escape.d.ts.map

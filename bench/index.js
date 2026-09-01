@@ -14,7 +14,7 @@ const dust = requireBenchmarkDependency('dustjs-linkedin');
 const igoDust = requireBenchmarkDependency('igo-dust');
 const { Liquid } = requireBenchmarkDependency('liquidjs');
 const pug = requireBenchmarkDependency('pug');
-const { Eta } = await import(requireBenchmarkDependency.resolve('eta'));
+const { Eta } = await import('../benchmark/node_modules/eta/dist/index.js');
 
 const DEFAULT_TIME = 1_000;
 const DEFAULT_WARMUP_TIME = 250;

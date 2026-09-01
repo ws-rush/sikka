@@ -273,6 +273,8 @@ function buildFunctionPreamble(ast, options) {
 function buildAstroPreamble(ast, varName) {
     if (!usesAstroGlobal(ast, varName))
         return [];
+    if (usesOnlyAstroProps(ast, varName))
+        return [`const ${varName} = { props };`];
     return [
         `const ${varName} = {
       props,
@@ -286,6 +288,10 @@ function buildAstroPreamble(ast, varName) {
 }
 function usesAstroGlobal(ast, varName) {
     return ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
+}
+function usesOnlyAstroProps(ast, varName) {
+    const source = ast.frontmatter.source + JSON.stringify(ast.body);
+    return !source.replaceAll(`${varName}.props`, '').includes(varName);
 }
 function buildComponentPreamble(imports) {
     return imports.map(({ localName }) => `const ${localName} = __components[${JSON.stringify(localName)}];`);

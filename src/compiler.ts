@@ -472,6 +472,7 @@ function buildFunctionPreamble(ast: TemplateAST, options?: CompileOptions): stri
 
 function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
   if (!usesAstroGlobal(ast, varName)) return [];
+  if (usesOnlyAstroProps(ast, varName)) return [`const ${varName} = { props };`];
   return [
     `const ${varName} = {
       props,
@@ -486,6 +487,11 @@ function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
 
 function usesAstroGlobal(ast: TemplateAST, varName: string): boolean {
   return ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
+}
+
+function usesOnlyAstroProps(ast: TemplateAST, varName: string): boolean {
+  const source = ast.frontmatter.source + JSON.stringify(ast.body);
+  return !source.replaceAll(`${varName}.props`, '').includes(varName);
 }
 
 function buildComponentPreamble(imports: ComponentImport[]): string[] {

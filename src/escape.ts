@@ -12,35 +12,72 @@ export class RawHtml {
   constructor(public readonly value: string) {}
 }
 
-const ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-const ESCAPE_RE = /[&<>"']/g;
 const ESCAPE_TEST_RE = /[&<>"']/;
 
 /**
  * Escape an untrusted value for safe HTML insertion.
  */
-export function escapeHtml(v: unknown): string {
-  if (typeof v === 'string') {
-    if (!ESCAPE_TEST_RE.test(v)) return v;
-    return v.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]);
+export function escapeHtml(value: unknown): string {
+  if (typeof value === 'string') return escapeString(value);
+  if (value instanceof RawHtml) return value.value;
+  return escapeNonString(value);
+}
+
+function escapeString(value: string): string {
+  const match = ESCAPE_TEST_RE.exec(value);
+  return match ? replaceEscapedCharacters(value, match.index) : value;
+}
+
+function replaceEscapedCharacters(value: string, start: number): string {
+  let output = '';
+  let lastIndex = 0;
+  for (let index = start; index < value.length; index++) {
+    const escaped = escapeCharacterCode(value.charCodeAt(index));
+    if (escaped === undefined) continue;
+    output += value.slice(lastIndex, index) + escaped;
+    lastIndex = index + 1;
   }
-  if (v == null || v === true || v === false) return '';
-  if (typeof v === 'object') {
-    if (v instanceof RawHtml) return v.value;
-    if (Array.isArray(v)) {
-      let s = '';
-      for (let i = 0; i < v.length; i++) s += escapeHtml(v[i]);
-      return s;
-    }
+  return output + value.slice(lastIndex);
+}
+
+function escapeCharacterCode(code: number): string | undefined {
+  return code < 40 ? escapeLowCharacterCode(code) : escapeHighCharacterCode(code);
+}
+
+function escapeLowCharacterCode(code: number): string | undefined {
+  switch (code) {
+    case 34:
+      return '&quot;';
+    case 38:
+      return '&amp;';
+    case 39:
+      return '&#39;';
   }
-  if (typeof v === 'number') return '' + v;
-  const s = String(v);
-  return ESCAPE_TEST_RE.test(s) ? s.replace(ESCAPE_RE, (ch) => ESCAPE_MAP[ch]) : s;
+}
+
+function escapeHighCharacterCode(code: number): string | undefined {
+  switch (code) {
+    case 60:
+      return '&lt;';
+    case 62:
+      return '&gt;';
+  }
+}
+
+function escapeNonString(value: unknown): string {
+  if (typeof value === 'number') return '' + value;
+  if (value == null) return '';
+  return escapeRemaining(value);
+}
+
+function escapeRemaining(value: unknown): string {
+  if (typeof value === 'boolean') return '';
+  if (Array.isArray(value)) return escapeArray(value);
+  return escapeString(String(value));
+}
+
+function escapeArray(values: unknown[]): string {
+  let output = '';
+  for (let index = 0; index < values.length; index++) output += escapeHtml(values[index]);
+  return output;
 }

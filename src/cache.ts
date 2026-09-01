@@ -28,11 +28,7 @@ export function createCache(maxSize?: number): Cache {
         // Update existing entry and move to MRU position.
         store.delete(key);
       } else if (maxSize !== undefined && store.size >= maxSize) {
-        // Evict the least-recently-used entry (first key in the Map).
-        const lruKey = store.keys().next().value;
-        if (lruKey !== undefined) {
-          store.delete(lruKey);
-        }
+        evictLeastRecentlyUsed(store);
       }
       store.set(key, fn);
     },
@@ -45,4 +41,9 @@ export function createCache(maxSize?: number): Cache {
       store.clear();
     },
   };
+}
+
+function evictLeastRecentlyUsed(store: Map<string, RenderFunction>): void {
+  const lruKey = store.keys().next().value;
+  if (lruKey !== undefined) store.delete(lruKey);
 }
