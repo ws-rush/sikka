@@ -156,6 +156,73 @@ import Empty from './empty.astro';
     modes: ['source', 'precompiled'],
     streaming: 'same-html',
   },
+  {
+    id: 'slot-forward-default-order',
+    template: `---
+import Middle from './middle.astro';
+---
+<Middle><i>first</i><b>second</b></Middle>`,
+    components: {
+      './middle.astro': "---\nimport Child from './child.astro';\n---\n<Child><slot /></Child>",
+      './child.astro': '<main><slot>fallback</slot></main>',
+    },
+    props: {},
+    expectedHtml: '<main><i>first</i><b>second</b></main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'slot-forward-named',
+    template: `---
+import Middle from './middle.astro';
+---
+<Middle><i slot="header">first</i><b slot="header">second</b><em slot="aside">third</em></Middle>`,
+    components: {
+      './middle.astro':
+        '---\nimport Child from \'./child.astro\';\n---\n<Child><slot name="header" slot="header" /><slot name="aside" slot="title" /></Child>',
+      './child.astro':
+        '<main><slot name="header">fallback</slot><slot name="title">fallback</slot></main>',
+    },
+    props: {},
+    expectedHtml: '<main><i>first</i><b>second</b><em>third</em></main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'slot-forward-absent',
+    template: `---
+import Middle from './middle.astro';
+---
+<Middle />`,
+    components: {
+      './middle.astro':
+        '---\nimport Child from \'./child.astro\';\n---\n<Child><slot name="header" slot="title" /></Child>',
+      './child.astro': '<main><slot name="title">fallback</slot></main>',
+    },
+    props: {},
+    expectedHtml: '<main>fallback</main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
+  {
+    id: 'slot-forward-dynamic',
+    template: `---
+import Middle from './middle.astro';
+---
+<Middle incoming={Astro.props.incoming} outgoing={Astro.props.outgoing}><b slot={Astro.props.incoming}>dynamic</b></Middle>`,
+    components: {
+      './middle.astro': `---
+import Child from './child.astro';
+const { incoming, outgoing } = Astro.props;
+---
+<Child><slot name={incoming} slot={outgoing} /></Child>`,
+      './child.astro': '<main><slot name="target">fallback</slot></main>',
+    },
+    props: { incoming: 'source', outgoing: 'target' },
+    expectedHtml: '<main><b>dynamic</b></main>',
+    modes: ['source', 'precompiled'],
+    streaming: 'same-html',
+  },
   expressionCase('expression-null', 'null', ''),
   expressionCase('expression-undefined', 'undefined', ''),
   expressionCase('expression-true', 'true', ''),

@@ -1367,42 +1367,90 @@ function emitComponentSlot(
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined
 ): string[] {
-  const { slotName, node } = getComponentSlot(child, components, options);
+  const { slotName, node, forwardedSlotName } = getComponentSlot(child, components, options);
+  if (forwardedSlotName) return emitForwardedComponentSlot(slotName, forwardedSlotName);
+
   const variable = `__slot_${index}`;
   return [
     `    let ${variable} = "";`,
     ...emitNode(node, components, options, variable).map((line) => '    ' + line),
+    ...emitChildSlotAssignment(slotName, variable, '    '),
+  ];
+}
+
+function emitForwardedComponentSlot(slotName: string, forwardedSlotName: string): string[] {
+  return [
     `    {`,
-    `      const __sname = ${slotName};`,
-    `      if (__sname === "" || __sname === "default") {`,
-    `        if (__childSlots[""] === undefined) __childSlots[""] = "";`,
-    `        if (__childSlots["default"] === undefined) __childSlots["default"] = "";`,
-    `        __childSlots[""] += ${variable};`,
-    `        __childSlots["default"] += ${variable};`,
-    `      } else {`,
-    `        if (__childSlots[__sname] === undefined) __childSlots[__sname] = "";`,
-    `        __childSlots[__sname] += ${variable};`,
+    `      const __forwardedName = String(${forwardedSlotName});`,
+    `      const __forwarded = slots[__forwardedName] === undefined && __forwardedName === "default" ? slots[""] : slots[__forwardedName];`,
+    `      if (__forwarded !== undefined) {`,
+    ...emitChildSlotAssignment(slotName, '__forwarded', '        '),
     `      }`,
     `    }`,
   ];
 }
 
+function emitChildSlotAssignment(slotName: string, value: string, indent: string): string[] {
+  return [
+    `${indent}{`,
+    `${indent}  const __sname = String(${slotName});`,
+    `${indent}  if (__sname === "" || __sname === "default") {`,
+    `${indent}    if (__childSlots[""] === undefined) __childSlots[""] = "";`,
+    `${indent}    if (__childSlots["default"] === undefined) __childSlots["default"] = "";`,
+    `${indent}    __childSlots[""] += ${value};`,
+    `${indent}    __childSlots["default"] += ${value};`,
+    `${indent}  } else {`,
+    `${indent}    if (__childSlots[__sname] === undefined) __childSlots[__sname] = "";`,
+    `${indent}    __childSlots[__sname] += ${value};`,
+    `${indent}  }`,
+    `${indent}}`,
+  ];
+}
+
+type ComponentSlot = { slotName: string; node: TemplateNode; forwardedSlotName?: string };
+
 function getComponentSlot(
   child: TemplateNode,
   components: Record<string, RenderFunction>,
   options: CompileOptions | undefined
-): { slotName: string; node: TemplateNode } {
+): ComponentSlot {
+  if (child.type === 'slot') {
+    return {
+      slotName: getSlotAssignmentName(child, components, options),
+      node: child,
+      forwardedSlotName: getSlotReceiverName(child, components, options),
+    };
+  }
   if (child.type !== 'element') return { slotName: JSON.stringify(''), node: child };
 
   const slotAttr = child.attrs.find(
     (attr): attr is AttrNode => !('type' in attr) && attr.name === 'slot'
   );
   if (!slotAttr) return { slotName: JSON.stringify(''), node: child };
-  const slotName = getSlotName(slotAttr, components, options);
   return {
-    slotName,
+    slotName: getSlotName(slotAttr, components, options),
     node: { ...child, attrs: child.attrs.filter((attr) => attr !== slotAttr) },
   };
+}
+
+function getSlotReceiverName(
+  node: import('./types.js').SlotNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  return node.nameExpr
+    ? transformExpression(node.nameExpr, components, options)
+    : JSON.stringify(node.name || 'default');
+}
+
+function getSlotAssignmentName(
+  node: import('./types.js').SlotNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  return node.slotExpr
+    ? transformExpression(node.slotExpr, components, options)
+    : JSON.stringify(node.slot ?? '');
 }
 
 function getSlotName(

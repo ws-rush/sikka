@@ -584,24 +584,31 @@ class Parser {
   private getSlotDetails(attrs: (AttrNode | SpreadAttrNode)[]): {
     name: string;
     nameExpr: ExpressionNode | undefined;
+    slot: string | undefined;
+    slotExpr: ExpressionNode | undefined;
   } {
-    const details: { name: string; nameExpr: ExpressionNode | undefined } = {
-      name: '',
-      nameExpr: undefined,
-    };
-    for (const attr of attrs) {
-      const value = this.getSlotNameAttributeValue(attr);
-      if (value !== undefined) this.assignSlotName(details, value);
-    }
+    const details: {
+      name: string;
+      nameExpr: ExpressionNode | undefined;
+      slot: string | undefined;
+      slotExpr: ExpressionNode | undefined;
+    } = { name: '', nameExpr: undefined, slot: undefined, slotExpr: undefined };
+    for (const attr of attrs) this.assignSlotDetail(details, attr);
     return details;
   }
 
-  private getSlotNameAttributeValue(
+  private assignSlotDetail(
+    details: {
+      name: string;
+      nameExpr: ExpressionNode | undefined;
+      slot: string | undefined;
+      slotExpr: ExpressionNode | undefined;
+    },
     attr: AttrNode | SpreadAttrNode
-  ): AttrNode['value'] | undefined {
-    if ('type' in attr) return undefined;
-    if (attr.name !== 'name') return undefined;
-    return attr.value;
+  ): void {
+    if ('type' in attr) return;
+    if (attr.name === 'name') this.assignSlotName(details, attr.value);
+    else if (attr.name === 'slot') this.assignSlotAssignment(details, attr.value);
   }
 
   private assignSlotName(
@@ -612,9 +619,19 @@ class Parser {
     else if (value !== true) details.nameExpr = value;
   }
 
+  private assignSlotAssignment(
+    details: { slot: string | undefined; slotExpr: ExpressionNode | undefined },
+    value: AttrNode['value']
+  ): void {
+    if (typeof value === 'string') details.slot = value;
+    else if (value !== true) details.slotExpr = value;
+  }
+
   private parseSlotContent(details: {
     name: string;
     nameExpr: ExpressionNode | undefined;
+    slot: string | undefined;
+    slotExpr: ExpressionNode | undefined;
   }): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     if (this.at('/>')) {
       this.advance(2);
@@ -630,6 +647,8 @@ class Parser {
   private parseSlotChildren(details: {
     name: string;
     nameExpr: ExpressionNode | undefined;
+    slot: string | undefined;
+    slotExpr: ExpressionNode | undefined;
   }): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     const children: TemplateNode[] = [];
     while (!this.eof()) {
@@ -655,7 +674,12 @@ class Parser {
 
   private completeSlotChildResult(
     status: 'closing' | 'stop',
-    details: { name: string; nameExpr: ExpressionNode | undefined },
+    details: {
+      name: string;
+      nameExpr: ExpressionNode | undefined;
+      slot: string | undefined;
+      slotExpr: ExpressionNode | undefined;
+    },
     children: TemplateNode[]
   ): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     return status === 'closing'

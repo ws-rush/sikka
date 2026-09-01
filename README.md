@@ -264,6 +264,7 @@ It achieves strong performance through:
 - **Slots**:
   - Default: `<slot />`
   - Named: `<slot name="header" />`
+  - Forwarding: `<slot name="source" slot="target" />` forwards a received Slot to a nested Component without wrapper markup; both names can be dynamic.
   - Fallback content: `<slot>Default content</slot>`; it renders only when no matching child was supplied. Empty Fragments, nullish Expressions, empty strings, and whitespace still count as supplied content.
 - **Conditional Rendering**: `{condition && <p>Visible</p>}` or `{condition ? <A /> : <B />}`.
 - **Loops**: `{items.map(item => <li>{item}</li>)}`.

@@ -145,6 +145,10 @@ export interface SlotNode {
   name: string;
   /** Dynamic expression for the slot name (takes precedence over `name` at runtime). */
   nameExpr?: ExpressionNode;
+  /** Slot assignment when this Slot forwards content to a child Component. */
+  slot?: string;
+  /** Dynamic expression for the forwarded Slot assignment. */
+  slotExpr?: ExpressionNode;
   /** Fallback content. */
   children: TemplateNode[];
 }
