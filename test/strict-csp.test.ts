@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { stripTypeScriptTypes } from 'node:module';
 import { describe, it } from 'node:test';
-import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 import { chromium } from '@playwright/test';
 import { expect } from './assert.js';
 import { compile } from '../src/precompile.js';
@@ -103,9 +103,10 @@ window.strictCspReport = new Promise((resolve, reject) => {
 }
 
 async function runtimeModule(path: string): Promise<string> {
-  return transpileModule(await readFile(new URL(path, import.meta.url), 'utf8'), {
-    compilerOptions: { module: ModuleKind.ESNext, target: ScriptTarget.ES2022 },
-  }).outputText;
+  return stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8'), {
+    mode: 'transform',
+    sourceMap: false,
+  });
 }
 
 async function server(files: Record<string, string>) {
@@ -117,12 +118,17 @@ async function server(files: Record<string, string>) {
     });
     response.end(body);
   });
-  await new Promise<void>((resolve, reject) => instance.listen(0, '127.0.0.1', resolve).once('error', reject));
+  await new Promise<void>((resolve, reject) =>
+    instance.listen(0, '127.0.0.1', resolve).once('error', reject)
+  );
   const address = instance.address();
   if (!address || typeof address === 'string') throw new Error('Could not start localhost server');
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: () => new Promise<void>((resolve, reject) => instance.close((error) => (error ? reject(error) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        instance.close((error) => (error ? reject(error) : resolve()))
+      ),
   };
 }
 

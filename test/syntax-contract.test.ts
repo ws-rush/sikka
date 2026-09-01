@@ -20,6 +20,7 @@ function templateFor(case_: ContractCase, request: string): { id: string; source
 function sourceSikka(case_: ContractCase): Sikka {
   return new Sikka({
     mode: 'source',
+    autoEscape: case_.autoEscape,
     resolver: (request) => templateFor(case_, request),
   });
 }
@@ -68,7 +69,7 @@ async function precompiledSikka(case_: ContractCase): Promise<Sikka> {
     return url;
   };
   const module = await import(moduleUrl(case_.id));
-  return new Sikka({ mode: 'precompiled', resolver: () => module });
+  return new Sikka({ mode: 'precompiled', autoEscape: case_.autoEscape, resolver: () => module });
 }
 
 describe('Syntax Contract', () => {

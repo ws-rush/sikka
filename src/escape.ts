@@ -20,7 +20,19 @@ const ESCAPE_TEST_RE = /[&<>"']/;
 export function escapeHtml(value: unknown): string {
   if (typeof value === 'string') return escapeString(value);
   if (value instanceof RawHtml) return value.value;
-  return escapeNonString(value);
+  if (Array.isArray(value)) return escapeArray(value);
+  return escapeString(stringifyHtml(value));
+}
+
+/** Coerce an Expression value without HTML escaping. */
+export function stringifyHtml(value: unknown): string {
+  return Array.isArray(value) ? stringifyArray(value) : stringifyValue(value);
+}
+
+function stringifyValue(value: unknown): string {
+  if (value == null || typeof value === 'boolean') return '';
+  if (value instanceof RawHtml) return value.value;
+  return String(value);
 }
 
 function escapeString(value: string): string {
@@ -64,20 +76,14 @@ function escapeHighCharacterCode(code: number): string | undefined {
   }
 }
 
-function escapeNonString(value: unknown): string {
-  if (typeof value === 'number') return '' + value;
-  if (value == null) return '';
-  return escapeRemaining(value);
-}
-
-function escapeRemaining(value: unknown): string {
-  if (typeof value === 'boolean') return '';
-  if (Array.isArray(value)) return escapeArray(value);
-  return escapeString(String(value));
-}
-
 function escapeArray(values: unknown[]): string {
   let output = '';
   for (let index = 0; index < values.length; index++) output += escapeHtml(values[index]);
+  return output;
+}
+
+function stringifyArray(values: unknown[]): string {
+  let output = '';
+  for (let index = 0; index < values.length; index++) output += stringifyHtml(values[index]);
   return output;
 }
