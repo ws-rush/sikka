@@ -16,7 +16,13 @@ Choose `source` explicitly. Its synchronous resolver owns storage, paths, and ca
 import { Sikka } from 'sikka';
 
 const templates = new Map([
-  ['home', { id: 'pages/home.astro', source: '---\nimport Card from "./Card.astro";\n---\n<Card title={Astro.props.title} />' }],
+  [
+    'home',
+    {
+      id: 'pages/home.astro',
+      source: '---\nimport Card from "./Card.astro";\n---\n<Card title={Astro.props.title} />',
+    },
+  ],
   ['./Card.astro', { id: 'components/Card.astro', source: '<h1>{Astro.props.title}</h1>' }],
 ]);
 
@@ -59,13 +65,27 @@ import { runtime } from 'sikka/runtime';
 import { render as cardRender, stream as cardStream } from './Card.sikka.mjs';
 
 export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const {
+    escape: __escape,
+    RawHtml: __RawHtml,
+    classList: __classList,
+    styleObject: __styleObject,
+    filter: __filter,
+    aggregateAssets: __aggregateAssets,
+  } = runtime(this);
   const __components = { Card: cardRender };
   // artifact.renderString
 }
 
 export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const {
+    escape: __escape,
+    RawHtml: __RawHtml,
+    classList: __classList,
+    styleObject: __styleObject,
+    filter: __filter,
+    aggregateAssets: __aggregateAssets,
+  } = runtime(this);
   const __components = { Card: cardStream };
   // artifact.streamString
 }
