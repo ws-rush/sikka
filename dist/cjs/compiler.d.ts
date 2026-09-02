@@ -22,7 +22,7 @@ interface CompileOptions {
     /** Source Streaming renders use Streaming Component functions. */
     streamComponents?: boolean;
     /** Canonical Template identity included in debug Render failures. */
-    basePath?: string;
+    templateId?: string;
 }
 export declare const compile: typeof compileSync;
 /** Returns a diagnostic when regular rendering cannot execute Frontmatter await. */

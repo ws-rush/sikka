@@ -33,7 +33,7 @@ type RuntimeOptions = SourceModeOptions | PrecompiledModeOptions;
 type CompilerOptions = RuntimeOptions & {
   components: Record<string, RenderFunction>;
   streamComponents?: boolean;
-  basePath?: string;
+  templateId?: string;
 };
 type CompileTemplateResult<T> =
   | { ok: true; fn: T; source: string }
@@ -67,7 +67,7 @@ function sourceTemplateRecord(value: unknown): Record<string, unknown> | undefin
 }
 
 function isTemplateIdentity(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isSourceTemplate(value: unknown): value is SourceTemplate {
@@ -189,7 +189,7 @@ export class Sikka {
         cache
       ),
       streamComponents: compiler === internalCompileStreaming,
-      basePath: template.id,
+      templateId: template.id,
     });
     if (!result.ok)
       throw new SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {

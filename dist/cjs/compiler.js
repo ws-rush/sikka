@@ -117,7 +117,7 @@ function compileSync(ast, options) {
     const awaitError = unsupportedFrontmatterAwait(ast);
     if (awaitError)
         return { ok: false, error: awaitError };
-    const importError = unsupportedFrontmatterImport(ast.imports, options?.basePath);
+    const importError = unsupportedFrontmatterImport(ast.imports, options?.templateId);
     if (importError)
         return { ok: false, error: importError };
     return compileAST(ast, options);
@@ -148,7 +148,7 @@ function compileASTUnsafe(ast, options) {
     validateDirectives(ast);
     const components = options?.components ?? {};
     const source = buildFunctionBody(ast, components, options, '__out', 'return __out;');
-    const renderFn = createRenderFunction(createSyncFunction(source), components, createRuntimeHelpers(options), options?.debug, options?.basePath);
+    const renderFn = createRenderFunction(createSyncFunction(source), components, createRuntimeHelpers(options), options?.debug, options?.templateId);
     return { ok: true, fn: renderFn, source };
 }
 function createSyncFunction(source) {
@@ -182,11 +182,20 @@ function executeSyncFunction(syncFn, props, slots, components, helpers, debug, t
         throw err;
     }
 }
+const HOISTED_BOOLEAN_ATTRS = `const __booleanAttrs = new Set([${[...NATIVE_BOOLEAN_ATTRIBUTES]
+    .map((name) => JSON.stringify(name))
+    .join(', ')}]);`;
+const HOISTED_RAW_HTML_KEY = 'const __rawHtmlKey = Symbol.for("sikka.raw-html");';
 function buildFunctionBody(ast, components, options, target, completion) {
-    const lines = [`let ${target} = "";`, ...buildFunctionPreamble(ast, options)];
-    const bodyLines = ast.body.flatMap((node) => emitNode(node, components, options, target));
-    lines.push(...mergeLines(bodyLines, target), completion);
-    return lines.join('\n');
+    const bodyLines = mergeLines(ast.body.flatMap((node) => emitNode(node, components, options, target)), target);
+    return [
+        `let ${target} = "";`,
+        ...(bodyLines.some((line) => line.includes('__booleanAttrs')) ? [HOISTED_BOOLEAN_ATTRS] : []),
+        ...(bodyLines.some((line) => line.includes('__rawHtmlKey')) ? [HOISTED_RAW_HTML_KEY] : []),
+        ...buildFunctionPreamble(ast, options),
+        ...bodyLines,
+        completion,
+    ].join('\n');
 }
 function buildFunctionPreamble(ast, options) {
     const varName = options?.varName || 'Astro';
@@ -702,7 +711,6 @@ function spreadOrdinaryAttributeValue(attr, components, options) {
 }
 function emitCollectedSpreadValues(target) {
     const emit = (value) => `${target} += ${value};`;
-    const booleans = [...NATIVE_BOOLEAN_ATTRIBUTES].join(',');
     const classes = [
         `  const __finalCls = __classes.filter(Boolean).join(' ');`,
         `  if (__finalCls) ${emit("' class=\"' + __escape(__finalCls) + '\"'")}`,
@@ -719,7 +727,7 @@ function emitCollectedSpreadValues(target) {
         `      if (__isCustomElement) ${emit('" " + __escape(__k) + \'="true"\'')}`,
         `      else ${emit('" " + __escape(__k)')}`,
         `    } else if (__v === "") ${emit('" " + __escape(__k)')}`,
-        `    else if (!__isCustomElement && ${JSON.stringify(',' + booleans + ',')}.includes("," + __k + ",")) {`,
+        `    else if (!__isCustomElement && __booleanAttrs.has(__k)) {`,
         `      if (__v) ${emit('" " + __escape(__k)')}`,
         `    } else ${emit('" " + __escape(__k) + \'="\' + __escape(String(__v)) + \'"\'')}`,
         `  }`,
@@ -753,12 +761,10 @@ function emitHtmlDirective(attr, components, options, target) {
     if (attr.value === true)
         return [];
     const source = transformExpression(attr.value, components, options);
-    return [
-        `{ const __h = (${source}); ${emit('[].concat(__h).map(v => (v && typeof v === \'object\' && v[Symbol.for("sikka.raw-html")] === true) ? v.value : v).join("")')} }`,
-    ];
+    return [`{ const __h = (${source}); ${emitRawHtmlValue('__h', target)} }`];
 }
 function emitRawHtmlValue(value, target) {
-    return `${target} += [].concat(${value}).map(v => (v && typeof v === 'object' && v[Symbol.for("sikka.raw-html")] === true) ? v.value : v).join("");`;
+    return `${target} += [].concat(${value}).map(v => (v && typeof v === 'object' && v[__rawHtmlKey] === true) ? v.value : v).join("");`;
 }
 function emitTextDirective(attr, components, options, target) {
     const emit = (value) => `${target} += ${value};`;
@@ -947,7 +953,7 @@ function isSingleOutputLine(lines) {
 // ─── Streaming Compiler ─────────────────────────────────────────────────────
 /** Compiles an AST for Streaming after its Component graph has been resolved by the host. */
 function compileStreamingInternal(ast, options) {
-    const importError = unsupportedFrontmatterImport(ast.imports, options?.basePath);
+    const importError = unsupportedFrontmatterImport(ast.imports, options?.templateId);
     if (importError)
         return { ok: false, error: importError };
     return compileStreamingAST(ast, options);

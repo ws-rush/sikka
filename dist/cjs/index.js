@@ -28,7 +28,7 @@ function sourceTemplateRecord(value) {
     return value && typeof value === 'object' ? value : undefined;
 }
 function isTemplateIdentity(value) {
-    return typeof value === 'string' && value.length > 0;
+    return typeof value === 'string' && value.trim().length > 0;
 }
 function isSourceTemplate(value) {
     const template = sourceTemplateRecord(value);
@@ -102,7 +102,7 @@ class Sikka {
             ...this.options,
             components: this.resolveSourceComponents(ast.imports, template.id, ancestors, compiled, compiler, cache),
             streamComponents: compiler === compiler_js_1.compileStreaming,
-            basePath: template.id,
+            templateId: template.id,
         });
         if (!result.ok)
             throw new error_js_1.SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {
