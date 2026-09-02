@@ -250,7 +250,7 @@ self.addEventListener('message', (event) => {
   event.waitUntil((async () => {
     const report = { type: REPORT_TYPE, result: 'failure', completedCaseIds: [], completedPropertyIds: [] };
     try {
-      if (event.data?.type !== REPORT_TYPE || typeof runtime !== 'function' || RUNTIME_ABI_VERSION !== 2)
+      if (event.data?.type !== REPORT_TYPE || typeof runtime !== 'function' || RUNTIME_ABI_VERSION !== 3)
         throw new Error('Unexpected service worker runtime ABI');
       for (const current of CASES) {
         const receiver = { autoEscape: current.autoEscape };
