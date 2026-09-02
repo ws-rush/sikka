@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project are documented here. The 1.0 Contract defines the Stable API and Syntax Contract.
+All notable changes to this project are documented here.
 
 ## 0.2.0 (2026-09-02)
 

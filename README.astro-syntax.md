@@ -1,6 +1,6 @@
 # Sikka Template syntax
 
-This is Sikka's self-contained 1.0 syntax guide. “Astro-like” describes the spelling only: Astro documentation does not define Sikka behavior. The [1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) is normative.
+This is Sikka's self-contained syntax guide. “Astro-like” describes the spelling only: Astro documentation does not define Sikka behavior.
 
 Each item is **Supported**, **Intentionally rejected** (a `SikkaError` diagnostic identifies the construct), or **Explicitly unsupported** (outside the compatibility contract).
 

@@ -1,6 +1,6 @@
 # Sikka (سكّة)
 
-Sikka is a zero-dependency Template engine. Its [1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) is the normative API and syntax reference; [the syntax guide](README.astro-syntax.md) is a concise, self-contained guide.
+Sikka is a zero-dependency Template engine. [The syntax guide](README.astro-syntax.md) is a concise, self-contained guide.
 
 ## Install
 
