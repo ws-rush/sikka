@@ -1,22 +1,15 @@
 import { parse } from './parser.js';
-import { compile as internalCompile, compileStreaming as internalCompileStreaming, } from './compiler.js';
+import { compile as internalCompile, compileStreaming as internalCompileStreaming, unsupportedFrontmatterImport, } from './compiler.js';
 import { createCache } from './cache.js';
+import { SikkaError } from './error.js';
+export { SikkaError } from './error.js';
 function createTemplateCaches(options) {
     const cache = templateCacheFor(options);
     return { cache, streamCache: cache ? createCache(options.cacheSize) : null };
 }
 function templateCacheFor(options) {
-    if (cachingIsEnabled(options))
+    if (options.cache === true || (options.cache === undefined && Boolean(options.cacheSize)))
         return createCache(options.cacheSize);
-    return suppliedCache(options);
-}
-function cachingIsEnabled(options) {
-    return options.cache === true || cacheSizeEnablesCaching(options);
-}
-function cacheSizeEnablesCaching(options) {
-    return options.cache === undefined && Boolean(options.cacheSize);
-}
-function suppliedCache(options) {
     return typeof options.cache === 'object' ? options.cache : null;
 }
 function invalidateCache(cache, key) {
@@ -27,158 +20,163 @@ function invalidateCache(cache, key) {
     else
         cache.clear();
 }
+function sourceTemplateRecord(value) {
+    return value && typeof value === 'object' ? value : undefined;
+}
+function isTemplateIdentity(value) {
+    return typeof value === 'string' && value.length > 0;
+}
+function isSourceTemplate(value) {
+    const template = sourceTemplateRecord(value);
+    return !!template && isTemplateIdentity(template.id) && typeof template.source === 'string';
+}
+function isPrecompiledModule(value) {
+    const module = sourceTemplateRecord(value);
+    return !!module && typeof module.render === 'function' && typeof module.stream === 'function';
+}
+function isAsyncIterable(value) {
+    return !!value && typeof value[Symbol.asyncIterator] === 'function';
+}
+function sourceIdentity(value) {
+    const template = sourceTemplateRecord(value);
+    return template && typeof template.id === 'string' ? template.id : undefined;
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
 export class Sikka {
     options;
     cache;
     streamCache;
-    globalComponents = {};
-    constructor(options = {}) {
+    constructor(options) {
         this.options = options;
+        if (options?.mode !== 'source' && options?.mode !== 'precompiled')
+            throw new Error("Sikka requires mode: 'source' or 'precompiled'");
+        if (typeof options.resolver !== 'function')
+            throw new Error(`${options.mode === 'source' ? 'Source' : 'Precompiled'} mode requires a synchronous resolver`);
         const caches = createTemplateCaches(options);
         this.cache = caches.cache;
         this.streamCache = caches.streamCache;
     }
-    /**
-     * Renders a template string with the provided props.
-     *
-     * @param template - The template content to render.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    renderString(template, props = {}) {
-        const fn = this.compileString(template);
-        return fn.renderSync(props, {});
+    /** Renders an entry Template with Props. */
+    render(entry, props = {}) {
+        if (this.options.mode === 'precompiled')
+            return this.renderPrecompiled(entry, props);
+        return this.compileSource(this.resolveSource(entry), internalCompile, this.cache).renderSync(props, {});
     }
-    /**
-     * Renders a template file from the configured views directory.
-     *
-     * @param name - The path or name of the template file.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    render(name, props = {}) {
-        const fn = this.compileFile(name);
-        return fn.renderSync(props, {});
+    /** Streams an entry Template with Props. */
+    stream(entry, props = {}) {
+        if (this.options.mode === 'precompiled')
+            return this.streamPrecompiled(entry, props);
+        return this.compileSource(this.resolveSource(entry), internalCompileStreaming, this.streamCache)(props, {});
     }
-    /**
-     * Streams a template string, yielding HTML chunks as they are produced.
-     * Static content is yielded immediately; component calls are awaited and
-     * yielded as single opaque chunks.
-     *
-     * @param template - The template content to stream.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    streamString(template, props = {}) {
-        const fn = this.compileStreamingString(template);
-        return fn(props, {});
+    /** Invalidates one canonical Template identity, or both compilation caches. */
+    invalidate(id) {
+        invalidateCache(this.cache, id);
+        invalidateCache(this.streamCache, id);
     }
-    /**
-     * Streams a template file from the configured views directory, yielding
-     * HTML chunks as they are produced.
-     *
-     * @param name - The path or name of the template file.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    stream(name, props = {}) {
-        const fn = this.compileStreamingFile(name);
-        return fn(props, {});
+    compileSource(template, compiler, cache) {
+        return this.compileSourceTemplate(template, new Set([template.id]), new Map(), compiler, cache);
     }
-    /**
-     * Pre-loads and compiles a component for use in other templates.
-     */
-    loadComponent(name, template) {
-        this.globalComponents[name] = this.compileString(template);
-    }
-    /**
-     * Registers a pre-compiled render function as a global component.
-     */
-    registerComponent(name, fn) {
-        this.globalComponents[name] = fn;
-    }
-    /**
-     * Invalidates the template cache.
-     * @param key - Optional specific key to remove. If omitted, the entire cache is cleared.
-     */
-    invalidate(key) {
-        invalidateCache(this.cache, key);
-        invalidateCache(this.streamCache, key);
-    }
-    /**
-     * Compiles a template string into a render function.
-     *
-     * @param str - The template content.
-     * @param config - Optional configuration overrides for this compilation.
-     */
-    compile(str, config) {
-        return this.compileString(str, '', config);
-    }
-    /**
-     * Compiles a template string to its JavaScript function body string.
-     *
-     * @param str - The template content.
-     * @param config - Optional configuration overrides for this compilation.
-     */
-    compileToString(str, config) {
-        const result = internalCompile(this.parseTemplate(str), {
-            ...(config || this.options),
-            components: this.globalComponents,
-        });
-        if (!result.ok) {
-            throw new Error(`CompileError: ${result.error.message}`);
+    resolveSourceComponents(imports, importer, ancestors, compiled, compiler, cache) {
+        const components = {};
+        for (const { localName, specifier } of imports) {
+            const template = this.resolveSource(specifier, importer);
+            if (ancestors.has(template.id))
+                this.throwSourceCycle(specifier, importer, ancestors, template.id);
+            components[localName] = this.compileSourceTemplate(template, new Set([...ancestors, template.id]), compiled, compiler, cache);
         }
-        return result.source;
+        return components;
     }
-    compileString(template, basePath = '', config) {
-        const options = config || this.options;
-        return this.compileTemplate(() => template, template, basePath, options, internalCompile, config ? null : this.cache);
-    }
-    compileFile(name) {
-        const fullPath = this.resolveTemplatePath(name);
-        return this.compileTemplate(() => this.readTemplateFile(fullPath, 'render'), fullPath, fullPath, this.options, internalCompile, this.cache, fullPath);
-    }
-    compileStreamingString(template, basePath = '') {
-        return this.compileTemplate(() => template, template, basePath, this.options, internalCompileStreaming, this.streamCache);
-    }
-    compileStreamingFile(name) {
-        const fullPath = this.resolveTemplatePath(name);
-        return this.compileTemplate(() => this.readTemplateFile(fullPath, 'stream'), fullPath, fullPath, this.options, internalCompileStreaming, this.streamCache, fullPath);
-    }
-    compileTemplate(loadSource, cacheKey, basePath, options, compiler, cache, location) {
-        const cached = cache?.get(cacheKey);
-        if (cached)
-            return cached;
-        const result = compiler(this.parseTemplate(loadSource(), location), {
-            ...options,
-            components: this.globalComponents,
-            basePath,
-            fileReader: options.readFile,
+    compileSourceTemplate(template, ancestors, compiled, compiler, cache) {
+        const known = compiled.get(template.id) ?? cache?.get(template.id);
+        if (known)
+            return known;
+        const ast = this.parseTemplate(template.source, template.id);
+        this.throwUnsupportedFrontmatterImport(ast.imports, template.id);
+        const result = compiler(ast, {
+            ...this.options,
+            components: this.resolveSourceComponents(ast.imports, template.id, ancestors, compiled, compiler, cache),
+            streamComponents: compiler === internalCompileStreaming,
+            basePath: template.id,
         });
-        if (!result.ok) {
-            const suffix = location ? ` in ${location}` : '';
-            throw new Error(`CompileError${suffix}: ${result.error.message}`);
-        }
-        cache?.set(cacheKey, result.fn);
+        if (!result.ok)
+            throw new SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {
+                ...result.error,
+                template: template.id,
+            });
+        cache?.set(template.id, result.fn);
+        compiled.set(template.id, result.fn);
         return result.fn;
     }
-    parseTemplate(source, location) {
+    throwUnsupportedFrontmatterImport(imports, templateId) {
+        const error = unsupportedFrontmatterImport(imports, templateId);
+        if (error)
+            throw new SikkaError(`CompileError in ${templateId}: ${error.message}`, {
+                ...error,
+                template: templateId,
+            });
+    }
+    throwSourceCycle(request, importer, ancestors, identity) {
+        throw new SikkaError(`ResolveError for ${JSON.stringify(request)} imported by canonical identity ${JSON.stringify(importer)}: ` +
+            `circular component dependency ${[...ancestors, identity].join(' → ')}`, { category: 'Resolve', request, importer, template: identity });
+    }
+    renderPrecompiled(entry, props) {
+        const html = this.resolvePrecompiled(entry).render.call(this, props, {});
+        if (typeof html !== 'string')
+            throw new Error(`PrecompiledError for entry ${JSON.stringify(entry)}: generated render() must return HTML synchronously`);
+        return html;
+    }
+    streamPrecompiled(entry, props) {
+        const stream = this.resolvePrecompiled(entry).stream.call(this, props, {});
+        if (!isAsyncIterable(stream))
+            throw new Error(`PrecompiledError for entry ${JSON.stringify(entry)}: generated stream() must return an async iterable`);
+        return stream;
+    }
+    resolvePrecompiled(entry) {
+        let module;
+        try {
+            module = this.options.resolver(entry);
+        }
+        catch (error) {
+            throw new SikkaError(`ResolveError for precompiled entry ${JSON.stringify(entry)}: ${errorMessage(error)}`, { category: 'Resolve', request: entry, cause: error });
+        }
+        if (module === undefined || module === null)
+            throw new SikkaError(`ResolveError for precompiled entry ${JSON.stringify(entry)}: resolver returned no loaded module`, { category: 'Resolve', request: entry });
+        if (!isPrecompiledModule(module))
+            throw new SikkaError(`PrecompiledError for entry ${JSON.stringify(entry)}: invalid generated module ABI; ` +
+                'expected named render() and stream() exports', { category: 'Render', request: entry });
+        return module;
+    }
+    resolveSource(request, importer) {
+        const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
+        let template;
+        try {
+            template = this.options.resolver(request, importer);
+        }
+        catch (error) {
+            throw new SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${errorMessage(error)}`, { category: 'Resolve', request, importer, cause: error });
+        }
+        if (!isSourceTemplate(template)) {
+            const identity = sourceIdentity(template);
+            const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
+            throw new SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, {
+                category: 'Resolve',
+                request,
+                importer,
+                template: identity,
+            });
+        }
+        return template;
+    }
+    parseTemplate(source, template) {
         const result = parse(source);
         if (result.ok)
             return result.ast;
-        const suffix = location ? ` in ${location}` : '';
-        throw new Error(`ParseError${suffix}: ${result.error.message}`);
-    }
-    resolveTemplatePath(name) {
-        return this.options.views && !name.startsWith('/') && !name.includes(':')
-            ? `${this.options.views}/${name}`.replace(/\/+/g, '/')
-            : name;
-    }
-    readTemplateFile(path, method) {
-        if (!this.options.readFile) {
-            throw new Error(`Sikka.${method}() requires options.readFile to be configured`);
-        }
-        const content = this.options.readFile(path);
-        if (content === undefined || content === null) {
-            throw new Error(`Could not read file: ${path}`);
-        }
-        return content;
+        throw new SikkaError(`ParseError${template ? ` in ${template}` : ''}: ${result.error.message}`, {
+            ...result.error,
+            template,
+        });
     }
 }
 //# sourceMappingURL=index.js.map

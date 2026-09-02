@@ -6,9 +6,10 @@
  *   - `escapeHtml` — escapes untrusted values before HTML insertion
  */
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
+const RAW_HTML = Symbol.for('sikka.raw-html');
 export class RawHtml {
     value;
-    __isRawHtml = true;
+    [RAW_HTML] = true;
     constructor(value) {
         this.value = value;
     }
@@ -20,9 +21,29 @@ const ESCAPE_TEST_RE = /[&<>"']/;
 export function escapeHtml(value) {
     if (typeof value === 'string')
         return escapeString(value);
-    if (value instanceof RawHtml)
+    if (isRawHtml(value))
         return value.value;
-    return escapeNonString(value);
+    if (Array.isArray(value))
+        return escapeArray(value);
+    return escapeString(stringifyHtml(value));
+}
+/** Coerce an Expression value without HTML escaping. */
+export function stringifyHtml(value) {
+    return Array.isArray(value) ? stringifyArray(value) : stringifyValue(value);
+}
+function stringifyValue(value) {
+    if (value == null || typeof value === 'boolean')
+        return '';
+    if (isRawHtml(value))
+        return value.value;
+    return String(value);
+}
+function isRawHtml(value) {
+    return (value instanceof RawHtml ||
+        (!!value &&
+            typeof value === 'object' &&
+            value[RAW_HTML] === true &&
+            typeof value.value === 'string'));
 }
 function escapeString(value) {
     const match = ESCAPE_TEST_RE.exec(value);
@@ -61,24 +82,16 @@ function escapeHighCharacterCode(code) {
             return '&gt;';
     }
 }
-function escapeNonString(value) {
-    if (typeof value === 'number')
-        return '' + value;
-    if (value == null)
-        return '';
-    return escapeRemaining(value);
-}
-function escapeRemaining(value) {
-    if (typeof value === 'boolean')
-        return '';
-    if (Array.isArray(value))
-        return escapeArray(value);
-    return escapeString(String(value));
-}
 function escapeArray(values) {
     let output = '';
     for (let index = 0; index < values.length; index++)
         output += escapeHtml(values[index]);
+    return output;
+}
+function stringifyArray(values) {
+    let output = '';
+    for (let index = 0; index < values.length; index++)
+        output += stringifyHtml(values[index]);
     return output;
 }
 //# sourceMappingURL=escape.js.map

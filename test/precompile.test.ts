@@ -25,12 +25,12 @@ function wrap(artifact: PrecompileArtifact, componentUrl: (id: string) => string
   return `import { runtime } from ${JSON.stringify(runtime)};
 ${links}
 export function render(props, slots = {}) {
-  const { escape: __escape, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
   const __components = { ${regularComponents.join(', ')} };
 ${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
-  const { escape: __escape, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
   const __components = { ${streamingComponents.join(', ')} };
 ${artifact.streamString}
 }`;
@@ -147,9 +147,11 @@ describe('sikka/precompile', () => {
     expect(await renderedStream(page)).toBe(
       '<main>before<section><b>&lt;Ada&gt;</b><i>slot</i></section>after</main>'
     );
-    expect(page.render.call(new Sikka({ autoEscape: false }), { name: '<Ada>' })).toBe(
-      '<main>before<section><b><Ada></b><i>slot</i></section>after</main>'
-    );
+    expect(
+      new Sikka({ mode: 'precompiled', autoEscape: false, resolver: () => page }).render('page', {
+        name: '<Ada>',
+      })
+    ).toBe('<main>before<section><b><Ada></b><i>slot</i></section>after</main>');
 
     const sikka = new Sikka({
       mode: 'precompiled',

@@ -25,6 +25,7 @@ export const streamItems = [
 ];
 
 export const streamTemplate = `---
+import Card from "../components/Card.astro";
 const { items } = Astro.props;
 ---
 <div>

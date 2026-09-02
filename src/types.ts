@@ -40,17 +40,6 @@ interface SikkaRuntimeOptions {
   aggregateAssets?: boolean;
 }
 
-/** Legacy options accepted by the pre-1.0 API. */
-export interface SikkaOptions extends SikkaRuntimeOptions {
-  mode?: never;
-  /** Directory path for template resolution. */
-  views?: string;
-  /** Sync function to read file content. */
-  readFile?: (path: string) => string;
-  /** Sync/Async function to resolve paths. */
-  resolvePath?: (base: string, specifier: string) => string | Promise<string>;
-}
-
 /** Options for named source Template rendering. */
 export interface SourceModeOptions extends SikkaRuntimeOptions {
   mode: 'source';

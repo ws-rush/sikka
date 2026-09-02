@@ -29,11 +29,11 @@ function adaModule(): string {
   });
   return `import { runtime } from '/sikka/runtime.js';
 export function render(props, slots = {}) {
-  const { escape: __escape, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
 ${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
-  const { escape: __escape, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter } = runtime(this);
 ${artifact.streamString}
 }`;
 }
