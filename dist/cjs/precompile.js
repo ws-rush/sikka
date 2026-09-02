@@ -6,6 +6,7 @@ exports.compile = compile;
 const compiler_js_1 = require("./compiler.js");
 const parser_js_1 = require("./parser.js");
 const error_js_1 = require("./error.js");
+const template_resolution_js_1 = require("./template-resolution.js");
 /** The portable precompile-artifact ABI version. */
 exports.PRECOMPILE_ABI_VERSION = 3;
 /** Emits one precompile artifact as a complete static ESM module. */
@@ -62,7 +63,7 @@ function compile(entries, options) {
     return [...artifacts.values()];
 }
 function visit(request, importer, resolver, artifacts, visiting) {
-    const template = resolve(request, importer, resolver);
+    const template = (0, template_resolution_js_1.resolveSourceTemplate)(request, resolver, importer);
     const known = artifacts.get(template.id);
     if (known)
         return known;
@@ -100,52 +101,10 @@ function visit(request, importer, resolver, artifacts, visiting) {
         visiting.pop();
     }
 }
-function resolve(request, importer, resolver) {
-    const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
-    let template;
-    try {
-        template = resolver(request, importer);
-    }
-    catch (error) {
-        throw new error_js_1.SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`, {
-            category: 'Resolve',
-            request,
-            importer,
-            cause: error,
-        });
-    }
-    if (isSourceTemplate(template))
-        return template;
-    const identity = sourceIdentity(template);
-    const suffix = identity === undefined ? '' : ` (canonical identity ${JSON.stringify(identity)})`;
-    throw new error_js_1.SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, {
-        category: 'Resolve',
-        request,
-        importer,
-        template: identity,
-    });
-}
 function cycleError(request, importer, visiting, identity) {
     const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
     const start = visiting.indexOf(identity);
     const cycle = [...visiting.slice(start), identity];
     return new error_js_1.SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: circular component dependency ${cycle.join(' → ')}`, { category: 'Resolve', request, importer, template: identity });
-}
-function sourceIdentity(value) {
-    if (!value || typeof value !== 'object')
-        return undefined;
-    const identity = value.id;
-    return typeof identity === 'string' ? identity : undefined;
-}
-function isSourceTemplate(value) {
-    if (!value || typeof value !== 'object')
-        return false;
-    const template = value;
-    return (typeof template.id === 'string' &&
-        template.id.trim().length > 0 &&
-        typeof template.source === 'string');
-}
-function message(error) {
-    return error instanceof Error ? error.message : String(error);
 }
 //# sourceMappingURL=precompile.js.map

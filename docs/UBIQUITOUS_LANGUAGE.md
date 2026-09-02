@@ -2,15 +2,16 @@
 
 ## Templates and composition
 
-| Term                 | Definition                                                                                           | Aliases to avoid                |
-| -------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------- |
-| **Template**         | An Astro-syntax source document that defines HTML output.                                            | View, page, markup file         |
-| **Component**        | A reusable **Template** that can be composed into another **Template**.                              | Widget, partial, include        |
-| **Template source**  | The text of a **Template**, supplied directly or loaded from a file.                                 | Source file, input              |
-| **Frontmatter**      | The fenced setup section at the beginning of a **Template**.                                         | Script block, preamble          |
-| **Props**            | Named input values supplied to a **Template** or **Component**.                                      | Parameters, attributes, data    |
-| **Slot**             | A named or default insertion point through which a parent supplies child content to a **Component**. | Placeholder, content projection |
-| **Fallback content** | The content a **Slot** renders when its parent supplies no matching slot content.                    | Default content                 |
+| Term                    | Definition                                                                                                                               | Aliases to avoid                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| **Template**            | An Astro-syntax source document that defines HTML output.                                                                                | View, page, markup file         |
+| **Component**           | A reusable **Template** that can be composed into another **Template**.                                                                  | Widget, partial, include        |
+| **Template source**     | The text of a **Template**, supplied directly or loaded from a file.                                                                     | Source file, input              |
+| **Template resolution** | The mapping of a Template request, optionally relative to an importing Template, to its canonical Template identity and Template source. | Lookup, loading                 |
+| **Frontmatter**         | The fenced setup section at the beginning of a **Template**.                                                                             | Script block, preamble          |
+| **Props**               | Named input values supplied to a **Template** or **Component**.                                                                          | Parameters, attributes, data    |
+| **Slot**                | A named or default insertion point through which a parent supplies child content to a **Component**.                                     | Placeholder, content projection |
+| **Fallback content**    | The content a **Slot** renders when its parent supplies no matching slot content.                                                        | Default content                 |
 
 ## Rendering and output
 

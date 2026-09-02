@@ -1,7 +1,8 @@
 import { compileSources } from './compiler.js';
 import { parse } from './parser.js';
 import { SikkaError } from './error.js';
-import type { SourceResolver, SourceTemplate } from './types.js';
+import { resolveSourceTemplate } from './template-resolution.js';
+import type { SourceResolver } from './types.js';
 
 /** The portable precompile-artifact ABI version. */
 export const PRECOMPILE_ABI_VERSION = 3;
@@ -127,7 +128,7 @@ function visit(
   artifacts: Map<string, PrecompileArtifact>,
   visiting: string[]
 ): PrecompileArtifact {
-  const template = resolve(request, importer, resolver);
+  const template = resolveSourceTemplate(request, resolver, importer);
   const known = artifacts.get(template.id);
   if (known) return known;
   if (visiting.includes(template.id)) throw cycleError(request, importer, visiting, template.id);
@@ -166,40 +167,6 @@ function visit(
   }
 }
 
-function resolve(
-  request: string,
-  importer: string | undefined,
-  resolver: SourceResolver
-): SourceTemplate {
-  const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
-  let template: unknown;
-  try {
-    template = resolver(request, importer);
-  } catch (error) {
-    throw new SikkaError(
-      `ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`,
-      {
-        category: 'Resolve',
-        request,
-        importer,
-        cause: error,
-      }
-    );
-  }
-  if (isSourceTemplate(template)) return template;
-  const identity = sourceIdentity(template);
-  const suffix = identity === undefined ? '' : ` (canonical identity ${JSON.stringify(identity)})`;
-  throw new SikkaError(
-    `ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`,
-    {
-      category: 'Resolve',
-      request,
-      importer,
-      template: identity,
-    }
-  );
-}
-
 function cycleError(
   request: string,
   importer: string | undefined,
@@ -213,24 +180,4 @@ function cycleError(
     `ResolveError for ${JSON.stringify(request)}${context}: circular component dependency ${cycle.join(' → ')}`,
     { category: 'Resolve', request, importer, template: identity }
   );
-}
-
-function sourceIdentity(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined;
-  const identity = (value as Record<string, unknown>).id;
-  return typeof identity === 'string' ? identity : undefined;
-}
-
-function isSourceTemplate(value: unknown): value is SourceTemplate {
-  if (!value || typeof value !== 'object') return false;
-  const template = value as Record<string, unknown>;
-  return (
-    typeof template.id === 'string' &&
-    template.id.trim().length > 0 &&
-    typeof template.source === 'string'
-  );
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

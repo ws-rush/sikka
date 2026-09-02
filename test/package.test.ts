@@ -26,6 +26,8 @@ const packageFiles = [
   'dist/cjs/precompile.js',
   'dist/cjs/runtime.d.ts',
   'dist/cjs/runtime.js',
+  'dist/cjs/template-resolution.d.ts',
+  'dist/cjs/template-resolution.js',
   'dist/cjs/types.d.ts',
   'dist/esm/cache.js',
   'dist/esm/compiler.js',
@@ -40,6 +42,8 @@ const packageFiles = [
   'dist/esm/precompile.js',
   'dist/esm/runtime.d.ts',
   'dist/esm/runtime.js',
+  'dist/esm/template-resolution.d.ts',
+  'dist/esm/template-resolution.js',
   'dist/esm/types.d.ts',
   'package.json',
 ];

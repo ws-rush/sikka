@@ -31,7 +31,5 @@ export declare class Sikka {
     private missingPrecompiledModule;
     private invalidPrecompiledModule;
     private resolveSource;
-    private loadSource;
-    private invalidSourceTemplate;
     private parseTemplate;
 }

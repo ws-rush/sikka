@@ -3,6 +3,7 @@ import { compile as internalCompile, compileStreaming as internalCompileStreamin
 import { createCache } from './cache.js';
 import { SikkaError } from './error.js';
 import { bindRuntime, runtime } from './runtime.js';
+import { resolveSourceTemplate } from './template-resolution.js';
 export { SikkaError } from './error.js';
 const EMPTY_SLOTS = {};
 function createTemplateCaches(options) {
@@ -28,23 +29,12 @@ function invalidateCache(cache, key) {
 function sourceTemplateRecord(value) {
     return value && typeof value === 'object' ? value : undefined;
 }
-function isTemplateIdentity(value) {
-    return typeof value === 'string' && value.trim().length > 0;
-}
-function isSourceTemplate(value) {
-    const template = sourceTemplateRecord(value);
-    return !!template && isTemplateIdentity(template.id) && typeof template.source === 'string';
-}
 function isPrecompiledModule(value) {
     const module = sourceTemplateRecord(value);
     return !!module && typeof module.render === 'function' && typeof module.stream === 'function';
 }
 function isAsyncIterable(value) {
     return !!value && typeof value[Symbol.asyncIterator] === 'function';
-}
-function sourceIdentity(value) {
-    const template = sourceTemplateRecord(value);
-    return template && typeof template.id === 'string' ? template.id : undefined;
 }
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
@@ -203,24 +193,7 @@ export class Sikka {
             'expected named render() and stream() exports', { category: 'Render', request: entry });
     }
     resolveSource(request, importer) {
-        const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
-        const template = this.loadSource(request, importer, context);
-        if (isSourceTemplate(template))
-            return template;
-        throw this.invalidSourceTemplate(request, importer, context, template);
-    }
-    loadSource(request, importer, context) {
-        try {
-            return this.options.resolver(request, importer);
-        }
-        catch (error) {
-            throw new SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${errorMessage(error)}`, { category: 'Resolve', request, importer, cause: error });
-        }
-    }
-    invalidSourceTemplate(request, importer, context, template) {
-        const identity = sourceIdentity(template);
-        const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
-        return new SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, { category: 'Resolve', request, importer, template: identity });
+        return resolveSourceTemplate(request, this.options.resolver, importer);
     }
     parseTemplate(source, template) {
         const result = parse(source);
