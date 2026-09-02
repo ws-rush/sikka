@@ -6,5 +6,6 @@ plannotator/
 PLAN.md
 
 coverage/
+.ci/
 
 bench/.generated/

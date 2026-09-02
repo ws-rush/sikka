@@ -1,0 +1,68 @@
+name: Correctness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: node-line
+        name: Read project Node.js line
+        shell: bash
+        run: |
+          node_line="$(awk -F '"' '/^node = / { print $2; exit }' mise.toml)"
+          test -n "$node_line"
+          echo "version=$node_line" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node-line.outputs.version }}
+      - name: Install pinned nub
+        run: npm install --global @nubjs/nub@0.7.1
+      - run: nub ci
+      - name: Install Chromium
+        run: nub exec playwright install --with-deps chromium
+      - run: nub run format:check
+      - run: nub run lint
+      - run: nub run fallow
+      - run: nub run typecheck
+      - run: nub run test
+      - run: nub run test:coverage
+      - run: nub run build
+      - name: Pack the exact candidate
+        shell: bash
+        run: |
+          mkdir -p .ci/candidate
+          npm pack --json --pack-destination .ci/candidate > .ci/pack.json
+          node -e 'const [{ filename }] = require("./.ci/pack.json"); process.stdout.write(filename)' > .ci/candidate-name
+      - name: Validate the packed candidate and generate browser artifacts
+        shell: bash
+        run: |
+          tarball=".ci/candidate/$(cat .ci/candidate-name)"
+          nub run ci:candidate -- "$tarball" .ci/browser .ci/node-report.json
+      # Later jobs download these immutable outputs; they never run npm pack or build again.
+      - name: Upload exact candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: sikka-candidate
+          path: .ci/candidate/*.tgz
+          if-no-files-found: error
+      - name: Upload browser artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sikka-browser-artifacts
+          path: .ci/browser
+          if-no-files-found: error
+      - name: Upload node report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sikka-node-report
+          path: .ci/node-report.json
+          if-no-files-found: error

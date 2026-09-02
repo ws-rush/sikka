@@ -2,5 +2,10 @@
   "$schema": "./node_modules/fallow/schema.json",
   "entry": ["src/**/*.ts"],
   "ignorePatterns": ["examples/**", "test/**", "bench/**", "benchmark/**", "scripts/**"],
-  "ignoreDependencies": ["chalk", "enquirer", "execa", "fast-check", "semver", "zod"]
+  "ignoreDependencies": ["chalk", "enquirer", "execa", "fast-check", "semver", "zod"],
+  "health": {
+    "maxCyclomatic": 10,
+    "maxCognitive": 12,
+    "maxCrap": 100
+  }
 }
