@@ -109,7 +109,7 @@ const sikka = new Sikka({
 sikka.render('home', { title: 'Hello' });
 ```
 
-Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, `debug`, and `varName` (default `Astro`).
+Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, and `debug`. `varName` (default `Astro`) renames the props variable during source-mode compilation only; generated modules always bind `Astro`.
 
 ## Escaping and trust
 

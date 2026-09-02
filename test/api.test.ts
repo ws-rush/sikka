@@ -85,6 +85,30 @@ describe('Sikka 1.0 application API', () => {
     expect(await collectHtml(sikka.stream('page', { value: 'streamed' }))).toBe('<p>streamed</p>');
   });
 
+  it('renames the props variable with source-mode varName', () => {
+    const sikka = new Sikka({
+      mode: 'source',
+      varName: 'Page',
+      resolver: () => ({ id: 'page', source: '<p>{Page.props.title}</p>' }),
+    });
+
+    expect(sikka.render('page', { title: 'renamed' })).toBe('<p>renamed</p>');
+  });
+
+  it('does not accept varName in precompiled mode', () => {
+    const module: PrecompiledModule = {
+      render: () => '<p>ok</p>',
+      async *stream() {
+        yield '<p>ok</p>';
+      },
+    };
+    // varName is a source-mode compile-time option; generated modules always bind Astro.
+    // @ts-expect-error varName is not a precompiled-mode option
+    const sikka = new Sikka({ mode: 'precompiled', resolver: () => module, varName: 'Page' });
+
+    expect(sikka.render('page')).toBe('<p>ok</p>');
+  });
+
   it('has no pre-1.0 instance APIs', () => {
     const sikka = new Sikka({
       mode: 'source',

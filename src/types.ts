@@ -22,8 +22,6 @@ export interface SourceTemplate {
 export type SourceResolver = (request: string, importer?: string) => SourceTemplate;
 
 interface SikkaRuntimeOptions {
-  /** Custom name for the props variable (default: "Astro"). */
-  varName?: string;
   /** Enables pretty-printing of runtime errors. */
   debug?: boolean;
   /** Whether to cache templates. */
@@ -44,6 +42,8 @@ interface SikkaRuntimeOptions {
 export interface SourceModeOptions extends SikkaRuntimeOptions {
   mode: 'source';
   resolver: SourceResolver;
+  /** Compile-time custom name for the props variable (default: "Astro"). */
+  varName?: string;
 }
 
 /** A statically generated Template module that has already been loaded by its host. */
