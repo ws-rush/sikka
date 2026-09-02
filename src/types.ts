@@ -176,8 +176,12 @@ export interface RawNode {
 
 // ─── Parser result types ──────────────────────────────────────────────────────
 
+/** Stable category for intentionally rejected Template constructs. */
+export type DiagnosticCategory = 'InvalidDirective' | 'InvalidFragment';
+
 export interface ParseError {
   message: string;
+  category?: DiagnosticCategory;
   line: number;
   column: number;
 }
@@ -196,6 +200,7 @@ export type StreamingRenderFunction = (
 
 export interface CompileError {
   message: string;
+  category?: DiagnosticCategory;
   /** The import specifier that could not be resolved, if applicable. */
   specifier?: string;
   /** The dependency cycle path, if applicable. */

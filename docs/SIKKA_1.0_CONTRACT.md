@@ -146,6 +146,12 @@ The following Template structure is **Supported**:
   Fragment, nullish Expression, empty string, or whitespace child is present
   and therefore suppresses Fallback content.
 
+Content Directives are limited to direct `set:html`, direct `set:text`, and spread
+`set:html` on HTML elements. The two `set` Directives cannot be combined or used
+with child content. Fragments allow only `slot`, `set:html`, and `set:text`;
+attributes, spreads, and other Directives (including `is:raw`) are rejected.
+`is:inline` is unsupported.
+
 The broader Astro Frontmatter module model, client directives, hydration,
 framework components, browser behavior, and other `Astro` globals are
 **explicitly unsupported** in Sikka 1.0. They do not acquire compatibility

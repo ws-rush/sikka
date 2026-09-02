@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
 import { Sikka } from '../src/index.js';
+import { compileSources } from '../src/compiler.js';
+import { compile as precompile } from '../src/precompile.js';
+import { parse } from '../src/parser.js';
+import { consume } from './helpers.js';
 
 describe('Syntax: Error Handling', () => {
   it('throws ParseError for unclosed frontmatter fence', () => {
@@ -43,6 +47,58 @@ describe('Syntax: Error Handling', () => {
   it('throws CompileError when set:html has children', () => {
     const sikka = new Sikka();
     expect(() => sikka.renderString('<div set:html="a">child</div>')).toThrow(/CompileError/);
+  });
+
+  it('categorizes invalid Directives and Fragments', () => {
+    const parsed = parse('<Fragment is:raw />');
+    if (parsed.ok) throw new Error('Expected an invalid Fragment diagnostic');
+    expect(parsed.error.category).toBe('InvalidFragment');
+    expect(parsed.error.message).toContain('is:raw');
+
+    const directive = parse('<div set:html="a" set:text="b" />');
+    if (!directive.ok) throw new Error('Expected a parsed Template');
+    const compiled = compileSources(directive.ast);
+    if (compiled.ok) throw new Error('Expected an invalid Directive diagnostic');
+    expect(compiled.error.category).toBe('InvalidDirective');
+    expect(compiled.error.message).toContain('set:html');
+  });
+
+  it('rejects the same invalid Template in source, Streaming, and precompiled entry points', () => {
+    const source = '<div set:html="a" set:text="b" />';
+    const sikka = new Sikka({ mode: 'source', resolver: () => ({ id: 'invalid', source }) });
+    expect(() => sikka.render('invalid')).toThrow(/InvalidDirective/);
+    expect(() => sikka.stream('invalid')).toThrow(/InvalidDirective/);
+    expect(() => precompile('invalid', { resolver: () => ({ id: 'invalid', source }) })).toThrow(
+      /InvalidDirective/
+    );
+  });
+
+  it('rejects unsupported directives and Fragment forms', () => {
+    for (const template of [
+      '<div set:text="a">child</div>',
+      '<Fragment id="x" />',
+      '<Fragment {...props} />',
+      '<Fragment set:html="a">child</Fragment>',
+      '<Fragment set:html="a" set:text="b" />',
+      '<script is:inline></script>',
+    ]) expect(() => new Sikka().renderString(template)).toThrow(/Invalid(Directive|Fragment)/);
+  });
+
+  it('rejects unsupported spread Directives and dynamic content conflicts in streams', async () => {
+    for (const directive of ['set:text', 'is:raw', 'client:load']) {
+      const template = `<div {...{ ${JSON.stringify(directive)}: true }} />`;
+      expect(() => new Sikka().renderString(template)).toThrow(
+        new RegExp(`InvalidDirective.*${directive}`)
+      );
+      await expect(consume(new Sikka().streamString(template))).rejects.toThrow(
+        new RegExp(`InvalidDirective.*${directive}`)
+      );
+    }
+    const conflict = '<div {...{ "set:html": "a" }} set:text="b" />';
+    expect(() => new Sikka().renderString(conflict)).toThrow(/InvalidDirective.*set:html.*set:text/);
+    await expect(consume(new Sikka().streamString(conflict))).rejects.toThrow(
+      /InvalidDirective.*set:html.*set:text/
+    );
   });
 
   it('throws runtime error for expression evaluation failure', () => {
