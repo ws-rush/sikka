@@ -157,8 +157,8 @@ async function validateCandidate(manifestPath) {
         modules,
         precompiledSikka,
         sourceSikka,
+        onComplete: (id) => completedPropertyIds.push(id),
       });
-      completedPropertyIds.push(...PROPERTY_IDS);
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
     }
@@ -186,6 +186,7 @@ async function runPortableProperties({
   modules,
   precompiledSikka,
   sourceSikka,
+  onComplete,
 }) {
   if (PORTABLE_SEED !== 0x53494b4b || PORTABLE_RUNS !== 100)
     throw new Error('Unexpected portable property configuration');
@@ -211,6 +212,7 @@ async function runPortableProperties({
     equal(deterministicSource.render(deterministic.id, props_), html);
     equal(deterministicPrecompiled.render(deterministic.id, props_), html);
   });
+  onComplete('portable-deterministic-render');
 
   const staticCase = candidate('property-null-props', '<p>static</p>');
   const staticSource = sourceSikka(staticCase, modules);
@@ -221,6 +223,7 @@ async function runPortableProperties({
     equal(staticPrecompiled.render(staticCase.id), html);
     equal(staticPrecompiled.render(staticCase.id, {}), html);
   });
+  onComplete('portable-null-default-props');
 
   const body = '<p>{Astro.props.value}</p>';
   const plain = candidate('property-plain', body);
@@ -236,6 +239,7 @@ async function runPortableProperties({
     equal(plainPrecompiled.render(plain.id, props_), html);
     equal(fencedPrecompiled.render(fenced.id, props_), html);
   });
+  onComplete('portable-frontmatter-equivalence');
 
   const list = candidate(
     'property-list',
@@ -248,6 +252,7 @@ async function runPortableProperties({
     equal(listSource.render(list.id, props_), expected);
     equal(listPrecompiled.render(list.id, props_), expected);
   });
+  onComplete('portable-escaping-list');
 
   const component = candidate(
     'property-component',
@@ -262,6 +267,7 @@ async function runPortableProperties({
     equal(componentSource.render(component.id, props_), expected);
     equal(componentPrecompiled.render(component.id, props_), expected);
   });
+  onComplete('portable-component-isolation');
 }
 
 async function installCandidate(tarball) {
