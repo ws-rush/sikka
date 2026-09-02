@@ -38,6 +38,8 @@ interface CompileOptions {
   aggregateAssets?: boolean;
   /** Generated bodies call statically linked Component exports directly. */
   precompiled?: boolean;
+  /** Source Streaming renders use Streaming Component functions. */
+  streamComponents?: boolean;
   /** Canonical Template identity included in debug Render failures. */
   basePath?: string;
 }
@@ -1680,11 +1682,12 @@ function emitResolvedComponentCall(
   options?: CompileOptions
 ): string[] {
   if (target === STREAMING_TARGET) {
-    return options?.precompiled
-      ? [
-          `    if (__buf) { yield __buf; __buf = ""; }`,
-          `    yield* __component.call(this, ${props}, __childSlots);`,
-        ]
+    const stream = options?.precompiled || options?.streamComponents;
+    const invocation = options?.precompiled
+      ? `__component.call(this, ${props}, __childSlots)`
+      : `__component(${props}, __childSlots)`;
+    return stream
+      ? [`    if (__buf) { yield __buf; __buf = ""; }`, `    yield* ${invocation};`]
       : [
           `    if (__buf) { yield __buf; __buf = ""; }`,
           `    yield await __component(${props}, __childSlots);`,

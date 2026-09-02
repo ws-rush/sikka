@@ -179,6 +179,29 @@ describe('sikka/precompile', () => {
     ).toBe(configuredHtml);
   });
 
+  it('uses the Component stream export in generated Streaming renders', async () => {
+    const artifacts = compile('page', {
+      resolver: (request) =>
+        request === 'page'
+          ? {
+              id: 'page',
+              source: '---\nimport Async from "./async.astro";\n---\nbefore<Async />after',
+            }
+          : { id: 'async', source: '<i>regular</i>' },
+    });
+    const page = artifacts.find((artifact) => artifact.id === 'page');
+    if (!page) throw new Error('Missing page artifact');
+    const asyncComponent = `data:text/javascript,${encodeURIComponent(`
+      export function render() { throw new Error('regular export called'); }
+      export async function* stream() { yield '<i>streamed</i>'; }
+    `)}`;
+    const module = await import(
+      `data:text/javascript,${encodeURIComponent(wrap(page, () => asyncComponent))}`
+    );
+
+    expect(await renderedStream(module)).toBe('before<i>streamed</i>after');
+  });
+
   it('applies aggregateAssets at precompiled render time', async () => {
     const template = '<script>const x = 1;</script><p>{Astro.props.name}</p>';
     const [artifact] = compile('page', {
