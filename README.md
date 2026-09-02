@@ -189,7 +189,7 @@ const html = await sikka.renderString(template);
 
 ## Streaming
 
-For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. Static content is flushed immediately, while component calls are awaited and yielded as single opaque chunks.
+For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. It produces the same HTML as regular rendering except when the Template graph has awaited Frontmatter; pending source content flushes before each Component, and Components stream in source order. Other chunk boundaries are unspecified.
 
 ```javascript
 import { Sikka } from '@rush/sikka';
@@ -212,10 +212,11 @@ for await (const chunk of gen) {
 Streaming supports:
 
 - **Async frontmatter**: `await` expressions in frontmatter are supported only by `stream()` and `streamString()`; regular `render()` calls fail with a Sikka diagnostic directing callers to stream
-- **Static flushing**: Static HTML is yielded immediately without waiting for dynamic content
-- **Component boundaries**: Component calls are awaited and yielded as single chunks
+- **Regular parity**: Final Streaming HTML equals regular rendered HTML except when the Template graph has awaited Frontmatter
+- **Static flushing**: Pending source HTML is yielded before each Component boundary
+- **Component boundaries**: Imported Components stream in source order
 - **Independent caching**: Streaming functions are cached separately from sync functions
-- **Shared compilation**: Sync and streaming rendering share AST emission logic, so syntax behavior remains aligned
+- **Shared compilation**: Sync and Streaming rendering share AST emission logic
 
 ## Testing
 
@@ -306,7 +307,7 @@ Renders a template file from the `views` directory and returns the HTML result.
 
 ### `sikka.streamString(template, props?): AsyncGenerator<string>`
 
-Streams a template string, yielding HTML chunks as they are produced. Static content is yielded immediately; component calls are awaited and yielded as single opaque chunks.
+Streams a template string, yielding HTML chunks as they are produced. Pending source content is yielded before each Component boundary; other chunk boundaries are unspecified.
 
 ### `sikka.stream(name, props?): AsyncGenerator<string>`
 

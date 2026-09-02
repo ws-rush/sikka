@@ -208,6 +208,28 @@ greeting += await Promise.resolve(', Ada!');
     streaming: 'await-only',
   },
   {
+    id: 'async-components-source-order',
+    template: `---
+import First from './first.astro';
+import Second from './second.astro';
+---
+before<First /><Second />after`,
+    components: {
+      './first.astro': `---
+const label = await Promise.resolve('first');
+---
+<i>{label}</i>`,
+      './second.astro': `---
+const label = await Promise.resolve('second');
+---
+<i>{label}</i>`,
+    },
+    props: {},
+    expectedHtml: 'before<i>first</i><i>second</i>after',
+    modes: ['source', 'precompiled'],
+    streaming: 'await-only',
+  },
+  {
     id: 'root-content',
     template: 'before<div>middle</div>after',
     props: {},

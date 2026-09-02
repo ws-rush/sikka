@@ -37,6 +37,14 @@ clears both caches. `cache: true`, `cache: false`, `cacheSize`, and a supplied
 `Cache` retain their usual behavior. Precompiled modules receive runtime
 configuration from the `Sikka` instance that invokes them.
 
+## Streaming parity and boundaries
+
+Except when the Template graph contains awaited Frontmatter, a Streaming Render
+produces the same Rendered HTML as a regular Render. Awaited Frontmatter is
+supported only by Streaming; regular rendering rejects it. Streaming flushes pending source
+content before each Component, renders Components in source order, and delegates
+to each Component's Streaming render. Other chunk boundaries are not Stable.
+
 ## Stable precompile API
 
 `compile(entries, { resolver })` is the sole public build API and is exported
@@ -177,14 +185,14 @@ sources are resolved through the same source and precompiled graph paths.
 
 Every case requires:
 
-| Field          | Contract                                                                                                                       |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `id`           | A non-empty lowercase hyphenated stable ID, unique in the manifest.                                                            |
-| `template`     | Template source.                                                                                                               |
-| `props`        | JSON-compatible Props.                                                                                                         |
-| `expectedHtml` | Exact expected Rendered HTML.                                                                                                  |
-| `modes`        | A non-empty, duplicate-free list of applicable `source` and/or `precompiled` modes.                                            |
-| `streaming`    | Omitted when no Streaming behavior is contractual; `same-html` requires final Streaming Rendered HTML to equal `expectedHtml`. |
+| Field          | Contract                                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`           | A non-empty lowercase hyphenated stable ID, unique in the manifest.                                                                                                                                                |
+| `template`     | Template source.                                                                                                                                                                                                   |
+| `props`        | JSON-compatible Props.                                                                                                                                                                                             |
+| `expectedHtml` | Exact expected Rendered HTML.                                                                                                                                                                                      |
+| `modes`        | A non-empty, duplicate-free list of applicable `source` and/or `precompiled` modes.                                                                                                                                |
+| `streaming`    | Omitted when no Streaming behavior is contractual; `same-html` requires final Streaming Rendered HTML to equal `expectedHtml`; `await-only` rejects regular rendering and requires the Streaming HTML to equal it. |
 
 Invalid metadata or duplicate IDs invalidate the manifest. The initial sentinel
 is `ada-escaping-and-list`: it escapes Ada's Props and renders ordered list

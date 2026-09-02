@@ -32,6 +32,8 @@ export type {
 type RuntimeOptions = SikkaOptions | SourceModeOptions | PrecompiledModeOptions;
 type CompilerOptions = RuntimeOptions & {
   components: Record<string, RenderFunction>;
+  /** Imported Components are compiled as Streaming renders. */
+  streamComponents?: boolean;
   basePath?: string;
   fileReader?: (path: string) => string;
 };
@@ -266,13 +268,21 @@ export class Sikka {
 
     const ast = this.parseTemplate(template.source, template.id);
     this.throwUnsupportedFrontmatterImport(ast.imports, template.id);
+    const streamComponents = compiler === internalCompileStreaming;
     const components = this.resolveSourceComponents(
       ast.imports,
       template.id,
       new Set([template.id]),
-      new Map()
+      new Map(),
+      compiler,
+      cache
     );
-    const result = compiler(ast, { ...this.options, components, basePath: template.id });
+    const result = compiler(ast, {
+      ...this.options,
+      components,
+      streamComponents,
+      basePath: template.id,
+    });
     if (!result.ok)
       throw new SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {
         ...result.error,
@@ -283,11 +293,13 @@ export class Sikka {
     return result.fn;
   }
 
-  private resolveSourceComponents(
+  private resolveSourceComponents<T extends RenderFunction | StreamingRenderFunction>(
     imports: TemplateAST['imports'],
     importer: string,
     ancestors: Set<string>,
-    compiled: Map<string, RenderFunction>
+    compiled: Map<string, T>,
+    compiler: TemplateCompiler<T>,
+    cache: TemplateCache
   ): Record<string, RenderFunction> {
     const components: Record<string, RenderFunction> = {};
     const source = this.sourceOptions() as SourceModeOptions;
@@ -295,17 +307,25 @@ export class Sikka {
       const template = this.resolveSource(specifier, source, importer);
       if (ancestors.has(template.id))
         this.throwSourceCycle(specifier, importer, ancestors, template.id);
-      components[localName] = this.compileSourceComponent(template, ancestors, compiled);
+      components[localName] = this.compileSourceComponent(
+        template,
+        ancestors,
+        compiled,
+        compiler,
+        cache
+      ) as RenderFunction;
     }
     return components;
   }
 
-  private compileSourceComponent(
+  private compileSourceComponent<T extends RenderFunction | StreamingRenderFunction>(
     template: SourceTemplate,
     ancestors: Set<string>,
-    compiled: Map<string, RenderFunction>
-  ): RenderFunction {
-    const known = compiled.get(template.id) ?? this.cache?.get(template.id);
+    compiled: Map<string, T>,
+    compiler: TemplateCompiler<T>,
+    cache: TemplateCache
+  ): T {
+    const known = compiled.get(template.id) ?? (cache?.get(template.id) as T | undefined);
     if (known) return known;
 
     const ast = this.parseTemplate(template.source, template.id);
@@ -314,16 +334,23 @@ export class Sikka {
       ast.imports,
       template.id,
       new Set([...ancestors, template.id]),
-      compiled
+      compiled,
+      compiler,
+      cache
     );
-    const result = internalCompile(ast, { ...this.options, components, basePath: template.id });
+    const result = compiler(ast, {
+      ...this.options,
+      components,
+      streamComponents: compiler === internalCompileStreaming,
+      basePath: template.id,
+    });
     if (!result.ok)
       throw new SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {
         ...result.error,
         template: template.id,
       });
 
-    this.cache?.set(template.id, result.fn);
+    cache?.set(template.id, result.fn as RenderFunction);
     compiled.set(template.id, result.fn);
     return result.fn;
   }

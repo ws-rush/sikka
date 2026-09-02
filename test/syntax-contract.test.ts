@@ -73,6 +73,21 @@ async function precompiledSikka(case_: ContractCase): Promise<Sikka> {
   return new Sikka({ mode: 'precompiled', autoEscape: case_.autoEscape, resolver: () => module });
 }
 
+async function assertParity(case_: ContractCase, sikka: Sikka): Promise<void> {
+  let rendered: string | undefined;
+  if (case_.streaming === 'await-only') {
+    expect(() => sikka.render(case_.id, case_.props)).toThrow(/Sikka Frontmatter await.*stream/);
+  } else {
+    rendered = sikka.render(case_.id, case_.props);
+    assertRenderedHtml(case_, rendered);
+  }
+  if (!case_.streaming) return;
+
+  const streamed = await collectHtml(sikka.stream(case_.id, case_.props));
+  assertRenderedHtml(case_, streamed);
+  if (rendered !== undefined) expect(streamed).toBe(rendered);
+}
+
 describe('Syntax Contract', () => {
   it('validates the portable case manifest', () => {
     validateSyntaxContractCases(syntaxContractCases);
@@ -141,51 +156,27 @@ describe('Syntax Contract', () => {
     });
   }
 
+  it('flushes source static content ahead of an async Component', async () => {
+    const case_ = syntaxContractCases.find(({ id }) => id === 'async-components-source-order');
+    if (!case_) throw new Error('Missing async Component syntax contract case');
+    const stream = sourceSikka(case_).stream(case_.id, case_.props);
+
+    const first = await stream.next();
+    expect(first).toEqual({ value: 'before', done: false });
+    expect(`${first.value}${await collectHtml(stream)}`).toBe(case_.expectedHtml);
+  });
+
   for (const case_ of syntaxContractCases) {
     if (case_.modes.includes('source')) {
-      it(`${case_.id} renders in source mode`, () => {
-        const sikka = sourceSikka(case_);
-        if (case_.streaming === 'await-only') {
-          expect(() => sikka.render(case_.id, case_.props)).toThrow(
-            /Sikka Frontmatter await.*stream/
-          );
-        } else {
-          assertRenderedHtml(case_, sikka.render(case_.id, case_.props));
-        }
+      it(`${case_.id} has regular/stream parity in source mode`, async () => {
+        await assertParity(case_, sourceSikka(case_));
       });
-
-      if (case_.streaming) {
-        it(`${case_.id} streams expected HTML in source mode`, async () => {
-          const sikka = sourceSikka(case_);
-          const html = await collectHtml(sikka.stream(case_.id, case_.props));
-          if (case_.streaming === 'same-html')
-            expect(html).toBe(sikka.render(case_.id, case_.props));
-          assertRenderedHtml(case_, html);
-        });
-      }
     }
 
     if (case_.modes.includes('precompiled')) {
-      it(`${case_.id} renders in precompiled mode`, async () => {
-        const sikka = await precompiledSikka(case_);
-        if (case_.streaming === 'await-only') {
-          expect(() => sikka.render(case_.id, case_.props)).toThrow(
-            /Sikka Frontmatter await.*stream/
-          );
-        } else {
-          assertRenderedHtml(case_, sikka.render(case_.id, case_.props));
-        }
+      it(`${case_.id} has regular/stream parity in precompiled mode`, async () => {
+        await assertParity(case_, await precompiledSikka(case_));
       });
-
-      if (case_.streaming) {
-        it(`${case_.id} streams expected HTML in precompiled mode`, async () => {
-          const sikka = await precompiledSikka(case_);
-          const html = await collectHtml(sikka.stream(case_.id, case_.props));
-          if (case_.streaming === 'same-html')
-            expect(html).toBe(sikka.render(case_.id, case_.props));
-          assertRenderedHtml(case_, html);
-        });
-      }
     }
   }
 });
