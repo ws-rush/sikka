@@ -83,6 +83,16 @@ Every documented construct has exactly one classification:
 Diagnostic categories and relevant construct or canonical Template identity are
 Stable. Exact diagnostic message wording is not Stable API.
 
+## Diagnostics
+
+Public thrown failures are `SikkaError` instances and public parser/compiler
+results use the same `SikkaDiagnostic` context shape. Its stable `category` is
+one of `Parse`, `Resolve`, `Compile`, or `Render`. `template` is a canonical
+Template identity when available; `request`, `importer`, `construct`, and
+`cause` are optional contextual properties. Parse diagnostics retain `line` and
+`column`. Rejected Directives and Fragments are `Parse` diagnostics with their
+construct identified. Exact `message` prose is intentionally not stable.
+
 ## HTML attributes
 
 For native HTML tags, `null` and `undefined` omit an attribute. Empty strings

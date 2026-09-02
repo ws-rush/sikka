@@ -7,6 +7,7 @@ import type {
   SourceTemplate,
   StreamingRenderFunction,
   TemplateAST,
+  CompileError,
 } from './types.js';
 import { parse } from './parser.js';
 import {
@@ -36,7 +37,7 @@ type CompilerOptions = RuntimeOptions & {
 };
 type CompileTemplateResult<T> =
   | { ok: true; fn: T; source: string }
-  | { ok: false; error: { message: string } };
+  | { ok: false; error: CompileError };
 type TemplateCompiler<T> = (
   ast: TemplateAST,
   options?: CompilerOptions
