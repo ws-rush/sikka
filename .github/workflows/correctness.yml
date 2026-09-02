@@ -118,7 +118,7 @@ jobs:
           path: .ci/browser-report.json
           if-no-files-found: error
 
-  sikka-1.0-validation:
+  sikka-1-0-validation:
     name: sikka-1.0-validation
     needs: [node, strict-csp-precompiled]
     runs-on: ubuntu-latest
