@@ -181,6 +181,7 @@ export type SikkaDiagnosticCategory = 'Parse' | 'Resolve' | 'Compile' | 'Render'
 
 /** Stable machine-readable diagnostic context. Message wording is not stable API. */
 export interface SikkaDiagnostic {
+  message: string;
   category: SikkaDiagnosticCategory;
   template?: string;
   request?: string;

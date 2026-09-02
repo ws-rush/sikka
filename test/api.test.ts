@@ -526,7 +526,7 @@ describe('Sikka', () => {
       expect(html).toBe('<span>deep</span>');
     });
 
-    it('throws for circular file-based component imports', () => {
+    it('throws ResolveError for circular file-based component imports', () => {
       const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/a.astro') return '---\nimport B from "./b.astro";\n---\n<B />';
@@ -534,10 +534,10 @@ describe('Sikka', () => {
           return null as unknown as string;
         },
       });
-      expect(() => e.render('/v/a.astro')).toThrow(/CompileError/);
+      expect(() => e.render('/v/a.astro')).toThrow(/ResolveError/);
     });
 
-    it('throws for missing component import file', () => {
+    it('throws ResolveError for a missing component import file', () => {
       const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro')
@@ -545,7 +545,7 @@ describe('Sikka', () => {
           return null as unknown as string;
         },
       });
-      expect(() => e.render('/v/main.astro')).toThrow(/CompileError/);
+      expect(() => e.render('/v/main.astro')).toThrow(/ResolveError/);
     });
   });
 
@@ -1058,7 +1058,7 @@ const { title, items } = Astro.props;
       expect(html).toBe('<span>deep</span>');
     });
 
-    it('throws for circular file-based component imports', () => {
+    it('throws ResolveError for circular file-based component imports', () => {
       const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/a.astro') return '---\nimport B from "./b.astro";\n---\n<B />';
@@ -1066,10 +1066,10 @@ const { title, items } = Astro.props;
           return null as unknown as string;
         },
       });
-      expect(() => e.stream('/v/a.astro')).toThrow(/CompileError/);
+      expect(() => e.stream('/v/a.astro')).toThrow(/ResolveError/);
     });
 
-    it('throws for missing component import file', () => {
+    it('throws ResolveError for a missing component import file', () => {
       const e = new Sikka({
         readFile: (p) => {
           if (p === '/v/main.astro')
@@ -1077,7 +1077,7 @@ const { title, items } = Astro.props;
           return null as unknown as string;
         },
       });
-      expect(() => e.stream('/v/main.astro')).toThrow(/CompileError/);
+      expect(() => e.stream('/v/main.astro')).toThrow(/ResolveError/);
     });
   });
 

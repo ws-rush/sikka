@@ -775,9 +775,7 @@ class Parser {
   private parseSelfClosingElement(
     tag: string,
     attrs: (AttrNode | SpreadAttrNode)[]
-  ):
-    | { ok: true; selfClosing: true; node: ElementNode }
-    | { ok: false; error: ParseError } {
+  ): { ok: true; selfClosing: true; node: ElementNode } | { ok: false; error: ParseError } {
     this.advance(2);
     if ((tag === 'Fragment' || tag === '') && this.hasRawAttribute(attrs))
       return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };

@@ -51,7 +51,9 @@ export function compile(
 ): PrecompileArtifact[] {
   const requests = typeof entries === 'string' ? [entries] : entries;
   if (requests.length === 0)
-    throw new SikkaError('GraphError: expected at least one entry request', { category: 'Resolve' });
+    throw new SikkaError('GraphError: expected at least one entry request', {
+      category: 'Resolve',
+    });
 
   const artifacts = new Map<string, PrecompileArtifact>();
   const visiting: string[] = [];
@@ -117,22 +119,28 @@ function resolve(
   try {
     template = resolver(request, importer);
   } catch (error) {
-    throw new SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`, {
-      category: 'Resolve',
-      request,
-      importer,
-      cause: error,
-    });
+    throw new SikkaError(
+      `ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`,
+      {
+        category: 'Resolve',
+        request,
+        importer,
+        cause: error,
+      }
+    );
   }
   if (isSourceTemplate(template)) return template;
   const identity = sourceIdentity(template);
   const suffix = identity === undefined ? '' : ` (canonical identity ${JSON.stringify(identity)})`;
-  throw new SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, {
-    category: 'Resolve',
-    request,
-    importer,
-    template: identity,
-  });
+  throw new SikkaError(
+    `ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`,
+    {
+      category: 'Resolve',
+      request,
+      importer,
+      template: identity,
+    }
+  );
 }
 
 function cycleError(

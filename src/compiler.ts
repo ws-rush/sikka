@@ -38,6 +38,8 @@ interface CompileOptions {
   aggregateAssets?: boolean;
   /** Generated bodies call statically linked Component exports directly. */
   precompiled?: boolean;
+  /** Canonical Template identity included in debug Render failures. */
+  basePath?: string;
 }
 
 type ClassListArg =
@@ -716,7 +718,11 @@ function validateContentDirectives(attrs: ElementAttribute[], hasChildren: boole
   );
   if (names.has('set:html') && names.has('set:text'))
     throw new Error('InvalidDirective: cannot use both set:html and set:text');
-  const directive = names.has('set:html') ? 'set:html' : names.has('set:text') ? 'set:text' : undefined;
+  const directive = names.has('set:html')
+    ? 'set:html'
+    : names.has('set:text')
+      ? 'set:text'
+      : undefined;
   if (hasChildren && directive)
     throw new Error(`InvalidDirective: cannot use ${directive} with children`);
 }

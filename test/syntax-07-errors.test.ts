@@ -68,7 +68,10 @@ describe('Syntax: Error Handling', () => {
 
   it('exposes typed category and template context at public boundaries', () => {
     assert.throws(
-      () => new Sikka({ mode: 'source', resolver: () => ({ id: 'page', source: '<div>' }) }).render('page'),
+      () =>
+        new Sikka({ mode: 'source', resolver: () => ({ id: 'page', source: '<div>' }) }).render(
+          'page'
+        ),
       (error: unknown) =>
         error instanceof SikkaError &&
         error.category === 'Parse' &&
@@ -76,7 +79,13 @@ describe('Syntax: Error Handling', () => {
         error.line === 1
     );
     assert.throws(
-      () => new Sikka({ mode: 'source', resolver: () => { throw new Error('missing'); } }).render('page'),
+      () =>
+        new Sikka({
+          mode: 'source',
+          resolver: () => {
+            throw new Error('missing');
+          },
+        }).render('page'),
       (error: unknown) =>
         error instanceof SikkaError && error.category === 'Resolve' && error.request === 'page'
     );
@@ -100,7 +109,8 @@ describe('Syntax: Error Handling', () => {
       '<Fragment set:html="a">child</Fragment>',
       '<Fragment set:html="a" set:text="b" />',
       '<script is:inline></script>',
-    ]) expect(() => new Sikka().renderString(template)).toThrow(/Invalid(Directive|Fragment)/);
+    ])
+      expect(() => new Sikka().renderString(template)).toThrow(/Invalid(Directive|Fragment)/);
   });
 
   it('rejects unsupported spread Directives and dynamic content conflicts in streams', async () => {
@@ -114,7 +124,9 @@ describe('Syntax: Error Handling', () => {
       );
     }
     const conflict = '<div {...{ "set:html": "a" }} set:text="b" />';
-    expect(() => new Sikka().renderString(conflict)).toThrow(/InvalidDirective.*set:html.*set:text/);
+    expect(() => new Sikka().renderString(conflict)).toThrow(
+      /InvalidDirective.*set:html.*set:text/
+    );
     await expect(consume(new Sikka().streamString(conflict))).rejects.toThrow(
       /InvalidDirective.*set:html.*set:text/
     );
@@ -134,7 +146,7 @@ describe('Syntax: Error Handling', () => {
     );
   });
 
-  it('throws CompileError for circular component dependency', () => {
+  it('throws ResolveError for circular component dependency', () => {
     const sikka = new Sikka({
       readFile: (p) => {
         if (p.includes('a.astro')) return '---\nimport B from "./b.astro";\n---\n<B />';
@@ -142,10 +154,10 @@ describe('Syntax: Error Handling', () => {
         return null as unknown as string;
       },
     });
-    expect(() => sikka.render('/views/a.astro')).toThrow(/CompileError/);
+    expect(() => sikka.render('/views/a.astro')).toThrow(/ResolveError/);
   });
 
-  it('throws CompileError for unresolvable component import', () => {
+  it('throws ResolveError for an unresolvable component import', () => {
     const sikka = new Sikka({
       readFile: (p) => {
         if (p.includes('main.astro'))
@@ -153,7 +165,7 @@ describe('Syntax: Error Handling', () => {
         return null as unknown as string;
       },
     });
-    expect(() => sikka.render('/views/main.astro')).toThrow(/CompileError/);
+    expect(() => sikka.render('/views/main.astro')).toThrow(/ResolveError/);
   });
 
   it('throws ParseError for unclosed element at EOF', () => {

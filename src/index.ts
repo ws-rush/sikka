@@ -273,7 +273,11 @@ export class Sikka {
       new Map()
     );
     const result = compiler(ast, { ...this.options, components, basePath: template.id });
-    if (!result.ok) throw new Error(`CompileError in ${template.id}: ${result.error.message}`);
+    if (!result.ok)
+      throw new SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {
+        ...result.error,
+        template: template.id,
+      });
 
     cache?.set(template.id, result.fn as RenderFunction);
     return result.fn;
@@ -313,7 +317,11 @@ export class Sikka {
       compiled
     );
     const result = internalCompile(ast, { ...this.options, components, basePath: template.id });
-    if (!result.ok) throw new Error(`CompileError in ${template.id}: ${result.error.message}`);
+    if (!result.ok)
+      throw new SikkaError(`CompileError in ${template.id}: ${result.error.message}`, {
+        ...result.error,
+        template: template.id,
+      });
 
     this.cache?.set(template.id, result.fn);
     compiled.set(template.id, result.fn);
@@ -325,7 +333,11 @@ export class Sikka {
     templateId: string
   ): void {
     const error = unsupportedFrontmatterImport(imports, templateId);
-    if (error) throw new Error(`CompileError in ${templateId}: ${error.message}`);
+    if (error)
+      throw new SikkaError(`CompileError in ${templateId}: ${error.message}`, {
+        ...error,
+        template: templateId,
+      });
   }
 
   private throwSourceCycle(
@@ -334,9 +346,10 @@ export class Sikka {
     ancestors: Set<string>,
     identity: string
   ): never {
-    throw new Error(
+    throw new SikkaError(
       `ResolveError for ${JSON.stringify(request)} imported by canonical identity ${JSON.stringify(importer)}: ` +
-        `circular component dependency ${[...ancestors, identity].join(' → ')}`
+        `circular component dependency ${[...ancestors, identity].join(' → ')}`,
+      { category: 'Resolve', request, importer, template: identity }
     );
   }
 
@@ -449,22 +462,22 @@ export class Sikka {
     try {
       module = options.resolver(entry);
     } catch (error) {
-      throw new Error(
+      throw new SikkaError(
         `ResolveError for precompiled entry ${JSON.stringify(entry)}: ${errorMessage(error)}`,
-        {
-          cause: error,
-        }
+        { category: 'Resolve', request: entry, cause: error }
       );
     }
     if (module === undefined || module === null) {
-      throw new Error(
-        `ResolveError for precompiled entry ${JSON.stringify(entry)}: resolver returned no loaded module`
+      throw new SikkaError(
+        `ResolveError for precompiled entry ${JSON.stringify(entry)}: resolver returned no loaded module`,
+        { category: 'Resolve', request: entry }
       );
     }
     if (!isPrecompiledModule(module)) {
-      throw new Error(
+      throw new SikkaError(
         `PrecompiledError for entry ${JSON.stringify(entry)}: invalid generated module ABI; ` +
-          'expected named render() and stream() exports'
+          'expected named render() and stream() exports',
+        { category: 'Render', request: entry }
       );
     }
     return module;
@@ -484,18 +497,17 @@ export class Sikka {
     try {
       template = options.resolver(request, importer);
     } catch (error) {
-      throw new Error(
+      throw new SikkaError(
         `ResolveError for ${JSON.stringify(request)}${context}: ${errorMessage(error)}`,
-        {
-          cause: error,
-        }
+        { category: 'Resolve', request, importer, cause: error }
       );
     }
     if (!isSourceTemplate(template)) {
       const identity = sourceIdentity(template);
       const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
-      throw new Error(
-        `ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`
+      throw new SikkaError(
+        `ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`,
+        { category: 'Resolve', request, importer, template: identity }
       );
     }
     return template;
