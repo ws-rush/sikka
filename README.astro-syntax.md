@@ -314,7 +314,7 @@ are omitted. A custom `toString` supplies the object's complete style value.
 
 ### `set:html` and `set:text`
 
-`set:html` inserts its value verbatim. It is an application-author trust boundary, not sanitization; the spread `set:html` form has the same behavior.
+`set:html` inserts its value verbatim. It is an application-author trust boundary, not sanitization; the spread `set:html` form has the same behavior. `set:html` and `set:text` cannot be combined or used with children; spread `set:text` and unsupported Directive keys are rejected.
 
 ```astro
 <!-- 1. set:html null / set:text undef -->
@@ -341,11 +341,12 @@ are omitted. A custom `toString` supplies the object's complete style value.
 
 ### `is:raw` and `is:inline`
 
+`is:inline` is unsupported. `is:raw` preserves child Template source as text and is rejected on Fragments.
+
 ```astro
-<!-- 1. is:inline on script -->
-<script is:inline>console.log(1);</script>
-<!-- 2. is:inline on style -->
-<style is:inline>body{}</style>
+<!-- is:inline is rejected -->
+<!-- <script is:inline>console.log(1);</script> -->
+<!-- <style is:inline>body{}</style> -->
 <!-- 3. is:raw on div -->
 <div is:raw>{val}</div>
 <!-- 4. is:raw on markdown -->

@@ -143,6 +143,10 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<b>hi</b>');
     });
 
+    it('renders spread set:html', () => {
+      expect(render('<div {...{ "set:html": "<b>hi</b>" }} />')).toBe('<div><b>hi</b></div>');
+    });
+
     it('renders set:html with script tags verbatim', () => {
       const html = render('<div set:html={"<script>alert()</script>"} />');
       expect(html).toContain('<script>alert()</script>');
@@ -183,14 +187,13 @@ describe('Syntax: Built-in Directives', () => {
   });
 
   describe('is:raw and is:inline', () => {
-    it('preserves is:inline script verbatim with attribute', () => {
-      const html = render('<script is:inline>console.log(1);</script>');
-      expect(html).toBe('<script is:inline>console.log(1);</script>');
-    });
-
-    it('preserves is:inline style verbatim with attribute', () => {
-      const html = render('<style is:inline>body{}</style>');
-      expect(html).toBe('<style is:inline>body{}</style>');
+    it('diagnoses unsupported is:inline', () => {
+      expect(() => render('<script is:inline>console.log(1);</script>')).toThrow(
+        /ParseError.*InvalidDirective.*is:inline/
+      );
+      expect(() => render('<style is:inline>body{}</style>')).toThrow(
+        /ParseError.*InvalidDirective.*is:inline/
+      );
     });
 
     it('renders is:raw content verbatim (expression text preserved)', () => {

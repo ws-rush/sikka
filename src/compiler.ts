@@ -16,6 +16,7 @@ import type {
   StreamingCompileResult,
   ComponentImport,
   ExpressionNode,
+  DiagnosticCategory,
 } from './types.js';
 
 interface CompileOptions {
@@ -428,11 +429,26 @@ function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
   try {
     return compileASTUnsafe(ast, options);
   } catch (err) {
-    return { ok: false, error: { message: err instanceof Error ? err.message : String(err) } };
+    return compileFailure(err);
   }
 }
 
+function compileFailure(error: unknown): { ok: false; error: CompileError } {
+  const message = error instanceof Error ? error.message : String(error);
+  const category = diagnosticCategory(message);
+  return { ok: false, error: { message, ...(category && { category }) } };
+}
+
+function diagnosticCategory(message: string): DiagnosticCategory | undefined {
+  return message.startsWith('InvalidDirective:')
+    ? 'InvalidDirective'
+    : message.startsWith('InvalidFragment:')
+      ? 'InvalidFragment'
+      : undefined;
+}
+
 function compileASTUnsafe(ast: TemplateAST, options?: CompileOptions): CompileResult {
+  validateDirectives(ast);
   const components = options?.components ?? {};
   const source = buildFunctionBody(ast, components, options, '__out', 'return __out;');
   const renderFn = createRenderFunction(
@@ -653,6 +669,34 @@ function emitChildren(
 }
 
 type ElementAttribute = AttrNode | SpreadAttrNode;
+
+function validateDirectives(ast: TemplateAST): void {
+  for (const node of ast.body) validateNodeDirectives(node);
+}
+
+function validateNodeDirectives(node: TemplateNode): void {
+  if (node.type === 'element') {
+    if (!node.tag || node.tag === 'Fragment') partitionFragmentAttributes(node.attrs);
+    validateContentDirectives(node.attrs, node.children.length > 0);
+    for (const child of node.children) validateNodeDirectives(child);
+  } else if (node.type === 'slot') {
+    for (const child of node.children) validateNodeDirectives(child);
+  } else if (node.type === 'script' || node.type === 'style') {
+    validateContentDirectives(node.attrs, node.content.length > 0);
+  }
+}
+
+function validateContentDirectives(attrs: ElementAttribute[], hasChildren: boolean): void {
+  const names = new Set(
+    attrs.filter((attr): attr is AttrNode => !('type' in attr)).map((attr) => attr.name)
+  );
+  if (names.has('set:html') && names.has('set:text'))
+    throw new Error('InvalidDirective: cannot use both set:html and set:text');
+  const directive = names.has('set:html') ? 'set:html' : names.has('set:text') ? 'set:text' : undefined;
+  if (hasChildren && directive)
+    throw new Error(`InvalidDirective: cannot use ${directive} with children`);
+}
+
 type ElementAttributeGroups = {
   setHtml?: AttrNode;
   setText?: AttrNode;
@@ -903,11 +947,11 @@ function emitDirectiveElement(
   target: string
 ): string[] {
   if (attributes.setHtml && attributes.setText)
-    throw new Error('Cannot use both set:html and set:text');
+    throw new Error('InvalidDirective: cannot use both set:html and set:text');
   if (node.children.length > 0 && attributes.setHtml)
-    throw new Error('Cannot use set:html with children');
+    throw new Error('InvalidDirective: cannot use set:html with children');
   if (node.children.length > 0 && attributes.setText)
-    throw new Error('Cannot use set:text with children');
+    throw new Error('InvalidDirective: cannot use set:text with children');
 
   const lines = emitSpreadOpeningTag(
     node.tag,
@@ -921,8 +965,8 @@ function emitDirectiveElement(
   lines.push(`${target} += ">";`);
   if (node.children.length > 0) {
     lines.push(
-      `if (__hasSetHtml) throw new Error("Cannot use set:html with children");`,
-      `if (__hasSetText) throw new Error("Cannot use set:text with children");`,
+      `if (__hasSetHtml) throw new Error("InvalidDirective: cannot use set:html with children");`,
+      `if (__hasSetText) throw new Error("InvalidDirective: cannot use set:text with children");`,
       ...emitChildren(node.children, components, options, target)
     );
   } else {
@@ -1048,9 +1092,16 @@ function emitFragment(
   target: string
 ): string[] {
   const attributes = partitionFragmentAttributes(node.attrs);
-  if (attributes.setHtml) return emitHtmlDirective(attributes.setHtml, components, options, target);
+  if (attributes.setHtml && attributes.setText)
+    throw new Error('InvalidFragment: cannot use both set:html and set:text');
+  if (attributes.setHtml) {
+    if (node.children.length > 0)
+      throw new Error('InvalidFragment: cannot use set:html with children');
+    return emitHtmlDirective(attributes.setHtml, components, options, target);
+  }
   if (attributes.setText) {
-    if (node.children.length > 0) throw new Error('Cannot use set:text with children');
+    if (node.children.length > 0)
+      throw new Error('InvalidFragment: cannot use set:text with children');
     return emitTextDirective(attributes.setText, components, options, target);
   }
   return emitChildren(node.children, components, options, target);
@@ -1073,13 +1124,14 @@ const FRAGMENT_DIRECTIVES: Record<string, 'setHtml' | 'setText' | undefined> = {
 };
 
 function fragmentDirectiveName(attr: ElementAttribute): 'setHtml' | 'setText' | undefined {
-  if ('type' in attr) throw new Error('CompileError: Fragments cannot have spread attributes');
+  if ('type' in attr) throw new Error('InvalidFragment: spread attributes are not supported');
   return FRAGMENT_DIRECTIVES[attr.name] ?? validateFragmentAttribute(attr.name);
 }
 
 function validateFragmentAttribute(name: string): undefined {
   if (name === 'slot') return undefined;
-  throw new Error(`CompileError: Fragments cannot have attributes or directives (found: ${name})`);
+  const construct = name.includes(':') ? 'directive' : 'attribute';
+  throw new Error(`InvalidFragment: ${construct} ${name} is not supported`);
 }
 
 function partitionElementAttributes(attrs: ElementAttribute[]): ElementAttributeGroups {
@@ -1177,6 +1229,10 @@ function emitCollectedOpeningTag(
   ];
   for (const attr of attrs)
     lines.push(...emitSpreadAttribute(attr, components, options, supportsContentDirectives));
+  if (supportsContentDirectives)
+    lines.push(
+      `  if (__hasSetHtml && __hasSetText) throw new Error("InvalidDirective: cannot use both set:html and set:text");`
+    );
   lines.push(...emitCollectedSpreadValues(target));
   if (closeScope) lines.push(`}`);
   return lines;
@@ -1208,15 +1264,15 @@ function emitSpreadObject(
     `      if (__k === "set:html") {`,
     ...(supportsContentDirectives
       ? [`        __hasSetHtml = true;`, `        __setHtml = __v;`]
-      : [`        __setAttr(__k, __v);`]),
+      : [`        throw new Error("InvalidDirective: spread set:html is not supported");`]),
     `      } else if (__k === "set:text") {`,
-    ...(supportsContentDirectives
-      ? [`        throw new Error("CompileError: Spread set:text is not supported");`]
-      : [`        __setAttr(__k, __v);`]),
+    `        throw new Error("InvalidDirective: spread set:text is not supported");`,
     `      } else if (__k === "class" || __k === "className" || __k === "class:list") {`,
     `        __classes.push(__k === "class:list" ? __classList(__v) : __v);`,
     `      } else if (__k === "style") {`,
     `        __styles.push(typeof __v === "string" ? __v : __styleObject(__v));`,
+    `      } else if (__k.includes(":")) {`,
+    `        throw new Error("InvalidDirective: unsupported spread directive " + __k);`,
     `      } else {`,
     `        __setAttr(__k, __v);`,
     `      }`,
@@ -1696,10 +1752,7 @@ function compileStreamingAST(ast: TemplateAST, options?: CompileOptions): Stream
   try {
     return compileStreamingASTUnsafe(ast, options);
   } catch (err) {
-    return {
-      ok: false,
-      error: { message: err instanceof Error ? err.message : String(err) },
-    };
+    return compileFailure(err);
   }
 }
 
@@ -1707,6 +1760,7 @@ function compileStreamingASTUnsafe(
   ast: TemplateAST,
   options?: CompileOptions
 ): StreamingCompileResult {
+  validateDirectives(ast);
   const components = options?.components ?? {};
   const source = buildStreamingFunctionBody(ast, components, options);
   const fn = createStreamingRenderFunction(createStreamingFunction(source), components, options);
@@ -1775,6 +1829,7 @@ export function compileSources(
   const importError = unsupportedFrontmatterImport(ast.imports, templateId);
   if (importError) return { ok: false, error: importError };
   try {
+    validateDirectives(ast);
     // Generated modules select filtering from their runtime receiver.
     const options = { autoFilter: true, precompiled: true };
     return {
@@ -1785,9 +1840,6 @@ export function compileSources(
       streamString: buildStreamingFunctionBody(ast, {}, options),
     };
   } catch (error) {
-    return {
-      ok: false,
-      error: { message: error instanceof Error ? error.message : String(error) },
-    };
+    return compileFailure(error);
   }
 }

@@ -25,6 +25,7 @@ import type {
   ComponentImport,
   FrontmatterNode,
   RawNode,
+  DiagnosticCategory,
 } from './types.js';
 
 // ─── Position tracking ────────────────────────────────────────────────────────
@@ -50,7 +51,16 @@ function positionAt(source: string, offset: number): Position {
 
 function makeError(message: string, source: string, offset: number): ParseError {
   const { line, column } = positionAt(source, offset);
-  return { message, line, column };
+  const category = diagnosticCategory(message);
+  return { message, line, column, ...(category && { category }) };
+}
+
+function diagnosticCategory(message: string): DiagnosticCategory | undefined {
+  return message.startsWith('InvalidDirective:')
+    ? 'InvalidDirective'
+    : message.startsWith('InvalidFragment:')
+      ? 'InvalidFragment'
+      : undefined;
 }
 
 // ─── Frontmatter extraction ───────────────────────────────────────────────────
@@ -769,8 +779,12 @@ class Parser {
   private parseSelfClosingElement(
     tag: string,
     attrs: (AttrNode | SpreadAttrNode)[]
-  ): { ok: true; selfClosing: true; node: ElementNode } {
+  ):
+    | { ok: true; selfClosing: true; node: ElementNode }
+    | { ok: false; error: ParseError } {
     this.advance(2);
+    if ((tag === 'Fragment' || tag === '') && this.hasRawAttribute(attrs))
+      return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
     return {
       ok: true,
       selfClosing: true,
@@ -794,7 +808,7 @@ class Parser {
     attrs: (AttrNode | SpreadAttrNode)[]
   ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
     if (tag === 'Fragment' || tag === '') {
-      return { ok: false, error: this.error('is:raw is not supported on Fragments') };
+      return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
     }
     const closeIdx = this.findRawClosingTag(tag);
     if (closeIdx === -1) {
@@ -1003,6 +1017,8 @@ class Parser {
   private parseNamedAttribute(): AttributeParseResult {
     const name = this.readAttrName();
     if (!name) return this.missingAttributeNameError();
+    if (name === 'is:inline')
+      return { ok: false, error: this.error('InvalidDirective: is:inline is not supported') };
 
     this.skipWhitespace();
     if (this.peek() !== '=') return { ok: true, attr: { name, value: true } };
