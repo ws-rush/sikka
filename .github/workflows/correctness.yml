@@ -83,11 +83,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.node-line.outputs.version }}
-      - name: Install pinned nub
-        run: npm install --global @nubjs/nub@0.7.1
-      - run: nub ci
       - name: Install bundled Chromium
-        run: nub exec playwright install --with-deps chromium
+        shell: bash
+        run: |
+          npm install --prefix .ci/playwright --no-save --ignore-scripts --package-lock=false @playwright/test@1.62.1
+          ln -s .ci/playwright/node_modules node_modules
+          .ci/playwright/node_modules/.bin/playwright install --with-deps chromium
       - name: Download exact candidate
         uses: actions/download-artifact@v4
         with:
@@ -109,7 +110,7 @@ jobs:
           set -euo pipefail
           tarball=(.ci/candidate/*.tgz)
           test "${#tarball[@]}" -eq 1
-          nub run ci:strict-csp -- "${tarball[0]}" .ci/browser .ci/node-report/node-report.json .ci/browser-report.json
+          node scripts/strict-csp-precompiled.mjs "${tarball[0]}" .ci/browser .ci/node-report/node-report.json .ci/browser-report.json
       - name: Upload browser report
         uses: actions/upload-artifact@v4
         with:
