@@ -39,11 +39,13 @@ function stringifyValue(value) {
     return String(value);
 }
 function isRawHtml(value) {
-    return (value instanceof RawHtml ||
-        (!!value &&
-            typeof value === 'object' &&
-            value[RAW_HTML] === true &&
-            typeof value.value === 'string'));
+    return value instanceof RawHtml || isBrandedRawHtml(value);
+}
+function isBrandedRawHtml(value) {
+    if (Object(value) !== value)
+        return false;
+    const raw = value;
+    return raw[RAW_HTML] === true && typeof raw.value === 'string';
 }
 function escapeString(value) {
     const match = ESCAPE_TEST_RE.exec(value);
@@ -53,39 +55,37 @@ function replaceEscapedCharacters(value, start) {
     let output = '';
     let lastIndex = 0;
     for (let index = start; index < value.length; index++) {
-        const escaped = escapeCharacterCode(value.charCodeAt(index));
-        if (escaped === undefined)
-            continue;
+        let escaped;
+        switch (value.charCodeAt(index)) {
+            case 34:
+                escaped = '&quot;';
+                break;
+            case 38:
+                escaped = '&amp;';
+                break;
+            case 39:
+                escaped = '&#39;';
+                break;
+            case 60:
+                escaped = '&lt;';
+                break;
+            case 62:
+                escaped = '&gt;';
+                break;
+            default:
+                continue;
+        }
         output += value.slice(lastIndex, index) + escaped;
         lastIndex = index + 1;
     }
     return output + value.slice(lastIndex);
 }
-function escapeCharacterCode(code) {
-    return code < 40 ? escapeLowCharacterCode(code) : escapeHighCharacterCode(code);
-}
-function escapeLowCharacterCode(code) {
-    switch (code) {
-        case 34:
-            return '&quot;';
-        case 38:
-            return '&amp;';
-        case 39:
-            return '&#39;';
-    }
-}
-function escapeHighCharacterCode(code) {
-    switch (code) {
-        case 60:
-            return '&lt;';
-        case 62:
-            return '&gt;';
-    }
-}
 function escapeArray(values) {
     let output = '';
-    for (let index = 0; index < values.length; index++)
-        output += escapeHtml(values[index]);
+    for (let index = 0; index < values.length; index++) {
+        const value = values[index];
+        output += value instanceof RawHtml ? value.value : escapeHtml(value);
+    }
     return output;
 }
 function stringifyArray(values) {

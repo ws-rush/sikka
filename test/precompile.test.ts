@@ -1,40 +1,12 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
 import { Sikka } from '../src/index.js';
-import { compile, PRECOMPILE_ABI_VERSION, type PrecompileArtifact } from '../src/precompile.js';
-
-function wrap(artifact: PrecompileArtifact, componentUrl: (id: string) => string): string {
-  const components = artifact.components.map((component, index) => ({
-    ...component,
-    render: `__component_${index}_render`,
-    stream: `__component_${index}_stream`,
-  }));
-  const links = components
-    .map(
-      ({ id, render, stream }) =>
-        `import { render as ${render}, stream as ${stream} } from ${JSON.stringify(componentUrl(id))};`
-    )
-    .join('\n');
-  const regularComponents = components.map(
-    ({ localName, render }) => `${JSON.stringify(localName)}: ${render}`
-  );
-  const streamingComponents = components.map(
-    ({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`
-  );
-  const runtime = new URL('../src/runtime.ts', import.meta.url).href;
-  return `import { runtime } from ${JSON.stringify(runtime)};
-${links}
-export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
-  const __components = { ${regularComponents.join(', ')} };
-${artifact.renderString}
-}
-export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
-  const __components = { ${streamingComponents.join(', ')} };
-${artifact.streamString}
-}`;
-}
+import {
+  compile,
+  emitModule,
+  PRECOMPILE_ABI_VERSION,
+  type PrecompileArtifact,
+} from '../src/precompile.js';
 
 function generatedModules(artifacts: PrecompileArtifact[]): Map<string, string> {
   const artifactById = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
@@ -44,7 +16,10 @@ function generatedModules(artifacts: PrecompileArtifact[]): Map<string, string> 
     if (known) return known;
     const artifact = artifactById.get(id);
     if (!artifact) throw new Error(`Missing artifact: ${id}`);
-    const source = wrap(artifact, generate);
+    const source = emitModule(artifact, {
+      runtimeSpecifier: new URL('../src/runtime.ts', import.meta.url).href,
+      componentSpecifier: ({ id: componentId }) => generate(componentId),
+    });
     const url = `data:text/javascript,${encodeURIComponent(source)}`;
     imports.set(id, url);
     return url;
@@ -198,7 +173,12 @@ describe('sikka/precompile', () => {
       export async function* stream() { yield '<i>streamed</i>'; }
     `)}`;
     const module = await import(
-      `data:text/javascript,${encodeURIComponent(wrap(page, () => asyncComponent))}`
+      `data:text/javascript,${encodeURIComponent(
+        emitModule(page, {
+          runtimeSpecifier: new URL('../src/runtime.ts', import.meta.url).href,
+          componentSpecifier: () => asyncComponent,
+        })
+      )}`
     );
 
     expect(await renderedStream(module)).toBe('before<i>streamed</i>after');
@@ -328,6 +308,36 @@ import type { Data } from "./data.ts";
       })
     ).toThrow(
       /ResolveError.*templates\/Card\.astro.*templates\/page\.astro.*templates\/Card\.astro/
+    );
+  });
+
+  it('emits complete static ESM modules and guards host links and ABI', () => {
+    const [plain] = compile('page', {
+      resolver: () => ({ id: 'page', source: '<p>{Astro.props.name}</p>' }),
+    });
+    const source = emitModule(plain);
+
+    expect(source).toContain('from "sikka/runtime";');
+    expect(source).toContain('export function render(props, slots = {})');
+    expect(source).toContain('export async function* stream(props, slots = {})');
+    expect(source).not.toContain('__component_');
+
+    const artifacts = compile('page', {
+      resolver: (request) =>
+        request === 'page'
+          ? { id: 'page', source: '---\nimport Card from "./Card.astro";\n---\n<Card />' }
+          : { id: 'card', source: '<i>card</i>' },
+    });
+    const linked = artifacts.find(({ id }) => id === 'page');
+    if (!linked) throw new Error('Missing page artifact');
+    expect(() => emitModule(linked)).toThrow(/componentSpecifier.*card.*imported by.*page/);
+    expect(emitModule(linked, { componentSpecifier: () => './Card.sikka.mjs' })).toContain(
+      'from "./Card.sikka.mjs";'
+    );
+
+    expect(() => emitModule(plain, { runtimeSpecifier: '' })).toThrow(/non-empty runtimeSpecifier/);
+    expect(() => emitModule({ ...plain, abiVersion: 99 as never })).toThrow(
+      /Unsupported precompile artifact ABI 99.*expected 3/
     );
   });
 });

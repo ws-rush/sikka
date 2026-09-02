@@ -1,6 +1,6 @@
 import type { SourceResolver } from './types.js';
 /** The portable precompile-artifact ABI version. */
-export declare const PRECOMPILE_ABI_VERSION = 2;
+export declare const PRECOMPILE_ABI_VERSION = 3;
 /** A direct Frontmatter Component edge in a precompile artifact. */
 export interface PrecompileComponentEdge {
     /** The Component identifier used by the importing Template. */
@@ -14,8 +14,8 @@ export interface PrecompileComponentEdge {
  * The versioned, host-owned output of compiling one Template.
  *
  * `renderString` and `streamString` are function bodies, not executable code.
- * A build host wraps them in static ESM, chooses output paths, and links the
- * recorded Component edges. This compiler never reads or writes host storage.
+ * Pass the artifact to `emitModule` to generate static ESM. The build host
+ * chooses output paths and import specifiers; this module never accesses storage.
  */
 export interface PrecompileArtifact {
     abiVersion: typeof PRECOMPILE_ABI_VERSION;
@@ -33,6 +33,15 @@ export interface PrecompileOptions {
     /** Resolves entries and Component imports using Sikka's shared source contract. */
     resolver: SourceResolver;
 }
+/** Host-specific import specifiers for an emitted ESM module. */
+export interface EmitModuleOptions {
+    /** Import specifier for `sikka/runtime`; defaults to the package export. */
+    runtimeSpecifier?: string;
+    /** Maps each Component edge to its emitted ESM import specifier. */
+    componentSpecifier?: (component: PrecompileComponentEdge) => string;
+}
+/** Emits one precompile artifact as a complete static ESM module. */
+export declare function emitModule(artifact: PrecompileArtifact, options?: EmitModuleOptions): string;
 /**
  * Compiles one or more entries and their Frontmatter-imported Component graph
  * into portable artifacts without constructing Sikka or evaluating generated source.

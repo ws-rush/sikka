@@ -2,7 +2,44 @@ import { compileSources } from './compiler.js';
 import { parse } from './parser.js';
 import { SikkaError } from './error.js';
 /** The portable precompile-artifact ABI version. */
-export const PRECOMPILE_ABI_VERSION = 2;
+export const PRECOMPILE_ABI_VERSION = 3;
+/** Emits one precompile artifact as a complete static ESM module. */
+export function emitModule(artifact, options = {}) {
+    if (artifact.abiVersion !== PRECOMPILE_ABI_VERSION)
+        throw new Error(`Unsupported precompile artifact ABI ${String(artifact.abiVersion)}; expected ${PRECOMPILE_ABI_VERSION}`);
+    const runtimeSpecifier = options.runtimeSpecifier ?? 'sikka/runtime';
+    if (!runtimeSpecifier)
+        throw new Error('emitModule requires a non-empty runtimeSpecifier');
+    const components = artifact.components.map((component, index) => {
+        const specifier = options.componentSpecifier?.(component);
+        if (!specifier)
+            throw new Error(`emitModule requires a componentSpecifier for ${JSON.stringify(component.id)} imported by ${JSON.stringify(artifact.id)}`);
+        return {
+            ...component,
+            specifier,
+            render: `__component_${index}_render`,
+            stream: `__component_${index}_stream`,
+        };
+    });
+    const imports = components
+        .map(({ specifier, render, stream }) => `import { render as ${render}, stream as ${stream} } from ${JSON.stringify(specifier)};`)
+        .join('\n');
+    const regularComponents = components.map(({ localName, render }) => `${JSON.stringify(localName)}: ${render}`);
+    const streamingComponents = components.map(({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`);
+    const helpers = 'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets } = runtime(this);';
+    return `import { runtime } from ${JSON.stringify(runtimeSpecifier)};
+${imports}
+export function render(props, slots = {}) {
+  ${helpers}
+  const __components = { ${regularComponents.join(', ')} };
+${artifact.renderString}
+}
+export async function* stream(props, slots = {}) {
+  ${helpers}
+  const __components = { ${streamingComponents.join(', ')} };
+${artifact.streamString}
+}`;
+}
 /**
  * Compiles one or more entries and their Frontmatter-imported Component graph
  * into portable artifacts without constructing Sikka or evaluating generated source.
@@ -19,7 +56,6 @@ export function compile(entries, options) {
         visit(request, undefined, options.resolver, artifacts, visiting);
     return [...artifacts.values()];
 }
-// fallow-ignore-next-line complexity
 function visit(request, importer, resolver, artifacts, visiting) {
     const template = resolve(request, importer, resolver);
     const known = artifacts.get(template.id);
@@ -59,7 +95,6 @@ function visit(request, importer, resolver, artifacts, visiting) {
         visiting.pop();
     }
 }
-// fallow-ignore-next-line complexity
 function resolve(request, importer, resolver) {
     const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
     let template;
@@ -97,7 +132,6 @@ function sourceIdentity(value) {
     const identity = value.id;
     return typeof identity === 'string' ? identity : undefined;
 }
-// fallow-ignore-next-line complexity
 function isSourceTemplate(value) {
     if (!value || typeof value !== 'object')
         return false;

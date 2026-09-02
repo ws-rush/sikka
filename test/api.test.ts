@@ -85,6 +85,26 @@ describe('Sikka 1.0 application API', () => {
     expect(await collectHtml(sikka.stream('page', { value: 'streamed' }))).toBe('<p>streamed</p>');
   });
 
+  it('caches precompiled modules until invalidated', () => {
+    let calls = 0;
+    const module = (value: string): PrecompiledModule => ({
+      render: () => `<p>${value}</p>`,
+      async *stream() {
+        yield `<p>${value}</p>`;
+      },
+    });
+    const sikka = new Sikka({
+      mode: 'precompiled',
+      resolver: () => module(calls++ ? 'second' : 'first'),
+    });
+
+    expect(sikka.render('page')).toBe('<p>first</p>');
+    expect(sikka.render('page')).toBe('<p>first</p>');
+    sikka.invalidate('page');
+    expect(sikka.render('page')).toBe('<p>second</p>');
+    expect(calls).toBe(2);
+  });
+
   it('renames the props variable with source-mode varName', () => {
     const sikka = new Sikka({
       mode: 'source',

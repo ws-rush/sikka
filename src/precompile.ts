@@ -4,7 +4,7 @@ import { SikkaError } from './error.js';
 import type { SourceResolver, SourceTemplate } from './types.js';
 
 /** The portable precompile-artifact ABI version. */
-export const PRECOMPILE_ABI_VERSION = 2;
+export const PRECOMPILE_ABI_VERSION = 3;
 
 /** A direct Frontmatter Component edge in a precompile artifact. */
 export interface PrecompileComponentEdge {
@@ -20,8 +20,8 @@ export interface PrecompileComponentEdge {
  * The versioned, host-owned output of compiling one Template.
  *
  * `renderString` and `streamString` are function bodies, not executable code.
- * A build host wraps them in static ESM, chooses output paths, and links the
- * recorded Component edges. This compiler never reads or writes host storage.
+ * Pass the artifact to `emitModule` to generate static ESM. The build host
+ * chooses output paths and import specifiers; this module never accesses storage.
  */
 export interface PrecompileArtifact {
   abiVersion: typeof PRECOMPILE_ABI_VERSION;
@@ -39,6 +39,65 @@ export interface PrecompileArtifact {
 export interface PrecompileOptions {
   /** Resolves entries and Component imports using Sikka's shared source contract. */
   resolver: SourceResolver;
+}
+
+/** Host-specific import specifiers for an emitted ESM module. */
+export interface EmitModuleOptions {
+  /** Import specifier for `sikka/runtime`; defaults to the package export. */
+  runtimeSpecifier?: string;
+  /** Maps each Component edge to its emitted ESM import specifier. */
+  componentSpecifier?: (component: PrecompileComponentEdge) => string;
+}
+
+/** Emits one precompile artifact as a complete static ESM module. */
+export function emitModule(artifact: PrecompileArtifact, options: EmitModuleOptions = {}): string {
+  if (artifact.abiVersion !== PRECOMPILE_ABI_VERSION)
+    throw new Error(
+      `Unsupported precompile artifact ABI ${String(artifact.abiVersion)}; expected ${PRECOMPILE_ABI_VERSION}`
+    );
+
+  const runtimeSpecifier = options.runtimeSpecifier ?? 'sikka/runtime';
+  if (!runtimeSpecifier) throw new Error('emitModule requires a non-empty runtimeSpecifier');
+  const components = artifact.components.map((component, index) => {
+    const specifier = options.componentSpecifier?.(component);
+    if (!specifier)
+      throw new Error(
+        `emitModule requires a componentSpecifier for ${JSON.stringify(component.id)} imported by ${JSON.stringify(artifact.id)}`
+      );
+    return {
+      ...component,
+      specifier,
+      render: `__component_${index}_render`,
+      stream: `__component_${index}_stream`,
+    };
+  });
+  const imports = components
+    .map(
+      ({ specifier, render, stream }) =>
+        `import { render as ${render}, stream as ${stream} } from ${JSON.stringify(specifier)};`
+    )
+    .join('\n');
+  const regularComponents = components.map(
+    ({ localName, render }) => `${JSON.stringify(localName)}: ${render}`
+  );
+  const streamingComponents = components.map(
+    ({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`
+  );
+  const helpers =
+    'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets } = runtime(this);';
+
+  return `import { runtime } from ${JSON.stringify(runtimeSpecifier)};
+${imports}
+export function render(props, slots = {}) {
+  ${helpers}
+  const __components = { ${regularComponents.join(', ')} };
+${artifact.renderString}
+}
+export async function* stream(props, slots = {}) {
+  ${helpers}
+  const __components = { ${streamingComponents.join(', ')} };
+${artifact.streamString}
+}`;
 }
 
 /**
@@ -61,7 +120,6 @@ export function compile(
   return [...artifacts.values()];
 }
 
-// fallow-ignore-next-line complexity
 function visit(
   request: string,
   importer: string | undefined,
@@ -108,7 +166,6 @@ function visit(
   }
 }
 
-// fallow-ignore-next-line complexity
 function resolve(
   request: string,
   importer: string | undefined,
@@ -164,7 +221,6 @@ function sourceIdentity(value: unknown): string | undefined {
   return typeof identity === 'string' ? identity : undefined;
 }
 
-// fallow-ignore-next-line complexity
 function isSourceTemplate(value: unknown): value is SourceTemplate {
   if (!value || typeof value !== 'object') return false;
   const template = value as Record<string, unknown>;

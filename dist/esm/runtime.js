@@ -1,28 +1,38 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 /** The generated-runtime ABI version. */
-export const RUNTIME_ABI_VERSION = 2;
+export const RUNTIME_ABI_VERSION = 3;
+const RUNTIME_HELPERS = Symbol('sikka.runtime-helpers');
+/** Binds one stable helper set to a host receiver. */
+export function bindRuntime(receiver, helpers) {
+    Object.defineProperty(receiver, RUNTIME_HELPERS, { value: helpers });
+}
 /**
  * Returns the stable helper set for a generated module. Generated `render` and
  * `stream` exports call this with their `this` receiver, so a host runtime can
  * supply rendering options without rebuilding the artifact.
  */
-// fallow-ignore-next-line complexity
 export function runtime(receiver) {
+    const cached = receiver && receiver[RUNTIME_HELPERS];
+    if (cached)
+        return cached;
     const options = receiver?.options ?? receiver;
+    const escape = options?.autoEscape === false ? stringifyHtml : escapeHtml;
+    const filter = options?.autoFilter ? (options.filterFunction ?? identity) : identity;
     return {
-        escape: options?.autoEscape === false ? stringifyHtml : escapeHtml,
+        escape,
+        expression: options?.autoFilter ? (value) => escape(filter(value)) : escape,
         RawHtml,
         components: options?.components ?? {},
         classList,
         styleObject,
-        filter: options?.autoFilter ? (options.filterFunction ?? identity) : identity,
+        filter,
+        autoFilter: options?.autoFilter === true,
         aggregateAssets: options?.aggregateAssets === true,
     };
 }
 function identity(value) {
     return value;
 }
-// fallow-ignore-next-line complexity
 function classList(value) {
     if (typeof value === 'string')
         return value;
@@ -35,7 +45,6 @@ function classList(value) {
         .map(([name]) => name)
         .join(' ');
 }
-// fallow-ignore-next-line complexity
 function styleObject(value) {
     if (typeof value === 'string')
         return value;

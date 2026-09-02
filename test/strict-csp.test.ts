@@ -4,8 +4,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { describe, it } from 'node:test';
 import { chromium } from '@playwright/test';
 import { expect } from './assert.js';
-import { wrapPrecompiledModule } from './corpus.mjs';
-import { compile } from '../src/precompile.js';
+import { compile, emitModule } from '../src/precompile.js';
 import { RUNTIME_ABI_VERSION } from '../src/runtime.js';
 import { syntaxContractCases } from './syntax-contract.js';
 
@@ -28,9 +27,7 @@ function adaModule(): string {
   const [artifact] = compile(ada.id, {
     resolver: (request) => ({ id: request, source: ada.template }),
   });
-  return wrapPrecompiledModule(artifact, '/sikka/runtime.js', () => {
-    throw new Error('Ada has no components');
-  });
+  return emitModule(artifact, { runtimeSpecifier: '/sikka/runtime.js' });
 }
 
 function worker(): string {

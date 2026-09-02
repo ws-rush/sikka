@@ -50,46 +50,17 @@ Source mode dynamically evaluates Template source. Treat every Template as trust
 `compile` is the standalone synchronous build API, exported only from `sikka/precompile`. It follows the same resolver contract, returns one artifact per canonical identity, and never writes files or evaluates generated source.
 
 ```ts
-import { compile } from 'sikka/precompile';
+import { compile, emitModule } from 'sikka/precompile';
 
 const artifacts = compile(['home', 'about'], { resolver });
-// artifact: { abiVersion, id, renderString, streamString, components }
+const moduleSource = emitModule(artifacts[0], {
+  componentSpecifier: ({ id }) => outputSpecifierFor(id),
+});
 ```
 
-An artifact's `components` are its direct Frontmatter edges: `{ localName, specifier, id }`. A build tool owns output paths, I/O, ESM wrapping, and static links for those edges. The conventional emitted filename is `*.sikka.mjs`. `renderString` and `streamString` are distinct function bodies, not modules or strings to evaluate.
+An artifact's `components` are its direct Frontmatter edges: `{ localName, specifier, id }`. `emitModule` owns ESM wrapping, runtime-helper binding, and static Component links. A build tool supplies `componentSpecifier` to map each edge to its generated module, and may override `runtimeSpecifier` from its default of `sikka/runtime`. The build tool still owns output paths and I/O; the conventional emitted filename is `*.sikka.mjs`.
 
-A generated module has named `render` and `stream` exports, no default export. It imports `runtime` from `sikka/runtime`, binds the returned helpers with its `this` receiver, statically links Component `render` exports into the regular body and `stream` exports into the Streaming body. `sikka/runtime` is the generated-code ABI: it exports `RUNTIME_ABI_VERSION` and `runtime(receiver)`, whose helpers are `escape`, `RawHtml`, `components`, `classList`, `styleObject`, `filter`, and `aggregateAssets`. Its ABI version and the artifact ABI version must be preserved by generators.
-
-```ts
-import { runtime } from 'sikka/runtime';
-import { render as cardRender, stream as cardStream } from './Card.sikka.mjs';
-
-export function render(props, slots = {}) {
-  const {
-    escape: __escape,
-    RawHtml: __RawHtml,
-    classList: __classList,
-    styleObject: __styleObject,
-    filter: __filter,
-    aggregateAssets: __aggregateAssets,
-  } = runtime(this);
-  const __components = { Card: cardRender };
-  // artifact.renderString
-}
-
-export async function* stream(props, slots = {}) {
-  const {
-    escape: __escape,
-    RawHtml: __RawHtml,
-    classList: __classList,
-    styleObject: __styleObject,
-    filter: __filter,
-    aggregateAssets: __aggregateAssets,
-  } = runtime(this);
-  const __components = { Card: cardStream };
-  // artifact.streamString
-}
-```
+The emitted module has named `render` and `stream` exports and no default export. It statically links Component `render` exports into the regular body and `stream` exports into the Streaming body. `sikka/runtime` remains the generated-code ABI, while `emitModule` keeps its helper wiring inside Sikka.
 
 ## Render precompiled Templates
 

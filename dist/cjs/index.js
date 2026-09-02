@@ -5,16 +5,21 @@ const parser_js_1 = require("./parser.js");
 const compiler_js_1 = require("./compiler.js");
 const cache_js_1 = require("./cache.js");
 const error_js_1 = require("./error.js");
+const runtime_js_1 = require("./runtime.js");
 var error_js_2 = require("./error.js");
 Object.defineProperty(exports, "SikkaError", { enumerable: true, get: function () { return error_js_2.SikkaError; } });
+const EMPTY_SLOTS = {};
 function createTemplateCaches(options) {
     const cache = templateCacheFor(options);
     return { cache, streamCache: cache ? (0, cache_js_1.createCache)(options.cacheSize) : null };
 }
 function templateCacheFor(options) {
-    if (options.cache === true || (options.cache === undefined && Boolean(options.cacheSize)))
+    if (cacheIsEnabled(options))
         return (0, cache_js_1.createCache)(options.cacheSize);
     return typeof options.cache === 'object' ? options.cache : null;
+}
+function cacheIsEnabled(options) {
+    return options.cache === true || (options.cache === undefined && Boolean(options.cacheSize));
 }
 function invalidateCache(cache, key) {
     if (!cache)
@@ -48,25 +53,41 @@ function sourceIdentity(value) {
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
+function validateRuntimeOptions(options) {
+    if (!options || !isRuntimeMode(options.mode))
+        throw new Error("Sikka requires mode: 'source' or 'precompiled'");
+    if (typeof options.resolver !== 'function')
+        throw new Error(`${runtimeModeLabel(options)} mode requires a synchronous resolver`);
+}
+function runtimeModeLabel(options) {
+    return options.mode === 'source' ? 'Source' : 'Precompiled';
+}
+function isRuntimeMode(mode) {
+    return mode === 'source' || mode === 'precompiled';
+}
 class Sikka {
     options;
     cache;
     streamCache;
+    modules = new Map();
+    renders = new Map();
+    lastEntry;
+    lastRender;
     constructor(options) {
         this.options = options;
-        if (options?.mode !== 'source' && options?.mode !== 'precompiled')
-            throw new Error("Sikka requires mode: 'source' or 'precompiled'");
-        if (typeof options.resolver !== 'function')
-            throw new Error(`${options.mode === 'source' ? 'Source' : 'Precompiled'} mode requires a synchronous resolver`);
+        validateRuntimeOptions(options);
+        (0, runtime_js_1.bindRuntime)(this, (0, runtime_js_1.runtime)(options));
+        this.render = options.mode === 'precompiled' ? this.renderPrecompiled : this.renderSource;
         const caches = createTemplateCaches(options);
         this.cache = caches.cache;
         this.streamCache = caches.streamCache;
     }
     /** Renders an entry Template with Props. */
     render(entry, props = {}) {
-        if (this.options.mode === 'precompiled')
-            return this.renderPrecompiled(entry, props);
-        return this.compileSource(this.resolveSource(entry), compiler_js_1.compile, this.cache).renderSync(props, {});
+        return this.renderSource(entry, props);
+    }
+    renderSource(entry, props) {
+        return this.compileSource(this.resolveSource(entry), compiler_js_1.compile, this.cache).renderSync(props, EMPTY_SLOTS);
     }
     /** Streams an entry Template with Props. */
     stream(entry, props = {}) {
@@ -78,6 +99,17 @@ class Sikka {
     invalidate(id) {
         invalidateCache(this.cache, id);
         invalidateCache(this.streamCache, id);
+        if (id !== undefined) {
+            this.modules.delete(id);
+            this.renders.delete(id);
+            if (this.lastEntry === id)
+                this.lastEntry = this.lastRender = undefined;
+        }
+        else {
+            this.modules.clear();
+            this.renders.clear();
+            this.lastEntry = this.lastRender = undefined;
+        }
     }
     compileSource(template, compiler, cache) {
         return this.compileSourceTemplate(template, new Set([template.id]), new Map(), compiler, cache);
@@ -126,7 +158,17 @@ class Sikka {
             `circular component dependency ${[...ancestors, identity].join(' → ')}`, { category: 'Resolve', request, importer, template: identity });
     }
     renderPrecompiled(entry, props) {
-        const html = this.resolvePrecompiled(entry).render.call(this, props, {});
+        let render = entry === this.lastEntry ? this.lastRender : undefined;
+        if (!render) {
+            render = this.renders.get(entry);
+            if (!render) {
+                render = this.resolvePrecompiled(entry).render.bind(this);
+                this.renders.set(entry, render);
+            }
+            this.lastEntry = entry;
+            this.lastRender = render;
+        }
+        const html = render(props, EMPTY_SLOTS);
         if (typeof html !== 'string')
             throw new Error(`PrecompiledError for entry ${JSON.stringify(entry)}: generated render() must return HTML synchronously`);
         return html;
@@ -138,40 +180,51 @@ class Sikka {
         return stream;
     }
     resolvePrecompiled(entry) {
-        let module;
+        const cached = this.modules.get(entry);
+        if (cached)
+            return cached;
+        const module = this.loadPrecompiled(entry);
+        if (module == null)
+            throw this.missingPrecompiledModule(entry);
+        if (!isPrecompiledModule(module))
+            throw this.invalidPrecompiledModule(entry);
+        this.modules.set(entry, module);
+        return module;
+    }
+    loadPrecompiled(entry) {
         try {
-            module = this.options.resolver(entry);
+            return this.options.resolver(entry);
         }
         catch (error) {
             throw new error_js_1.SikkaError(`ResolveError for precompiled entry ${JSON.stringify(entry)}: ${errorMessage(error)}`, { category: 'Resolve', request: entry, cause: error });
         }
-        if (module === undefined || module === null)
-            throw new error_js_1.SikkaError(`ResolveError for precompiled entry ${JSON.stringify(entry)}: resolver returned no loaded module`, { category: 'Resolve', request: entry });
-        if (!isPrecompiledModule(module))
-            throw new error_js_1.SikkaError(`PrecompiledError for entry ${JSON.stringify(entry)}: invalid generated module ABI; ` +
-                'expected named render() and stream() exports', { category: 'Render', request: entry });
-        return module;
+    }
+    missingPrecompiledModule(entry) {
+        return new error_js_1.SikkaError(`ResolveError for precompiled entry ${JSON.stringify(entry)}: resolver returned no loaded module`, { category: 'Resolve', request: entry });
+    }
+    invalidPrecompiledModule(entry) {
+        return new error_js_1.SikkaError(`PrecompiledError for entry ${JSON.stringify(entry)}: invalid generated module ABI; ` +
+            'expected named render() and stream() exports', { category: 'Render', request: entry });
     }
     resolveSource(request, importer) {
         const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
-        let template;
+        const template = this.loadSource(request, importer, context);
+        if (isSourceTemplate(template))
+            return template;
+        throw this.invalidSourceTemplate(request, importer, context, template);
+    }
+    loadSource(request, importer, context) {
         try {
-            template = this.options.resolver(request, importer);
+            return this.options.resolver(request, importer);
         }
         catch (error) {
             throw new error_js_1.SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${errorMessage(error)}`, { category: 'Resolve', request, importer, cause: error });
         }
-        if (!isSourceTemplate(template)) {
-            const identity = sourceIdentity(template);
-            const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
-            throw new error_js_1.SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, {
-                category: 'Resolve',
-                request,
-                importer,
-                template: identity,
-            });
-        }
-        return template;
+    }
+    invalidSourceTemplate(request, importer, context, template) {
+        const identity = sourceIdentity(template);
+        const suffix = identity ? ` (canonical identity ${JSON.stringify(identity)})` : '';
+        return new error_js_1.SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, { category: 'Resolve', request, importer, template: identity });
     }
     parseTemplate(source, template) {
         const result = (0, parser_js_1.parse)(source);

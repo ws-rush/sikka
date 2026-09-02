@@ -85,12 +85,14 @@ function collectImports(fmSource) {
 function collectImportClause(importClause, specifier, imports) {
     if (isTypeOnlyImport(importClause))
         return;
-    const start = imports.length;
     if (collectNamespaceImport(importClause, specifier, imports))
         return;
-    for (const part of splitImportClause(importClause)) {
+    collectRegularImports(importClause, specifier, imports);
+}
+function collectRegularImports(importClause, specifier, imports) {
+    const start = imports.length;
+    for (const part of splitImportClause(importClause))
         collectImportPart(part, specifier, imports);
-    }
     if (imports.length === start)
         imports.push({ localName: '', specifier, isComponent: false });
 }
@@ -142,11 +144,14 @@ function isTopLevelImportComma(char, braceDepth) {
 }
 function collectNamedImports(part, specifier, imports) {
     const namedParts = part.slice(1).replace(/}$/, '').split(',');
-    for (const named of namedParts) {
-        const localName = /(?:\s+as\s+)?(\w+)$/.exec(named.trim())?.[1];
-        if (localName && !named.trim().startsWith('type '))
-            imports.push(componentImport(localName, specifier));
-    }
+    for (const named of namedParts)
+        collectNamedImport(named, specifier, imports);
+}
+function collectNamedImport(named, specifier, imports) {
+    const trimmed = named.trim();
+    const localName = /(?:\s+as\s+)?(\w+)$/.exec(trimmed)?.[1];
+    if (localName && !trimmed.startsWith('type '))
+        imports.push(componentImport(localName, specifier));
 }
 function collectDefaultImport(part, specifier, imports) {
     const localName = /(\w+)$/.exec(part)?.[1];
@@ -775,22 +780,23 @@ class Parser {
     }
     parseNamedAttribute() {
         const name = this.readAttrName();
-        if (!name)
-            return this.missingAttributeNameError();
-        if (name === 'is:inline')
-            return { ok: false, error: this.error('InvalidDirective: is:inline is not supported') };
+        const nameError = this.attributeNameError(name);
+        if (nameError)
+            return nameError;
         this.skipWhitespace();
         if (this.peek() !== '=')
             return { ok: true, attr: { name, value: true } };
         this.advance(); // consume '='
         this.skipWhitespace();
         const valueResult = this.parseAttrValue();
-        if (!valueResult.ok)
-            return valueResult;
-        return { ok: true, attr: { name, value: valueResult.value } };
+        return valueResult.ok ? { ok: true, attr: { name, value: valueResult.value } } : valueResult;
     }
-    missingAttributeNameError() {
-        return { ok: false, error: this.error('Expected attribute name') };
+    attributeNameError(name) {
+        if (!name)
+            return { ok: false, error: this.error('Expected attribute name') };
+        return name === 'is:inline'
+            ? { ok: false, error: this.error('InvalidDirective: is:inline is not supported') }
+            : undefined;
     }
     readAttrName() {
         let name = '';

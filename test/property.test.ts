@@ -7,7 +7,7 @@ import {
   runPortableProperty,
 } from './portable.js';
 import { Sikka } from '../src/index.js';
-import { compile, type PrecompileArtifact } from '../src/precompile.js';
+import { compile, emitModule } from '../src/precompile.js';
 
 const text = new PortableGenerator().string().filter((value) => value.length > 0);
 const props = new PortableGenerator().object({
@@ -27,33 +27,6 @@ function source(template: string, components?: Record<string, string>): Sikka {
   return new Sikka({ mode: 'source', resolver: templateFor(template, components) });
 }
 
-function wrap(artifact: PrecompileArtifact, componentUrl: (id: string) => string): string {
-  const components = artifact.components.map((component, index) => ({
-    ...component,
-    render: `__component_${index}_render`,
-    stream: `__component_${index}_stream`,
-  }));
-  const imports = components
-    .map(
-      ({ id, render, stream }) =>
-        `import { render as ${render}, stream as ${stream} } from ${JSON.stringify(componentUrl(id))};`
-    )
-    .join('\n');
-  const runtime = new URL('../src/runtime.ts', import.meta.url).href;
-  return `import { runtime } from ${JSON.stringify(runtime)};
-${imports}
-export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
-  const __components = { ${components.map(({ localName, render }) => `${JSON.stringify(localName)}: ${render}`).join(', ')} };
-${artifact.renderString}
-}
-export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
-  const __components = { ${components.map(({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`).join(', ')} };
-${artifact.streamString}
-}`;
-}
-
 async function precompiled(template: string, components?: Record<string, string>): Promise<Sikka> {
   const artifacts = compile('page', { resolver: templateFor(template, components) });
   const byId = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
@@ -63,7 +36,12 @@ async function precompiled(template: string, components?: Record<string, string>
     if (known) return known;
     const artifact = byId.get(id);
     if (!artifact) throw new Error(`Missing artifact: ${id}`);
-    const url = `data:text/javascript,${encodeURIComponent(wrap(artifact, moduleUrl))}`;
+    const url = `data:text/javascript,${encodeURIComponent(
+      emitModule(artifact, {
+        runtimeSpecifier: new URL('../src/runtime.ts', import.meta.url).href,
+        componentSpecifier: ({ id: componentId }) => moduleUrl(componentId),
+      })
+    )}`;
     urls.set(id, url);
     return url;
   };

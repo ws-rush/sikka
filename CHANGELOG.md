@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The 1.0 Contract define
 - Precompilation is now `compile(entries, { resolver })` from `sikka/precompile`. It returns versioned artifacts; build tools own generated-module wrapping, static linking, and output I/O.
 - Generated modules use the versioned `sikka/runtime` ABI and named `render` and `stream` exports; there is no default export.
 
+### Added
+
+- `emitModule(artifact, { runtimeSpecifier?, componentSpecifier? })` from `sikka/precompile` generates the complete static ESM module for one artifact, so hosts no longer hand-write the generated-module wrapper. Hosts still own output paths, import specifiers, and I/O.
+
 ### Stable commitments after 1.0
 
 The application API, standalone precompile API, generated-runtime ABI, public types, diagnostics categories/context, and documented Supported syntax follow semantic versioning. Breaking changes require a major release; backward-compatible features require a minor release; backward-compatible fixes require a patch release. Intentionally rejected and explicitly unsupported syntax does not gain compatibility status until documented as Supported.

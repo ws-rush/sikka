@@ -93,8 +93,8 @@ async function createCandidateArtifacts(arguments_) {
 }
 
 async function generateTemplates(manifestPath, output) {
-  const { compile } = await import('sikka/precompile');
-  const { templateFor, wrapPrecompiledModule } = await import(process.env.SIKKA_CORPUS_URL);
+  const { compile, emitModule } = await import('sikka/precompile');
+  const { templateFor } = await import(process.env.SIKKA_CORPUS_URL);
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const { cases } = manifest;
   const templates = {};
@@ -123,11 +123,10 @@ async function generateTemplates(manifestPath, output) {
       const bundle = relative(dirname(file), join(output, 'sikka-runtime.mjs'));
       await writeFile(
         file,
-        wrapPrecompiledModule(
-          artifact,
-          bundle.startsWith('.') ? bundle : `./${bundle}`,
-          (id) => `./${files.get(id)}`
-        )
+        emitModule(artifact, {
+          runtimeSpecifier: bundle.startsWith('.') ? bundle : `./${bundle}`,
+          componentSpecifier: ({ id }) => `./${files.get(id)}`,
+        })
       );
       templateFiles.push(relative(output, file));
     }
@@ -139,7 +138,7 @@ async function generateTemplates(manifestPath, output) {
 
 async function validateCandidate(manifestPath) {
   const { Sikka } = await import('sikka');
-  const { compile } = await import('sikka/precompile');
+  const { compile, emitModule } = await import('sikka/precompile');
   const { PortableGenerator, PORTABLE_RUNS, PORTABLE_SEED, runPortableProperty } = await import(
     process.env.SIKKA_PORTABLE_URL
   );
@@ -147,7 +146,12 @@ async function validateCandidate(manifestPath) {
     process.env.SIKKA_CORPUS_URL
   );
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  const modules = { Sikka, compile, runtimeUrl: import.meta.resolve('sikka/runtime') };
+  const modules = {
+    Sikka,
+    compile,
+    emitModule,
+    runtimeUrl: import.meta.resolve('sikka/runtime'),
+  };
   const caseResults = [];
   let failure;
   for (const case_ of manifest.cases) {

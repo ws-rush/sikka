@@ -3,7 +3,7 @@ import { expect } from './assert.js';
 import { collectHtml } from './helpers.js';
 import { assertCorpusParity, precompiledSikka, sourceSikka } from './corpus.mjs';
 import { Sikka } from '../src/index.js';
-import { compile } from '../src/precompile.js';
+import { compile, emitModule } from '../src/precompile.js';
 import {
   syntaxContractCases,
   validateSyntaxContractCases,
@@ -17,6 +17,7 @@ type CorpusModules = Parameters<typeof sourceSikka>[1];
 const modules: CorpusModules = {
   Sikka,
   compile,
+  emitModule,
   runtimeUrl: new URL('../src/runtime.ts', import.meta.url).href,
 };
 

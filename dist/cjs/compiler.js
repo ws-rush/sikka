@@ -38,7 +38,6 @@ const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
     'reversed',
     'selected',
 ]);
-// fallow-ignore-next-line complexity
 function createRuntimeHelpers(options) {
     return {
         escapeHelper: expressionEscapeHelper(options),
@@ -146,26 +145,32 @@ function rejectedConstruct(message) {
 }
 function compileASTUnsafe(ast, options) {
     validateDirectives(ast);
-    const components = options?.components ?? {};
+    return compileValidatedAST(ast, options, options?.components ?? {});
+}
+function compileValidatedAST(ast, options, components) {
     const source = buildFunctionBody(ast, components, options, '__out', 'return __out;');
-    const renderFn = createRenderFunction(createSyncFunction(source), components, createRuntimeHelpers(options), options?.debug, options?.templateId);
-    return { ok: true, fn: renderFn, source };
+    return {
+        ok: true,
+        fn: createRenderFunction(createSyncFunction(source), components, createRuntimeHelpers(options), options?.debug, options?.templateId),
+        source,
+    };
 }
 function createSyncFunction(source) {
     return new Function('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', source);
 }
 function createRenderFunction(syncFn, components, helpers, debug, template) {
     const renderFn = (async (props, slots) => renderFn.renderSync(props, slots));
-    renderFn.render = async function (props, slots) {
-        const syncSlots = {};
-        for (const [key, value] of Object.entries(slots ?? {})) {
-            if (typeof value === 'string')
-                syncSlots[key] = value;
-        }
-        return renderFn.renderSync(props, syncSlots);
-    };
+    renderFn.render = async (props, slots) => renderFn.renderSync(props, synchronousSlots(slots));
     renderFn.renderSync = (props, slots) => executeSyncFunction(syncFn, props, slots ?? {}, components, helpers, debug, template);
     return renderFn;
+}
+function synchronousSlots(slots) {
+    const result = {};
+    for (const [key, value] of Object.entries(slots ?? {})) {
+        if (typeof value === 'string')
+            result[key] = value;
+    }
+    return result;
 }
 function executeSyncFunction(syncFn, props, slots, components, helpers, debug, template) {
     try {
@@ -188,13 +193,15 @@ const HOISTED_BOOLEAN_ATTRS = `const __booleanAttrs = new Set([${[...NATIVE_BOOL
 const HOISTED_RAW_HTML_KEY = 'const __rawHtmlKey = Symbol.for("sikka.raw-html");';
 function buildFunctionBody(ast, components, options, target, completion) {
     const bodyLines = mergeLines(ast.body.flatMap((node) => emitNode(node, components, options, target)), target);
+    const direct = target === STREAMING_TARGET || bodyLines.length !== 1
+        ? undefined
+        : outputExpression(bodyLines[0], `${target} += `);
     return [
-        `let ${target} = "";`,
+        ...(direct ? [] : [`let ${target} = "";`]),
         ...(bodyLines.some((line) => line.includes('__booleanAttrs')) ? [HOISTED_BOOLEAN_ATTRS] : []),
         ...(bodyLines.some((line) => line.includes('__rawHtmlKey')) ? [HOISTED_RAW_HTML_KEY] : []),
         ...buildFunctionPreamble(ast, options),
-        ...bodyLines,
-        completion,
+        ...(direct ? [`return ${direct};`] : [...bodyLines, completion]),
     ].join('\n');
 }
 function buildFunctionPreamble(ast, options) {
@@ -290,32 +297,41 @@ function validateDirectives(ast) {
         validateNodeDirectives(node);
 }
 function validateNodeDirectives(node) {
-    if (node.type === 'element') {
-        if (!node.tag || node.tag === 'Fragment')
-            partitionFragmentAttributes(node.attrs);
-        validateContentDirectives(node.attrs, node.children.length > 0);
-        for (const child of node.children)
-            validateNodeDirectives(child);
+    if ('children' in node) {
+        validateChildDirectiveNode(node);
+        return;
     }
-    else if (node.type === 'slot') {
-        for (const child of node.children)
-            validateNodeDirectives(child);
-    }
-    else if (node.type === 'script' || node.type === 'style') {
+    if ('attrs' in node)
         validateContentDirectives(node.attrs, node.content.length > 0);
-    }
+}
+function validateChildDirectiveNode(node) {
+    if (node.type === 'element')
+        validateElementDirectives(node);
+    else
+        validateChildDirectives(node.children);
+}
+function validateElementDirectives(node) {
+    if (!node.tag || node.tag === 'Fragment')
+        partitionFragmentAttributes(node.attrs);
+    validateContentDirectives(node.attrs, node.children.length > 0);
+    validateChildDirectives(node.children);
+}
+function validateChildDirectives(children) {
+    for (const child of children)
+        validateNodeDirectives(child);
 }
 function validateContentDirectives(attrs, hasChildren) {
-    const names = new Set(attrs.filter((attr) => !('type' in attr)).map((attr) => attr.name));
-    if (names.has('set:html') && names.has('set:text'))
+    const directive = contentDirective(attrs);
+    if (directive === 'both')
         throw new Error('InvalidDirective: cannot use both set:html and set:text');
-    const directive = names.has('set:html')
-        ? 'set:html'
-        : names.has('set:text')
-            ? 'set:text'
-            : undefined;
     if (hasChildren && directive)
         throw new Error(`InvalidDirective: cannot use ${directive} with children`);
+}
+function contentDirective(attrs) {
+    const names = new Set(attrs.filter((attr) => !('type' in attr)).map((attr) => attr.name));
+    if (names.has('set:html'))
+        return names.has('set:text') ? 'both' : 'set:html';
+    return names.has('set:text') ? 'set:text' : undefined;
 }
 const NODE_EMITTERS = {
     text: emitTextNode,
@@ -357,10 +373,41 @@ function emitRawTemplateNode(node, _, __, target) {
     return [`${target} += ${JSON.stringify(node.html)};`];
 }
 function emitExpressionNode(node, components, options, target) {
+    const map = options?.precompiled && target !== STREAMING_TARGET ? renderableMapExpression(node) : undefined;
+    if (map)
+        return emitRenderableMap(map, components, options, target);
     const source = expressionSource(node, components, options);
     if (isCommentExpression(source))
         return [];
     return [`${target} += ${applyExpressionOptions(source, options)};`];
+}
+function renderableMapExpression(expr) {
+    if (expr.nodes?.length !== 3 || typeof expr.nodes[0] !== 'string')
+        return undefined;
+    if (typeof expr.nodes[1] === 'string' || typeof expr.nodes[2] !== 'string')
+        return undefined;
+    const split = expr.nodes[0].lastIndexOf('.map(');
+    if (split < 1 || expr.nodes[2].trim() !== ')')
+        return undefined;
+    const receiver = expr.nodes[0].slice(0, split).trim();
+    const callback = expr.nodes[0].slice(split + 5);
+    if (receiver.endsWith('?') || !/^\s*(?:\([^()]*\)|[$A-Z_a-z][$\w]*)\s*=>\s*$/.test(callback))
+        return undefined;
+    return { receiver, callback, node: expr.nodes[1], suffix: expr.nodes[2] };
+}
+function emitRenderableMap(map, components, options, target) {
+    const fallback = `${target} += ${applyExpressionOptions(`__array.map(${map.callback}${rawHtmlExpressionFromNode(map.node, components, options)}${map.suffix}`, options)};`;
+    return [
+        `{ const __array = (${map.receiver});`,
+        `  if (!__autoFilter && Array.isArray(__array) && Object.getPrototypeOf(__array) === Array.prototype && __array.map === Array.prototype.map) {`,
+        `    __array.forEach(${map.callback}{`,
+        ...emitNode(map.node, components, options, target).map((line) => '      ' + line),
+        `    });`,
+        `  } else {`,
+        `    ${fallback}`,
+        `  }`,
+        `}`,
+    ];
 }
 function expressionSource(node, components, options) {
     return node.nodes?.length === 1 && typeof node.nodes[0] === 'string'
@@ -371,6 +418,8 @@ function isCommentExpression(source) {
     return /^\s*(\/\*[\s\S]*\*\/|\/\/.*)\s*$/.test(source);
 }
 function applyExpressionOptions(source, options) {
+    if (options?.precompiled)
+        return `__expression(${source})`;
     const expression = shouldFilterExpression(options) ? `__filter(${source})` : source;
     return `__escape(${expression})`;
 }
@@ -414,7 +463,6 @@ function emitStaticSlot(node, components, options, target) {
     lines.push(`}`);
     return lines;
 }
-// fallow-ignore-next-line complexity
 function emitAssetNode(tag, content, attrs, components, options, target) {
     if (options?.aggregateAssets)
         return [];
@@ -436,40 +484,121 @@ function isComponentElement(node) {
 }
 function emitHtmlElement(node, components, options, target) {
     const attributes = partitionElementAttributes(node.attrs);
-    if (isVoidOrDeclaration(node.tag) || (node.selfClosing && /^[A-Z]/.test(node.tag))) {
-        const lines = emitElementOpeningTag(node.tag, attributes, components, options, target);
-        lines.push(`${target} += ${node.tag.startsWith('!') ? '">"' : '" />"'};`);
-        return lines;
-    }
-    return attributes.hasSpread || attributes.setHtml || attributes.setText
-        ? emitDirectiveElement(node, attributes, components, options, target)
-        : emitNonVoidElement(node, attributes, emitElementOpeningTag(node.tag, attributes, components, options, target), components, options, target);
+    return isVoidOrDeclaration(node.tag)
+        ? emitVoidElement(node, attributes, components, options, target)
+        : emitHtmlElementBody(node, attributes, components, options, target);
 }
-function emitDirectiveElement(node, attributes, components, options, target) {
-    if (attributes.setHtml && attributes.setText)
-        throw new Error('InvalidDirective: cannot use both set:html and set:text');
-    if (node.children.length > 0 && attributes.setHtml)
-        throw new Error('InvalidDirective: cannot use set:html with children');
-    if (node.children.length > 0 && attributes.setText)
-        throw new Error('InvalidDirective: cannot use set:text with children');
+function emitVoidElement(node, attributes, components, options, target) {
+    const lines = emitElementOpeningTag(node.tag, attributes, components, options, target);
+    lines.push(`${target} += ${node.tag.startsWith('!') ? '">"' : '" />"'};`);
+    return lines;
+}
+function emitHtmlElementBody(node, attributes, components, options, target) {
+    if (attributes.hasSpread || attributes.setHtml || attributes.setText)
+        return emitDirectiveElement(node, components, options, target);
+    return emitNonVoidElement(node, attributes, emitElementOpeningTag(node.tag, attributes, components, options, target), components, options, target);
+}
+function emitDirectiveElement(node, components, options, target) {
     const lines = emitSpreadOpeningTag(node.tag, node.attrs, components, options, target, false, true);
-    lines.push(`${target} += ">";`);
-    if (node.children.length > 0) {
-        lines.push(`if (__hasSetHtml) throw new Error("InvalidDirective: cannot use set:html with children");`, `if (__hasSetText) throw new Error("InvalidDirective: cannot use set:text with children");`, ...emitChildren(node.children, components, options, target));
-    }
-    else {
-        lines.push(`if (__hasSetHtml) {`, emitRawHtmlValue('__setHtml', target), `} else if (__hasSetText) {`, `${target} += __escape(__setText);`, `}`);
-    }
+    lines.push(`${target} += ">";`, ...emitDirectiveContent(node, components, options, target));
     lines.push(`${target} += ${JSON.stringify(`</${node.tag}>`)};`, `}`);
     return lines;
 }
+function emitDirectiveContent(node, components, options, target) {
+    if (node.children.length === 0)
+        return [
+            `if (__hasSetHtml) {`,
+            emitRawHtmlValue('__setHtml', target),
+            `} else if (__hasSetText) {`,
+            `${target} += __escape(__setText);`,
+            `}`,
+        ];
+    return [
+        `if (__hasSetHtml) throw new Error("InvalidDirective: cannot use set:html with children");`,
+        `if (__hasSetText) throw new Error("InvalidDirective: cannot use set:text with children");`,
+        ...emitChildren(node.children, components, options, target),
+    ];
+}
 function emitElementOpeningTag(tag, attributes, components, options, target) {
-    if (!attributes.hasSpread &&
-        attributes.standardAttrs.every(isStaticAttribute) &&
-        !attributes.standardAttrs.some((attr) => isClassAttribute(attr.name))) {
-        return emitStaticOpeningTag(tag, attributes.standardAttrs, options, target);
-    }
+    if (!attributes.hasSpread && canEmitDirectOpeningTag(attributes.standardAttrs))
+        return emitDirectOpeningTag(tag, attributes.standardAttrs, components, options, target);
     return emitSpreadOpeningTag(tag, attributes.standardAttrs, components, options, target);
+}
+function canEmitDirectOpeningTag(attrs) {
+    const ordinary = new Set();
+    let classes = 0;
+    let styles = 0;
+    for (const attr of attrs) {
+        if ('type' in attr)
+            return false;
+        if (isClassAttribute(attr.name))
+            classes++;
+        else if (attr.name === 'style')
+            styles++;
+        else if (ordinary.has(attr.name))
+            return false;
+        else
+            ordinary.add(attr.name);
+    }
+    return classes < 2 && styles < 2;
+}
+function emitDirectOpeningTag(tag, attrs, components, options, target) {
+    const ordinary = attrs.filter((attr) => !isClassAttribute(attr.name) && attr.name !== 'style');
+    const classAttr = attrs.find((attr) => isClassAttribute(attr.name));
+    const styleAttr = attrs.find((attr) => attr.name === 'style');
+    return [
+        `${target} += ${JSON.stringify('<' + tag)};`,
+        ...ordinary.flatMap((attr) => emitDirectAttribute(tag, attr, components, options, target)),
+        ...emitDirectClass(classAttr, components, options, target),
+        ...emitDirectStyle(styleAttr, components, options, target),
+    ];
+}
+function emitDirectAttribute(tag, attr, components, options, target) {
+    if (attr.value === true || typeof attr.value === 'string')
+        return [
+            `${target} += ${JSON.stringify(staticAttribute(attr.name, attr.value, options, tag))};`,
+        ];
+    const source = transformExpression(attr.value, components, options);
+    const name = JSON.stringify(` ${attr.name}`);
+    const bare = `${target} += ${name};`;
+    const value = `${target} += ${name} + '="' + __escape(String(__v)) + '"';`;
+    if (isNativeBooleanAttribute(tag, attr.name))
+        return [`{ const __v = (${source});`, `  if (__v === "" || __v) ${bare}`, `}`];
+    return [
+        `{ const __v = (${source});`,
+        `  if (__v != null) {`,
+        `    if (__v === "") ${bare}`,
+        `    else ${value}`,
+        `  }`,
+        `}`,
+    ];
+}
+function emitDirectClass(attr, components, options, target) {
+    if (!attr || attr.value === true)
+        return [];
+    if (typeof attr.value === 'string')
+        return [`${target} += ${JSON.stringify(staticAttribute('class', attr.value, options))};`];
+    const source = transformExpression(attr.value, components, options);
+    const value = attr.name === 'class:list' ? `__classList(${source})` : source;
+    return [
+        `${target} += ((__class) => __class ? ' class="' + __escape(String(__class)) + '"' : "")(${value});`,
+    ];
+}
+function emitDirectStyle(attr, components, options, target) {
+    if (!attr || attr.value === true)
+        return [];
+    if (typeof attr.value === 'string') {
+        const style = mergeStyleValues([attr.value]);
+        return style
+            ? [`${target} += ${JSON.stringify(staticAttribute('style', style, options))};`]
+            : [];
+    }
+    const source = transformExpression(attr.value, components, options);
+    return [
+        `{ const __style = __styleObject(${source}).trim().replace(/^;+|;+$/g, "");`,
+        `  if (__style) ${target} += ' style="' + __escape(__style) + '"';`,
+        `}`,
+    ];
 }
 function isStaticAttribute(attr) {
     return !('type' in attr) && (attr.value === true || typeof attr.value === 'string');
@@ -486,7 +615,6 @@ function emitStaticOpeningTag(tag, attrs, options, target) {
             [...ordinary.values(), ...special, style && staticAttribute('style', style, options)].join(''))};`,
     ];
 }
-// fallow-ignore-next-line complexity
 function addStaticAttribute(tag, attr, ordinary, special, styles, options) {
     if (attr.value !== true && typeof attr.value !== 'string')
         return;
@@ -501,7 +629,6 @@ function addStaticAttribute(tag, attr, ordinary, special, styles, options) {
         ordinary.set(attr.name, staticAttribute(attr.name, attr.value, options, tag));
     }
 }
-// fallow-ignore-next-line complexity
 function staticAttribute(name, value, options, tag) {
     if (value === true)
         return tag?.includes('-') ? ` ${name}="true"` : ` ${name}`;
@@ -530,18 +657,13 @@ function emitNonVoidElement(node, attributes, lines, components, options, target
 }
 function emitFragment(node, components, options, target) {
     const attributes = partitionFragmentAttributes(node.attrs);
-    if (attributes.setHtml && attributes.setText)
-        throw new Error('InvalidFragment: cannot use both set:html and set:text');
-    if (attributes.setHtml) {
-        if (node.children.length > 0)
-            throw new Error('InvalidFragment: cannot use set:html with children');
+    return emitFragmentContent(node, attributes, components, options, target);
+}
+function emitFragmentContent(node, attributes, components, options, target) {
+    if (attributes.setHtml)
         return emitHtmlDirective(attributes.setHtml, components, options, target);
-    }
-    if (attributes.setText) {
-        if (node.children.length > 0)
-            throw new Error('InvalidFragment: cannot use set:text with children');
+    if (attributes.setText)
         return emitTextDirective(attributes.setText, components, options, target);
-    }
     return emitChildren(node.children, components, options, target);
 }
 function partitionFragmentAttributes(attrs) {
@@ -598,7 +720,15 @@ function emitDynamicOpeningTag(tag, attrs, components, options, target) {
     return emitCollectedOpeningTag(`"<" + ${tag}`, `${tag}.includes("-")`, attrs, components, options, target);
 }
 function emitCollectedOpeningTag(opening, customElement, attrs, components, options, target, closeScope = true, supportsContentDirectives = false) {
-    const lines = [
+    const lines = emitCollectedOpeningScope(target, opening, customElement, supportsContentDirectives);
+    for (const attr of attrs)
+        lines.push(...emitSpreadAttribute(attr, components, options, supportsContentDirectives));
+    lines.push(...emitCollectedDirectiveValidation(supportsContentDirectives));
+    lines.push(...emitCollectedSpreadValues(target));
+    return closeScope ? [...lines, `}`] : lines;
+}
+function emitCollectedOpeningScope(target, opening, customElement, supportsContentDirectives) {
+    return [
         `${target} += ${opening};`,
         `{`,
         `  const __attrs = Object.create(null);`,
@@ -608,28 +738,30 @@ function emitCollectedOpeningTag(opening, customElement, attrs, components, opti
         `  const __isCustomElement = ${customElement};`,
         `  const __classes = [];`,
         `  const __styles = [];`,
-        ...(supportsContentDirectives
-            ? [
-                `  let __hasSetHtml = false;`,
-                `  let __setHtml;`,
-                `  let __hasSetText = false;`,
-                `  let __setText;`,
-            ]
-            : []),
+        ...contentDirectiveVariables(supportsContentDirectives),
         `  const __setAttr = (__k, __v) => {`,
         `    if (__v == null) { delete __attrs[__k]; return; }`,
         `    if (!Object.hasOwn(__seenAttrs, __k)) { __seenAttrs[__k] = true; __attrOrder.push(__k); }`,
         `    __attrs[__k] = __v;`,
         `  };`,
     ];
-    for (const attr of attrs)
-        lines.push(...emitSpreadAttribute(attr, components, options, supportsContentDirectives));
-    if (supportsContentDirectives)
-        lines.push(`  if (__hasSetHtml && __hasSetText) throw new Error("InvalidDirective: cannot use both set:html and set:text");`);
-    lines.push(...emitCollectedSpreadValues(target));
-    if (closeScope)
-        lines.push(`}`);
-    return lines;
+}
+function contentDirectiveVariables(supportsContentDirectives) {
+    return supportsContentDirectives
+        ? [
+            `  let __hasSetHtml = false;`,
+            `  let __setHtml;`,
+            `  let __hasSetText = false;`,
+            `  let __setText;`,
+        ]
+        : [];
+}
+function emitCollectedDirectiveValidation(supportsContentDirectives) {
+    return supportsContentDirectives
+        ? [
+            `  if (__hasSetHtml && __hasSetText) throw new Error("InvalidDirective: cannot use both set:html and set:text");`,
+        ]
+        : [];
 }
 function emitSpreadAttribute(attr, components, options, supportsContentDirectives) {
     return 'type' in attr
@@ -663,21 +795,28 @@ function emitSpreadObject(attr, components, options, supportsContentDirectives) 
     ];
 }
 function emitSpreadNamedAttribute(attr, components, options, supportsContentDirectives) {
-    if (supportsContentDirectives && attr.name === 'set:html')
-        return [
-            `  __hasSetHtml = true;`,
-            `  __setHtml = ${spreadOrdinaryAttributeValue(attr, components, options)};`,
-        ];
-    if (supportsContentDirectives && attr.name === 'set:text')
-        return [
-            `  __hasSetText = true;`,
-            `  __setText = ${spreadOrdinaryAttributeValue(attr, components, options)};`,
-        ];
+    const directive = supportsContentDirectives ? contentDirectiveAttribute(attr.name) : undefined;
+    return directive
+        ? emitSpreadContentDirective(attr, directive, components, options)
+        : emitSpreadRegularAttribute(attr, components, options);
+}
+function emitSpreadRegularAttribute(attr, components, options) {
     if (isClassAttribute(attr.name))
         return emitSpreadClassAttribute(attr, components, options);
-    if (attr.name === 'style')
-        return emitSpreadStyleAttribute(attr, components, options);
-    return emitSpreadOrdinaryAttribute(attr, components, options);
+    return attr.name === 'style'
+        ? emitSpreadStyleAttribute(attr, components, options)
+        : emitSpreadOrdinaryAttribute(attr, components, options);
+}
+function contentDirectiveAttribute(name) {
+    if (name === 'set:html')
+        return 'Html';
+    return name === 'set:text' ? 'Text' : undefined;
+}
+function emitSpreadContentDirective(attr, directive, components, options) {
+    return [
+        `  __hasSet${directive} = true;`,
+        `  __set${directive} = ${spreadOrdinaryAttributeValue(attr, components, options)};`,
+    ];
 }
 function isClassAttribute(name) {
     return name === 'class' || name === 'className' || name === 'class:list';
@@ -688,7 +827,6 @@ function emitSpreadClassAttribute(attr, components, options) {
 function emitSpreadStyleAttribute(attr, components, options) {
     return [`  __styles.push(${spreadAttributeValue(attr, '__styleObject', components, options)});`];
 }
-// fallow-ignore-next-line complexity
 function spreadAttributeValue(attr, helper, components, options) {
     if (attr.value === true)
         return '""';
@@ -895,7 +1033,6 @@ function getSlotName(attr, components, options) {
         ? JSON.stringify('')
         : transformExpression(attr.value, components, options);
 }
-// fallow-ignore-next-line complexity
 function emitResolvedComponentCall(localName, props, target, options) {
     if (target === STREAMING_TARGET) {
         const stream = options?.precompiled || options?.streamComponents;
@@ -996,18 +1133,18 @@ function compileSources(ast, templateId) {
         return { ok: false, error: importError };
     try {
         validateDirectives(ast);
-        // Generated modules select filtering from their runtime receiver.
-        const options = { autoFilter: true, precompiled: true };
-        return {
-            ok: true,
-            renderString: ast.frontmatter.hasAwait
-                ? `throw new Error(${JSON.stringify(unsupportedFrontmatterAwait(ast)?.message)});`
-                : buildFunctionBody(ast, {}, options, '__out', 'return __out;'),
-            streamString: buildStreamingFunctionBody(ast, {}, options),
-        };
+        return compileValidatedSources(ast);
     }
     catch (error) {
         return compileFailure(error);
     }
+}
+function compileValidatedSources(ast) {
+    // Generated modules select filtering from their runtime receiver.
+    const options = { autoFilter: true, precompiled: true };
+    const renderString = ast.frontmatter.hasAwait
+        ? `throw new Error(${JSON.stringify(unsupportedFrontmatterAwait(ast)?.message)});`
+        : buildFunctionBody(ast, {}, options, '__out', 'return __out;');
+    return { ok: true, renderString, streamString: buildStreamingFunctionBody(ast, {}, options) };
 }
 //# sourceMappingURL=compiler.js.map

@@ -19,38 +19,6 @@ export function templateFor(case_, request) {
   return { id: request, source };
 }
 
-/**
- * Wraps one precompile artifact's render/stream bodies in a static ESM module.
- * `runtimeUrl` and `componentUrl(id)` return import specifiers, so the same
- * wrapper serves data-URL modules (tests, reports) and generated files
- * (browser artifacts).
- */
-export function wrapPrecompiledModule(artifact, runtimeUrl, componentUrl) {
-  const components = artifact.components.map((component, index) => ({
-    ...component,
-    render: `__component_${index}_render`,
-    stream: `__component_${index}_stream`,
-  }));
-  const imports = components
-    .map(
-      ({ id, render, stream }) =>
-        `import { render as ${render}, stream as ${stream} } from ${JSON.stringify(componentUrl(id))};`
-    )
-    .join('\n');
-  return `import { runtime } from ${JSON.stringify(runtimeUrl)};
-${imports}
-export function render(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
-  const __components = { ${components.map(({ localName, render }) => `${JSON.stringify(localName)}: ${render}`).join(', ')} };
-${artifact.renderString}
-}
-export async function* stream(props, slots = {}) {
-  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
-  const __components = { ${components.map(({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`).join(', ')} };
-${artifact.streamString}
-}`;
-}
-
 export function sourceSikka(case_, modules) {
   return new modules.Sikka({
     mode: 'source',
@@ -71,7 +39,10 @@ export async function precompiledSikka(case_, modules) {
     const artifact = byId.get(id);
     if (!artifact) throw new Error(`Missing artifact: ${id}`);
     const url = `data:text/javascript,${encodeURIComponent(
-      wrapPrecompiledModule(artifact, modules.runtimeUrl, moduleUrl)
+      modules.emitModule(artifact, {
+        runtimeSpecifier: modules.runtimeUrl,
+        componentSpecifier: ({ id: componentId }) => moduleUrl(componentId),
+      })
     )}`;
     urls.set(id, url);
     return url;

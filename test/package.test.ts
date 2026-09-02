@@ -41,7 +41,6 @@ const packageFiles = [
   'dist/esm/runtime.d.ts',
   'dist/esm/runtime.js',
   'dist/esm/types.d.ts',
-  'docs/SIKKA_1.0_CONTRACT.md',
   'package.json',
 ];
 
