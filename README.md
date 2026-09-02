@@ -1,68 +1,99 @@
 # Sikka (سكّة)
 
-A zero-dependency, runtime-agnostic Template engine with Astro-like syntax.
-The [Sikka 1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) is the normative API and
-syntax reference.
+Sikka is a zero-dependency Template engine. Its [1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) is the normative API and syntax reference; [the syntax guide](README.astro-syntax.md) is a concise, self-contained guide.
 
-## Installation
+## Install
 
 ```bash
 npm install sikka
 ```
 
-## Render source Templates
+## Render Template source
 
-Sikka requires an explicit mode. In `source` mode, the host synchronously
-resolves every entry and Frontmatter Component request to its canonical Template
-identity and source. The resolver owns any storage and path resolution.
+Choose `source` explicitly. Its synchronous resolver owns storage, paths, and canonical Template identities. It receives an entry request or a Frontmatter Component specifier plus the importing identity.
 
 ```ts
 import { Sikka } from 'sikka';
 
-const templates = new Map([['home', '<h1>{Astro.props.title}</h1>']]);
+const templates = new Map([
+  [
+    'home',
+    {
+      id: 'pages/home.astro',
+      source: '---\nimport Card from "./Card.astro";\n---\n<Card title={Astro.props.title} />',
+    },
+  ],
+  ['./Card.astro', { id: 'components/Card.astro', source: '<h1>{Astro.props.title}</h1>' }],
+]);
 
 const sikka = new Sikka({
   mode: 'source',
-  resolver(request) {
-    const source = templates.get(request);
-    if (source === undefined) throw new Error(`Unknown Template: ${request}`);
-    return { id: `templates/${request}.astro`, source };
+  resolver(request, importer) {
+    const template = templates.get(request);
+    if (!template) throw new Error(`Unknown Template ${request} from ${importer ?? 'entry'}`);
+    return template;
   },
 });
 
 const html = sikka.render('home', { title: 'Hello' });
 for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
-  // write chunk
+  // write(chunk)
 }
 ```
 
-Components are discovered only through `.astro` imports in Frontmatter. The
-resolver receives the import specifier and importing canonical identity.
-Source Render and Streaming compilation caches are separate and use canonical
-identities; `invalidate(id)` clears both, while `invalidate()` clears all.
-`cache`, `cacheSize`, and custom `Cache` configuration are supported.
+Components come only from non-type `.astro` imports in Frontmatter. Source regular and Streaming compilation caches are separate and use the canonical `id`; `invalidate(id)` clears both for that identity and `invalidate()` clears both caches. `cache: true`, `cache: false`, `cacheSize`, or a custom `Cache` control caching.
+
+Source mode dynamically evaluates Template source. Treat every Template as trusted application code; it is not suitable for a strict Content Security Policy.
 
 ## Precompile Template graphs
 
-Build tools compile source graphs without evaluating generated source or writing
-files. `compile` is exported only from `sikka/precompile`.
+`compile` is the standalone synchronous build API, exported only from `sikka/precompile`. It follows the same resolver contract, returns one artifact per canonical identity, and never writes files or evaluates generated source.
 
 ```ts
 import { compile } from 'sikka/precompile';
 
 const artifacts = compile(['home', 'about'], { resolver });
-// artifact.id, artifact.renderString, artifact.streamString, artifact.components
+// artifact: { abiVersion, id, renderString, streamString, components }
 ```
 
-Each artifact records its canonical identity and direct Component edges. The
-host owns output paths, ESM module wrapping, static Component linking, and I/O.
-Generated modules conventionally use a `*.sikka.mjs` suffix and export named
-`render` and `stream` functions.
+An artifact's `components` are its direct Frontmatter edges: `{ localName, specifier, id }`. A build tool owns output paths, I/O, ESM wrapping, and static links for those edges. The conventional emitted filename is `*.sikka.mjs`. `renderString` and `streamString` are distinct function bodies, not modules or strings to evaluate.
+
+A generated module has named `render` and `stream` exports, no default export. It imports `runtime` from `sikka/runtime`, binds the returned helpers with its `this` receiver, statically links Component `render` exports into the regular body and `stream` exports into the Streaming body. `sikka/runtime` is the generated-code ABI: it exports `RUNTIME_ABI_VERSION` and `runtime(receiver)`, whose helpers are `escape`, `RawHtml`, `components`, `classList`, `styleObject`, `filter`, and `aggregateAssets`. Its ABI version and the artifact ABI version must be preserved by generators.
+
+```ts
+import { runtime } from 'sikka/runtime';
+import { render as cardRender, stream as cardStream } from './Card.sikka.mjs';
+
+export function render(props, slots = {}) {
+  const {
+    escape: __escape,
+    RawHtml: __RawHtml,
+    classList: __classList,
+    styleObject: __styleObject,
+    filter: __filter,
+    aggregateAssets: __aggregateAssets,
+  } = runtime(this);
+  const __components = { Card: cardRender };
+  // artifact.renderString
+}
+
+export async function* stream(props, slots = {}) {
+  const {
+    escape: __escape,
+    RawHtml: __RawHtml,
+    classList: __classList,
+    styleObject: __styleObject,
+    filter: __filter,
+    aggregateAssets: __aggregateAssets,
+  } = runtime(this);
+  const __components = { Card: cardStream };
+  // artifact.streamString
+}
+```
 
 ## Render precompiled Templates
 
-Load generated modules before Sikka invokes the resolver. Sikka does not import,
-compile, or evaluate them.
+Load generated modules before rendering. In `precompiled` mode the synchronous resolver returns an already-loaded module; Sikka does not import, compile, or evaluate it. Precompiled rendering performs no string evaluation and is the strict-CSP path.
 
 ```ts
 const modules = new Map([['home', await import('./generated/home.sikka.mjs')]]);
@@ -70,38 +101,37 @@ const sikka = new Sikka({
   mode: 'precompiled',
   resolver(entry) {
     const module = modules.get(entry);
-    if (!module) throw new Error(`Unknown loaded Template: ${entry}`);
+    if (!module) throw new Error(`Unknown loaded Template ${entry}`);
     return module;
   },
 });
 
-const html = sikka.render('home', { title: 'Hello' });
-for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
-  // write chunk
-}
+sikka.render('home', { title: 'Hello' });
 ```
 
-Precompiled modules receive runtime configuration from the Sikka instance that
-calls them. `sikka/runtime` exports the generated-code ABI helpers; it is not an
-application rendering API.
+Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, `debug`, and `varName` (default `Astro`).
 
-## Streaming
+## Escaping and trust
 
-Streaming preserves regular Rendered HTML except for awaited Frontmatter, which
-is supported only by `stream`. Pending source content flushes before each
-Component boundary and Components stream in source order. Other chunk boundaries
-are unspecified.
+With default escaping, interpolated values, HTML attribute values, and `set:text` values are escaped. `set:html`, including `{...{ 'set:html': value }}`, inserts verbatim HTML; it is not sanitization. `is:raw` emits its child Template source verbatim rather than evaluating it. `autoEscape: false` disables automatic escaping globally. `RawHtml` is a generated-runtime helper for trusted verbatim values, not an application rendering API.
+
+Only use `set:html`, `RawHtml`, `autoEscape: false`, and trusted Template source with content your application has decided to trust. Sikka does not sanitize data or make that decision for you.
+
+## Streaming and diagnostics
+
+Streaming produces the same Rendered HTML as regular rendering except that awaited Frontmatter is Streaming-only; regular `render` rejects it. Pending source content flushes before each Component, which renders in source order. Other chunk boundaries are not Stable.
+
+Public failures are `SikkaError` instances. Their stable `category` is `Parse`, `Resolve`, `Compile`, or `Render`; context can include `template`, `request`, `importer`, `construct`, `cause`, and parse `line`/`column`. Message wording is not Stable.
+
+## Release evidence
+
+Node.js 24 and bundled Chromium are release-evidence targets only, not runtime or version support promises. This project makes no security-response or service-level commitment.
 
 ## Development
 
 ```bash
 nub install
-nub run format
-nub run lint
-nub run fallow
-nub run typecheck
-nub run test
-nub run test:coverage
+nub run format && nub run lint && nub run fallow && nub run typecheck && nub run test && nub run test:coverage
 ```
 
 ## License
