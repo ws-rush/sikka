@@ -49,12 +49,15 @@ async function createCandidateArtifacts(arguments_) {
         .filter((case_) => case_.modes.includes('precompiled'))
         .map((case_) => case_.id),
       property: { seed: '0x53494b4b', runs: 100, ids: PROPERTY_IDS },
+      propertyCases: propertyCases(),
     });
     await copyRuntimeFiles(consumer, output);
     const generated = runInstalled(consumer, ['--generate', manifestInput, output]);
     const manifest = JSON.parse(await readFile(manifestInput, 'utf8'));
     manifest.templates = generated.templates;
     manifest.templateFiles = generated.templateFiles;
+    manifest.propertyTemplates = generated.propertyTemplates;
+    delete manifest.propertyCases;
     manifest.runtime = {
       bundle: 'sikka-runtime.mjs',
       runtime: 'runtime.js',
@@ -92,15 +95,26 @@ async function createCandidateArtifacts(arguments_) {
 async function generateTemplates(manifestPath, output) {
   const { compile } = await import('sikka/precompile');
   const { templateFor, wrapPrecompiledModule } = await import(process.env.SIKKA_CORPUS_URL);
-  const { cases } = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const { cases } = manifest;
   const templates = {};
+  const propertyTemplates = {};
   const templateFiles = [];
-  for (const case_ of cases.filter((item) => item.modes.includes('precompiled'))) {
+  for (const case_ of cases.filter((item) => item.modes.includes('precompiled')))
+    templates[case_.id] = await generateCase(case_, case_.id);
+  for (const [propertyId, casesForProperty] of Object.entries(manifest.propertyCases ?? {})) {
+    propertyTemplates[propertyId] = {};
+    for (const case_ of casesForProperty)
+      propertyTemplates[propertyId][case_.id] = await generateCase(case_, propertyId);
+  }
+  process.stdout.write(JSON.stringify({ templates, propertyTemplates, templateFiles }));
+
+  async function generateCase(case_, directory) {
     const artifacts = compile(case_.id, { resolver: (request) => templateFor(case_, request) });
     const files = new Map(
       artifacts.map((artifact, index) => [artifact.id, `template-${index}.sikka.mjs`])
     );
-    const caseDirectory = join(output, 'templates', case_.id);
+    const caseDirectory = join(output, 'templates', directory);
     await mkdir(caseDirectory, { recursive: true });
     for (const artifact of artifacts) {
       const filename = files.get(artifact.id);
@@ -119,9 +133,8 @@ async function generateTemplates(manifestPath, output) {
     }
     const entry = files.get(case_.id);
     if (!entry) throw new Error(`Missing browser entry for ${case_.id}`);
-    templates[case_.id] = `templates/${case_.id}/${entry}`;
+    return `templates/${directory}/${entry}`;
   }
-  process.stdout.write(JSON.stringify({ templates, templateFiles }));
 }
 
 async function validateCandidate(manifestPath) {
@@ -268,6 +281,44 @@ async function runPortableProperties({
     equal(componentPrecompiled.render(component.id, props_), expected);
   });
   onComplete('portable-component-isolation');
+}
+
+function propertyCases() {
+  return {
+    'portable-deterministic-render': [
+      { id: 'property-render', template: '<p>{Astro.props.value}</p>', components: {}, props: {} },
+    ],
+    'portable-null-default-props': [
+      { id: 'property-null-props', template: '<p>static</p>', components: {}, props: {} },
+    ],
+    'portable-frontmatter-equivalence': [
+      { id: 'property-plain', template: '<p>{Astro.props.value}</p>', components: {}, props: {} },
+      {
+        id: 'property-fenced',
+        template: '---\n---\n<p>{Astro.props.value}</p>',
+        components: {},
+        props: {},
+      },
+    ],
+    'portable-escaping-list': [
+      {
+        id: 'property-list',
+        template:
+          '<h1>{Astro.props.name}</h1><ul>{Astro.props.items.map((item) => <li>{item}</li>)}</ul>',
+        components: {},
+        props: {},
+      },
+    ],
+    'portable-component-isolation': [
+      {
+        id: 'property-component',
+        template:
+          '---\nimport Item from "./item.astro";\n---\n<Item text={Astro.props.left} /><Item text={Astro.props.right} />',
+        components: { './item.astro': '<span>{Astro.props.text}</span>' },
+        props: {},
+      },
+    ],
+  };
 }
 
 async function installCandidate(tarball) {
