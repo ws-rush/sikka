@@ -7,9 +7,7 @@ syntax reference.
 ## Installation
 
 ```bash
-deno add @rush/sikka
-# or
-bunx jsr add @rush/sikka
+npm install sikka
 ```
 
 ## Render source Templates

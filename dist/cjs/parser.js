@@ -1,3 +1,4 @@
+"use strict";
 /**
  * Parser
  *
@@ -8,6 +9,9 @@
  *   2. Collect `import` statements from frontmatter
  *   3. Recursive-descent parse of the template body
  */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.VOID_ELEMENTS = void 0;
+exports.parse = parse;
 function positionAt(source, offset) {
     let line = 1;
     let column = 1;
@@ -586,7 +590,7 @@ class Parser {
     parseOpenedGenericElement(tag, attrs, start) {
         if (this.hasRawAttribute(attrs))
             return this.parseRawElement(tag, attrs);
-        if (VOID_ELEMENTS.has(tag.toLowerCase())) {
+        if (exports.VOID_ELEMENTS.has(tag.toLowerCase())) {
             return { ok: true, node: this.createElement(tag, attrs, [], false) };
         }
         return this.parseElementChildren(tag, attrs, start);
@@ -833,7 +837,7 @@ class Parser {
     }
 }
 // ─── Void elements (HTML5) ────────────────────────────────────────────────────
-export const VOID_ELEMENTS = new Set([
+exports.VOID_ELEMENTS = new Set([
     '!doctype',
     'area',
     'base',
@@ -857,7 +861,7 @@ export const VOID_ELEMENTS = new Set([
  * Returns `{ ok: true, ast }` on success or `{ ok: false, error }` on failure.
  * All errors include a `line` and `column` pointing to the fault location.
  */
-export function parse(source) {
+function parse(source) {
     // 1. Extract frontmatter
     const fmResult = extractFrontmatter(source);
     if (!fmResult.ok)

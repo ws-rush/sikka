@@ -1,3 +1,6 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createCache = createCache;
 /**
  * Create a Cache instance backed by a Map.
  *
@@ -6,7 +9,7 @@
  *
  * `get` updates recency — the accessed entry moves to the most-recently-used position.
  */
-export function createCache(maxSize) {
+function createCache(maxSize) {
     // Map preserves insertion order; we exploit this for LRU tracking.
     // Most-recently-used entries are at the end; LRU entry is at the front.
     const store = new Map();

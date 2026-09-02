@@ -1,3 +1,4 @@
+"use strict";
 /**
  * HTML Escaper
  *
@@ -5,20 +6,25 @@
  *   - `RawHtml`  — a wrapper that marks content as trusted/pre-escaped
  *   - `escapeHtml` — escapes untrusted values before HTML insertion
  */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RawHtml = void 0;
+exports.escapeHtml = escapeHtml;
+exports.stringifyHtml = stringifyHtml;
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
 const RAW_HTML = Symbol.for('sikka.raw-html');
-export class RawHtml {
+class RawHtml {
     value;
     [RAW_HTML] = true;
     constructor(value) {
         this.value = value;
     }
 }
+exports.RawHtml = RawHtml;
 const ESCAPE_TEST_RE = /[&<>"']/;
 /**
  * Escape an untrusted value for safe HTML insertion.
  */
-export function escapeHtml(value) {
+function escapeHtml(value) {
     if (typeof value === 'string')
         return escapeString(value);
     if (isRawHtml(value))
@@ -28,7 +34,7 @@ export function escapeHtml(value) {
     return escapeString(stringifyHtml(value));
 }
 /** Coerce an Expression value without HTML escaping. */
-export function stringifyHtml(value) {
+function stringifyHtml(value) {
     return Array.isArray(value) ? stringifyArray(value) : stringifyValue(value);
 }
 function stringifyValue(value) {

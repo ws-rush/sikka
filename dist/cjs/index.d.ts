@@ -25,4 +25,3 @@ export declare class Sikka {
     private resolveSource;
     private parseTemplate;
 }
-//# sourceMappingURL=index.d.ts.map

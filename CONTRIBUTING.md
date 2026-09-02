@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to Sikka! This guide covers the development workflow, including how to use the changelog, release, and publish to JSR.
+Thank you for your interest in contributing to Sikka! This guide covers the development workflow, changelog, and release process.
 
 ## Development Setup
 
@@ -87,57 +87,6 @@ nub run release
 
 - Clean working tree (no uncommitted changes).
 - Commit history should follow Conventional Commits for a meaningful changelog.
-
-## Publishing to JSR
-
-After the release script pushes the tag to GitHub, publish the package to [JSR](https://jsr.io):
-
-### 1. Configure `jsr.json`
-
-A `jsr.json` file must exist at the project root with `name`, `version`, `license`, and `exports` fields:
-
-```json
-{
-  "name": "@rush/sikka",
-  "version": "0.1.0",
-  "license": "MIT",
-  "exports": "./dist/esm/index.js"
-}
-```
-
-The version must be in [SemVer](https://semver.org/) format. The `exports` field specifies the entry point of the package.
-
-### 2. Publish
-
-Publish from the terminal:
-
-```bash
-nubx jsr publish
-```
-
-Or with Deno:
-
-```bash
-deno publish
-```
-
-You will be prompted to interactively authenticate in your browser on first use.
-
-If the working tree is dirty (e.g. after a release commit), use:
-
-```bash
-nubx jsr publish --allow-dirty
-```
-
-### Full Release + Publish Workflow
-
-```bash
-# 1. Run the release script
-nub run release
-
-# 2. Publish to JSR
-nubx jsr publish --allow-dirty
-```
 
 ## Branching
 

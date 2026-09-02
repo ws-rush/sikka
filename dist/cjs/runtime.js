@@ -1,17 +1,21 @@
-import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RUNTIME_ABI_VERSION = void 0;
+exports.runtime = runtime;
+const escape_js_1 = require("./escape.js");
 /** The generated-runtime ABI version. */
-export const RUNTIME_ABI_VERSION = 2;
+exports.RUNTIME_ABI_VERSION = 2;
 /**
  * Returns the stable helper set for a generated module. Generated `render` and
  * `stream` exports call this with their `this` receiver, so a host runtime can
  * supply rendering options without rebuilding the artifact.
  */
 // fallow-ignore-next-line complexity
-export function runtime(receiver) {
+function runtime(receiver) {
     const options = receiver?.options ?? receiver;
     return {
-        escape: options?.autoEscape === false ? stringifyHtml : escapeHtml,
-        RawHtml,
+        escape: options?.autoEscape === false ? escape_js_1.stringifyHtml : escape_js_1.escapeHtml,
+        RawHtml: escape_js_1.RawHtml,
         components: options?.components ?? {},
         classList,
         styleObject,

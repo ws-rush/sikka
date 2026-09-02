@@ -20,6 +20,7 @@ import { SikkaError } from './error.js';
 export { SikkaError } from './error.js';
 export type { SikkaDiagnostic, SikkaDiagnosticCategory } from './types.js';
 export type {
+  Cache,
   PrecompiledModeOptions,
   PrecompiledModule,
   PrecompiledResolver,

@@ -1,9 +1,15 @@
+"use strict";
 /**
  * Compiler
  */
-import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
-import { SikkaError } from './error.js';
-import { VOID_ELEMENTS } from './parser.js';
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.compileStreaming = exports.compile = void 0;
+exports.unsupportedFrontmatterAwait = unsupportedFrontmatterAwait;
+exports.unsupportedFrontmatterImport = unsupportedFrontmatterImport;
+exports.compileSources = compileSources;
+const escape_js_1 = require("./escape.js");
+const error_js_1 = require("./error.js");
+const parser_js_1 = require("./parser.js");
 const STREAMING_TARGET = '__buf';
 const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
     'allowfullscreen',
@@ -44,7 +50,7 @@ function createRuntimeHelpers(options) {
     };
 }
 function expressionEscapeHelper(options) {
-    return options?.autoEscape === false ? stringifyHtml : escapeHtml;
+    return options?.autoEscape === false ? escape_js_1.stringifyHtml : escape_js_1.escapeHtml;
 }
 function classListHelper(arg) {
     if (typeof arg === 'string')
@@ -80,9 +86,9 @@ function stringifiedStyleObject(arg) {
 function toKebabCase(match) {
     return '-' + match.toLowerCase();
 }
-export const compile = compileSync;
+exports.compile = compileSync;
 /** Returns a diagnostic when regular rendering cannot execute Frontmatter await. */
-export function unsupportedFrontmatterAwait(ast) {
+function unsupportedFrontmatterAwait(ast) {
     return ast.frontmatter.hasAwait
         ? {
             message: 'Sikka Frontmatter await is only supported during Streaming renders; use stream() instead',
@@ -92,7 +98,7 @@ export function unsupportedFrontmatterAwait(ast) {
         : undefined;
 }
 /** Returns a diagnostic for a Frontmatter import that is not a Component. */
-export function unsupportedFrontmatterImport(imports, templateId) {
+function unsupportedFrontmatterImport(imports, templateId) {
     const invalid = imports.find((item) => !item.isComponent);
     if (!invalid)
         return undefined;
@@ -163,11 +169,11 @@ function createRenderFunction(syncFn, components, helpers, debug, template) {
 }
 function executeSyncFunction(syncFn, props, slots, components, helpers, debug, template) {
     try {
-        return syncFn(props, slots, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper);
+        return syncFn(props, slots, helpers.escapeHelper, escape_js_1.RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper);
     }
     catch (err) {
         if (debug) {
-            throw new SikkaError(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
+            throw new error_js_1.SikkaError(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
                 category: 'Render',
                 template,
                 cause: err,
@@ -492,7 +498,7 @@ function staticAttribute(name, value, options, tag) {
         return tag?.includes('-') ? ` ${name}="true"` : ` ${name}`;
     if (value === '' || (tag && isNativeBooleanAttribute(tag, name)))
         return ` ${name}`;
-    const output = options?.autoEscape === false ? value : escapeHtml(value);
+    const output = options?.autoEscape === false ? value : (0, escape_js_1.escapeHtml)(value);
     return ` ${name}="${output}"`;
 }
 function mergeStyleValues(values) {
@@ -505,7 +511,7 @@ function isNativeBooleanAttribute(tag, name) {
     return !tag.includes('-') && NATIVE_BOOLEAN_ATTRIBUTES.has(name);
 }
 function isVoidOrDeclaration(tag) {
-    return VOID_ELEMENTS.has(tag) || tag.startsWith('!');
+    return parser_js_1.VOID_ELEMENTS.has(tag) || tag.startsWith('!');
 }
 function emitNonVoidElement(node, attributes, lines, components, options, target) {
     lines.push(`${target} += ">";`);
@@ -765,7 +771,7 @@ function emitTextDirective(attr, components, options, target) {
 function emitDynamicHtmlElement(node, tag, components, options, target) {
     const attributes = partitionElementAttributes(node.attrs);
     const lines = emitDynamicOpeningTag(tag, attributes.standardAttrs, components, options, target);
-    const isVoid = `${JSON.stringify([...VOID_ELEMENTS])}.includes(${tag}.toLowerCase()) || ${tag}.startsWith("!")`;
+    const isVoid = `${JSON.stringify([...parser_js_1.VOID_ELEMENTS])}.includes(${tag}.toLowerCase()) || ${tag}.startsWith("!")`;
     lines.push(`if (${isVoid}) {`, `  ${target} += ${tag}.startsWith("!") ? ">" : " />";`, `} else {`, `  ${target} += ">";`, ...emitElementContent(node, attributes, components, options, target).map((line) => '  ' + line), `  ${target} += "</" + ${tag} + ">";`, `}`);
     return lines;
 }
@@ -946,7 +952,7 @@ function compileStreamingInternal(ast, options) {
         return { ok: false, error: importError };
     return compileStreamingAST(ast, options);
 }
-export const compileStreaming = compileStreamingInternal;
+exports.compileStreaming = compileStreamingInternal;
 function compileStreamingAST(ast, options) {
     try {
         return compileStreamingASTUnsafe(ast, options);
@@ -968,7 +974,7 @@ function createStreamingFunction(source) {
 }
 function createStreamingRenderFunction(streamingFn, components, options) {
     const helpers = createRuntimeHelpers(options);
-    return (props, slots) => streamingFn(props, slots ?? {}, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper);
+    return (props, slots) => streamingFn(props, slots ?? {}, helpers.escapeHelper, escape_js_1.RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper);
 }
 /**
  * Build the function body for a streaming (async generator) template.
@@ -978,7 +984,7 @@ function buildStreamingFunctionBody(ast, components, options) {
     return buildFunctionBody(ast, components, options, STREAMING_TARGET, 'if (__buf) { yield __buf; }');
 }
 /** Builds unevaluated regular and Streaming render bodies for `sikka/precompile`. */
-export function compileSources(ast, templateId) {
+function compileSources(ast, templateId) {
     const importError = unsupportedFrontmatterImport(ast.imports, templateId);
     if (importError)
         return { ok: false, error: importError };
