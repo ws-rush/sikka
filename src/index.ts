@@ -15,7 +15,10 @@ import {
   unsupportedFrontmatterImport,
 } from './compiler.js';
 import { createCache } from './cache.js';
+import { SikkaError } from './error.js';
 
+export { SikkaError } from './error.js';
+export type { SikkaDiagnostic, SikkaDiagnosticCategory } from './types.js';
 export type {
   PrecompiledModeOptions,
   PrecompiledModule,
@@ -231,7 +234,7 @@ export class Sikka {
       components: this.globalComponents,
     });
     if (!result.ok) {
-      throw new Error(`CompileError: ${result.error.message}`);
+      throw new SikkaError(`CompileError: ${result.error.message}`, result.error);
     }
     return result.source;
   }
@@ -393,7 +396,10 @@ export class Sikka {
     });
     if (!result.ok) {
       const suffix = location ? ` in ${location}` : '';
-      throw new Error(`CompileError${suffix}: ${result.error.message}`);
+      throw new SikkaError(`CompileError${suffix}: ${result.error.message}`, {
+        ...result.error,
+        template: location,
+      });
     }
 
     cache?.set(cacheKey, result.fn as RenderFunction);
@@ -499,7 +505,10 @@ export class Sikka {
     if (result.ok) return result.ast;
 
     const suffix = location ? ` in ${location}` : '';
-    throw new Error(`ParseError${suffix}: ${result.error.message}`);
+    throw new SikkaError(`ParseError${suffix}: ${result.error.message}`, {
+      ...result.error,
+      template: location,
+    });
   }
 
   private resolveTemplatePath(name: string): string {

@@ -174,14 +174,25 @@ export interface RawNode {
   html: string;
 }
 
+// ─── Diagnostics ─────────────────────────────────────────────────────────────
+
+/** Stable category for every public Sikka failure. */
+export type SikkaDiagnosticCategory = 'Parse' | 'Resolve' | 'Compile' | 'Render';
+
+/** Stable machine-readable diagnostic context. Message wording is not stable API. */
+export interface SikkaDiagnostic {
+  category: SikkaDiagnosticCategory;
+  template?: string;
+  request?: string;
+  importer?: string;
+  construct?: string;
+  cause?: unknown;
+}
+
 // ─── Parser result types ──────────────────────────────────────────────────────
 
-/** Stable category for intentionally rejected Template constructs. */
-export type DiagnosticCategory = 'InvalidDirective' | 'InvalidFragment';
-
-export interface ParseError {
-  message: string;
-  category?: DiagnosticCategory;
+export interface ParseError extends SikkaDiagnostic {
+  category: 'Parse';
   line: number;
   column: number;
 }
@@ -198,9 +209,8 @@ export type StreamingRenderFunction = (
 
 // ─── Compiler result types ────────────────────────────────────────────────────
 
-export interface CompileError {
+export interface CompileError extends SikkaDiagnostic {
   message: string;
-  category?: DiagnosticCategory;
   /** The import specifier that could not be resolved, if applicable. */
   specifier?: string;
   /** The dependency cycle path, if applicable. */

@@ -25,7 +25,6 @@ import type {
   ComponentImport,
   FrontmatterNode,
   RawNode,
-  DiagnosticCategory,
 } from './types.js';
 
 // ─── Position tracking ────────────────────────────────────────────────────────
@@ -51,16 +50,13 @@ function positionAt(source: string, offset: number): Position {
 
 function makeError(message: string, source: string, offset: number): ParseError {
   const { line, column } = positionAt(source, offset);
-  const category = diagnosticCategory(message);
-  return { message, line, column, ...(category && { category }) };
+  return { message, category: 'Parse', line, column, construct: rejectedConstruct(message) };
 }
 
-function diagnosticCategory(message: string): DiagnosticCategory | undefined {
-  return message.startsWith('InvalidDirective:')
-    ? 'InvalidDirective'
-    : message.startsWith('InvalidFragment:')
-      ? 'InvalidFragment'
-      : undefined;
+function rejectedConstruct(message: string): string | undefined {
+  if (message.startsWith('InvalidDirective:')) return 'directive';
+  if (message.startsWith('InvalidFragment:')) return 'Fragment';
+  return undefined;
 }
 
 // ─── Frontmatter extraction ───────────────────────────────────────────────────

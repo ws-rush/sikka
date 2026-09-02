@@ -3,6 +3,7 @@
  */
 
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
+import { SikkaError } from './error.js';
 import { parse, VOID_ELEMENTS } from './parser.js';
 import type {
   TemplateAST,
@@ -16,7 +17,6 @@ import type {
   StreamingCompileResult,
   ComponentImport,
   ExpressionNode,
-  DiagnosticCategory,
 } from './types.js';
 
 interface CompileOptions {
@@ -229,6 +229,8 @@ function missingComponentReader(imp: ComponentImport): ComponentFailure {
     ok: false,
     error: {
       message: `Cannot resolve component: ${imp.specifier} (no readFileSync provided)`,
+      category: 'Resolve',
+      request: imp.specifier,
       specifier: imp.specifier,
     },
   };
@@ -244,6 +246,9 @@ function circularComponentError(
     ok: false,
     error: {
       message: `Circular component dependency detected: ${cycle.join(' → ')}`,
+      category: 'Resolve',
+      request: imp.specifier,
+      template: resolvedPath,
       specifier: imp.specifier,
       cycle,
     },
@@ -276,7 +281,12 @@ function readComponentSource(
 function unresolvedComponentError(imp: ComponentImport): { ok: false; error: CompileError } {
   return {
     ok: false,
-    error: { message: `Cannot resolve component: ${imp.specifier}`, specifier: imp.specifier },
+    error: {
+      message: `Cannot resolve component: ${imp.specifier}`,
+      category: 'Resolve',
+      request: imp.specifier,
+      specifier: imp.specifier,
+    },
   };
 }
 
@@ -290,6 +300,9 @@ function parseComponentSource(
     ok: false,
     error: {
       message: `Parse error in component ${imp.specifier}: ${result.error.message}`,
+      category: 'Parse',
+      request: imp.specifier,
+      construct: result.error.construct,
       specifier: imp.specifier,
     },
   };
@@ -303,6 +316,8 @@ export function unsupportedFrontmatterAwait(ast: TemplateAST): CompileError | un
     ? {
         message:
           'Sikka Frontmatter await is only supported during Streaming renders; use stream() instead',
+        category: 'Compile',
+        construct: 'Frontmatter await',
       }
     : undefined;
 }
@@ -317,6 +332,10 @@ export function unsupportedFrontmatterImport(
   const context = templateId ? ` in canonical Template ${JSON.stringify(templateId)}` : '';
   return {
     message: `Unsupported Frontmatter import ${JSON.stringify(invalid.specifier)}${context}: only .astro Component imports are supported`,
+    category: 'Compile',
+    template: templateId,
+    request: invalid.specifier,
+    construct: 'Frontmatter import',
     specifier: invalid.specifier,
   };
 }
@@ -435,16 +454,16 @@ function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
 
 function compileFailure(error: unknown): { ok: false; error: CompileError } {
   const message = error instanceof Error ? error.message : String(error);
-  const category = diagnosticCategory(message);
-  return { ok: false, error: { message, ...(category && { category }) } };
+  return {
+    ok: false,
+    error: { message, category: 'Compile', cause: error, construct: rejectedConstruct(message) },
+  };
 }
 
-function diagnosticCategory(message: string): DiagnosticCategory | undefined {
-  return message.startsWith('InvalidDirective:')
-    ? 'InvalidDirective'
-    : message.startsWith('InvalidFragment:')
-      ? 'InvalidFragment'
-      : undefined;
+function rejectedConstruct(message: string): string | undefined {
+  if (message.startsWith('InvalidDirective:')) return 'directive';
+  if (message.startsWith('InvalidFragment:')) return 'Fragment';
+  return undefined;
 }
 
 function compileASTUnsafe(ast: TemplateAST, options?: CompileOptions): CompileResult {
@@ -455,7 +474,8 @@ function compileASTUnsafe(ast: TemplateAST, options?: CompileOptions): CompileRe
     createSyncFunction(source),
     components,
     createRuntimeHelpers(options),
-    options?.debug
+    options?.debug,
+    options?.basePath
   );
   return { ok: true, fn: renderFn, source };
 }
@@ -478,7 +498,8 @@ function createRenderFunction(
   syncFn: GeneratedSyncFunction,
   components: Record<string, RenderFunction>,
   helpers: RuntimeHelpers,
-  debug: boolean | undefined
+  debug: boolean | undefined,
+  template: string | undefined
 ): RenderFunction {
   const renderFn = (async (
     props: Record<string, unknown>,
@@ -497,7 +518,7 @@ function createRenderFunction(
   };
 
   renderFn.renderSync = (props, slots): string =>
-    executeSyncFunction(syncFn, props, slots ?? {}, components, helpers, debug);
+    executeSyncFunction(syncFn, props, slots ?? {}, components, helpers, debug, template);
   return renderFn;
 }
 
@@ -507,7 +528,8 @@ function executeSyncFunction(
   slots: Record<string, string>,
   components: Record<string, RenderFunction>,
   helpers: RuntimeHelpers,
-  debug: boolean | undefined
+  debug: boolean | undefined,
+  template: string | undefined
 ): string {
   try {
     return syncFn(
@@ -522,7 +544,9 @@ function executeSyncFunction(
     );
   } catch (err: unknown) {
     if (debug) {
-      throw new Error(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
+      throw new SikkaError(`Runtime Error: ${err instanceof Error ? err.message : String(err)}`, {
+        category: 'Render',
+        template,
         cause: err,
       });
     }
