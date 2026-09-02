@@ -23,11 +23,39 @@
     "url": "git+https://github.com/ws-rush/sikka.git"
   },
   "files": [
-    "dist",
+    "dist/esm/cache.js",
+    "dist/esm/compiler.js",
+    "dist/esm/error.d.ts",
+    "dist/esm/error.js",
+    "dist/esm/escape.d.ts",
+    "dist/esm/escape.js",
+    "dist/esm/index.d.ts",
+    "dist/esm/index.js",
+    "dist/esm/parser.js",
+    "dist/esm/precompile.d.ts",
+    "dist/esm/precompile.js",
+    "dist/esm/runtime.d.ts",
+    "dist/esm/runtime.js",
+    "dist/esm/types.d.ts",
+    "dist/cjs/cache.js",
+    "dist/cjs/compiler.js",
+    "dist/cjs/error.d.ts",
+    "dist/cjs/error.js",
+    "dist/cjs/escape.d.ts",
+    "dist/cjs/escape.js",
+    "dist/cjs/index.d.ts",
+    "dist/cjs/index.js",
+    "dist/cjs/package.json",
+    "dist/cjs/parser.js",
+    "dist/cjs/precompile.d.ts",
+    "dist/cjs/precompile.js",
+    "dist/cjs/runtime.d.ts",
+    "dist/cjs/runtime.js",
+    "dist/cjs/types.d.ts",
     "README.md",
     "README.astro-syntax.md",
+    "docs/SIKKA_1.0_CONTRACT.md",
     "CHANGELOG.md",
-    "jsr.json",
     "LICENSE"
   ],
   "type": "module",
@@ -37,19 +65,34 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js",
-      "types": "./dist/esm/index.d.ts"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./precompile": {
-      "import": "./dist/esm/precompile.js",
-      "require": "./dist/cjs/precompile.js",
-      "types": "./dist/esm/precompile.d.ts"
+      "import": {
+        "types": "./dist/esm/precompile.d.ts",
+        "default": "./dist/esm/precompile.js"
+      },
+      "require": {
+        "types": "./dist/cjs/precompile.d.ts",
+        "default": "./dist/cjs/precompile.js"
+      }
     },
     "./runtime": {
-      "import": "./dist/esm/runtime.js",
-      "require": "./dist/cjs/runtime.js",
-      "types": "./dist/esm/runtime.d.ts"
+      "import": {
+        "types": "./dist/esm/runtime.d.ts",
+        "default": "./dist/esm/runtime.js"
+      },
+      "require": {
+        "types": "./dist/cjs/runtime.d.ts",
+        "default": "./dist/cjs/runtime.js"
+      }
     }
   },
   "scripts": {
@@ -82,16 +125,6 @@
     "tinybench": "^6.0.0",
     "typescript": "^7.0.2",
     "zod": "^4.3.6"
-  },
-  "devEngines": {
-    "packageManager": {
-      "name": "nub",
-      "version": "^0.1.1",
-      "onFail": "warn"
-    }
-  },
-  "engines": {
-    "node": ">=18.19.0"
   },
   "packageManager": "nub@0.1.1"
 }

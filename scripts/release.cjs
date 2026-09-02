@@ -80,7 +80,7 @@ async function main() {
 
   // Commit changes to the Git and create a tag.
   step('\nCommitting changes...');
-  await run('git', ['add', 'CHANGELOG.md', 'package.json', 'jsr.json']);
+  await run('git', ['add', 'CHANGELOG.md', 'package.json']);
   await run('git', ['commit', '-m', `release: v${targetVersion}`]);
   await run('git', ['tag', `v${targetVersion}`]);
 
@@ -96,13 +96,6 @@ function updatePackage(version) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
   pkg.version = version;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-
-  const jsrPath = path.resolve(root, 'jsr.json');
-  if (fs.existsSync(jsrPath)) {
-    const jsr = JSON.parse(fs.readFileSync(jsrPath, 'utf-8'));
-    jsr.version = version;
-    fs.writeFileSync(jsrPath, JSON.stringify(jsr, null, 2) + '\n');
-  }
 }
 
 main().catch((err) => console.error(err));

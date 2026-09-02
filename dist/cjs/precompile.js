@@ -1,16 +1,20 @@
-import { compileSources } from './compiler.js';
-import { parse } from './parser.js';
-import { SikkaError } from './error.js';
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PRECOMPILE_ABI_VERSION = void 0;
+exports.compile = compile;
+const compiler_js_1 = require("./compiler.js");
+const parser_js_1 = require("./parser.js");
+const error_js_1 = require("./error.js");
 /** The portable precompile-artifact ABI version. */
-export const PRECOMPILE_ABI_VERSION = 2;
+exports.PRECOMPILE_ABI_VERSION = 2;
 /**
  * Compiles one or more entries and their Frontmatter-imported Component graph
  * into portable artifacts without constructing Sikka or evaluating generated source.
  */
-export function compile(entries, options) {
+function compile(entries, options) {
     const requests = typeof entries === 'string' ? [entries] : entries;
     if (requests.length === 0)
-        throw new SikkaError('GraphError: expected at least one entry request', {
+        throw new error_js_1.SikkaError('GraphError: expected at least one entry request', {
             category: 'Resolve',
         });
     const artifacts = new Map();
@@ -29,15 +33,15 @@ function visit(request, importer, resolver, artifacts, visiting) {
         throw cycleError(request, importer, visiting, template.id);
     visiting.push(template.id);
     try {
-        const parsed = parse(template.source);
+        const parsed = (0, parser_js_1.parse)(template.source);
         if (!parsed.ok)
-            throw new SikkaError(`ParseError in ${template.id}: ${parsed.error.message}`, {
+            throw new error_js_1.SikkaError(`ParseError in ${template.id}: ${parsed.error.message}`, {
                 ...parsed.error,
                 template: template.id,
             });
-        const compiled = compileSources(parsed.ast, template.id);
+        const compiled = (0, compiler_js_1.compileSources)(parsed.ast, template.id);
         if (!compiled.ok)
-            throw new SikkaError(`CompileError in ${template.id}: ${compiled.error.message}`, {
+            throw new error_js_1.SikkaError(`CompileError in ${template.id}: ${compiled.error.message}`, {
                 ...compiled.error,
                 template: template.id,
             });
@@ -46,7 +50,7 @@ function visit(request, importer, resolver, artifacts, visiting) {
             return { localName, specifier, id: component.id };
         });
         const artifact = {
-            abiVersion: PRECOMPILE_ABI_VERSION,
+            abiVersion: exports.PRECOMPILE_ABI_VERSION,
             id: template.id,
             renderString: compiled.renderString,
             streamString: compiled.streamString,
@@ -67,7 +71,7 @@ function resolve(request, importer, resolver) {
         template = resolver(request, importer);
     }
     catch (error) {
-        throw new SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`, {
+        throw new error_js_1.SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: ${message(error)}`, {
             category: 'Resolve',
             request,
             importer,
@@ -78,7 +82,7 @@ function resolve(request, importer, resolver) {
         return template;
     const identity = sourceIdentity(template);
     const suffix = identity === undefined ? '' : ` (canonical identity ${JSON.stringify(identity)})`;
-    throw new SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, {
+    throw new error_js_1.SikkaError(`ResolveError: invalid result for ${JSON.stringify(request)}${context}${suffix}`, {
         category: 'Resolve',
         request,
         importer,
@@ -89,7 +93,7 @@ function cycleError(request, importer, visiting, identity) {
     const context = importer ? ` imported by canonical identity ${JSON.stringify(importer)}` : '';
     const start = visiting.indexOf(identity);
     const cycle = [...visiting.slice(start), identity];
-    return new SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: circular component dependency ${cycle.join(' → ')}`, { category: 'Resolve', request, importer, template: identity });
+    return new error_js_1.SikkaError(`ResolveError for ${JSON.stringify(request)}${context}: circular component dependency ${cycle.join(' → ')}`, { category: 'Resolve', request, importer, template: identity });
 }
 function sourceIdentity(value) {
     if (!value || typeof value !== 'object')
