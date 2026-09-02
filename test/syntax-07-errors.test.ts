@@ -1,6 +1,7 @@
+import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
-import { Sikka } from '../src/index.js';
+import { Sikka, SikkaError } from '../src/index.js';
 import { compileSources } from '../src/compiler.js';
 import { compile as precompile } from '../src/precompile.js';
 import { parse } from '../src/parser.js';
@@ -52,15 +53,33 @@ describe('Syntax: Error Handling', () => {
   it('categorizes invalid Directives and Fragments', () => {
     const parsed = parse('<Fragment is:raw />');
     if (parsed.ok) throw new Error('Expected an invalid Fragment diagnostic');
-    expect(parsed.error.category).toBe('InvalidFragment');
+    expect(parsed.error.category).toBe('Parse');
+    expect(parsed.error.construct).toBe('Fragment');
     expect(parsed.error.message).toContain('is:raw');
 
     const directive = parse('<div set:html="a" set:text="b" />');
     if (!directive.ok) throw new Error('Expected a parsed Template');
     const compiled = compileSources(directive.ast);
     if (compiled.ok) throw new Error('Expected an invalid Directive diagnostic');
-    expect(compiled.error.category).toBe('InvalidDirective');
+    expect(compiled.error.category).toBe('Compile');
+    expect(compiled.error.construct).toBe('directive');
     expect(compiled.error.message).toContain('set:html');
+  });
+
+  it('exposes typed category and template context at public boundaries', () => {
+    assert.throws(
+      () => new Sikka({ mode: 'source', resolver: () => ({ id: 'page', source: '<div>' }) }).render('page'),
+      (error: unknown) =>
+        error instanceof SikkaError &&
+        error.category === 'Parse' &&
+        error.template === 'page' &&
+        error.line === 1
+    );
+    assert.throws(
+      () => new Sikka({ mode: 'source', resolver: () => { throw new Error('missing'); } }).render('page'),
+      (error: unknown) =>
+        error instanceof SikkaError && error.category === 'Resolve' && error.request === 'page'
+    );
   });
 
   it('rejects the same invalid Template in source, Streaming, and precompiled entry points', () => {
