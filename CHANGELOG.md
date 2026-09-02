@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The 1.0 Contract defines the Stable API and Syntax Contract.
 
-## 1.0.0 (unreleased)
+## 0.2.0 (unreleased)
 
 ### Breaking changes
 
