@@ -50,11 +50,21 @@ function fixture() {
     completedPropertyIds: ['property'],
     hashes,
   };
-  const node = { ...shared, target: 'node' };
-  const browser = { ...shared, target: 'strict-csp-precompiled', csp };
+  const node = { ...shared, target: 'node', nodeVersion: 'v24.0.0' };
+  const browser = {
+    ...shared,
+    target: 'strict-csp-precompiled',
+    csp,
+    playwrightVersion: '1.62.1',
+    chromiumVersion: '1.0.0',
+  };
   const aggregate = {
     ...shared,
     target: 'sikka-1.0-validation',
+    nodeVersion: node.nodeVersion,
+    playwrightVersion: browser.playwrightVersion,
+    chromiumVersion: browser.chromiumVersion,
+    csp,
     completedTargetIds: ['node', 'strict-csp-precompiled'],
     targetResults: { node: 'success', 'strict-csp-precompiled': 'success' },
     reports: { node, 'strict-csp-precompiled': browser },
@@ -68,7 +78,11 @@ function fixture() {
   return { directory, evidence, tarball, changelog, aggregate, browser };
 }
 
-function run(input: ReturnType<typeof fixture>, createdAt = new Date().toISOString()) {
+function run(
+  input: ReturnType<typeof fixture>,
+  createdAt = new Date().toISOString(),
+  tag = 'v1.0.0'
+) {
   return spawnSync(
     process.execPath,
     [
@@ -78,7 +92,7 @@ function run(input: ReturnType<typeof fixture>, createdAt = new Date().toISOStri
       'a'.repeat(40),
       '123',
       createdAt,
-      'v1.0.0',
+      tag,
       input.changelog,
     ],
     { encoding: 'utf8' }
@@ -101,6 +115,10 @@ describe('release evidence verifier', () => {
       (input: ReturnType<typeof fixture>) => rmSync(join(input.evidence, 'node-report.json')),
       (input: ReturnType<typeof fixture>) => input.aggregate.completedTargetIds.pop(),
       (input: ReturnType<typeof fixture>) => input.browser.completedCaseIds.pop(),
+      (input: ReturnType<typeof fixture>) => input.browser.completedPropertyIds.push('extra'),
+      (input: ReturnType<typeof fixture>) => {
+        input.aggregate.csp = "default-src 'self'";
+      },
     ]) {
       const input = fixture();
       try {
@@ -115,6 +133,7 @@ describe('release evidence verifier', () => {
     const input = fixture();
     try {
       assert.notEqual(run(input, '2000-01-01T00:00:00.000Z').status, 0);
+      assert.notEqual(run(input, new Date().toISOString(), 'v1.0.1').status, 0);
     } finally {
       rmSync(input.directory, { recursive: true, force: true });
     }

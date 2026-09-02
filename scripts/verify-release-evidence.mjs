@@ -55,7 +55,20 @@ function validateEvidence({ aggregate, browser, node }, expectedCommit, expected
     throw new Error('Aggregate identity or result disagrees with the release validation run');
   validateReport(node, 'node', aggregate, expectedCommit, expectedRunId);
   validateReport(browser, 'strict-csp-precompiled', aggregate, expectedCommit, expectedRunId);
-  if (browser.csp !== CSP) throw new Error('Browser report has an unexpected CSP');
+  if (
+    aggregate.csp !== CSP ||
+    aggregate.nodeVersion !== node.nodeVersion ||
+    typeof aggregate.nodeVersion !== 'string' ||
+    !aggregate.nodeVersion ||
+    aggregate.playwrightVersion !== browser.playwrightVersion ||
+    typeof aggregate.playwrightVersion !== 'string' ||
+    !aggregate.playwrightVersion ||
+    aggregate.chromiumVersion !== browser.chromiumVersion ||
+    typeof aggregate.chromiumVersion !== 'string' ||
+    !aggregate.chromiumVersion ||
+    browser.csp !== CSP
+  )
+    throw new Error('Aggregate or browser target identity disagrees');
   if (
     !sameValue(aggregate.reports, { node, 'strict-csp-precompiled': browser }) ||
     !sameValue(aggregate.targetResults, { node: 'success', 'strict-csp-precompiled': 'success' }) ||

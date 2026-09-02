@@ -42,7 +42,15 @@ jobs:
               per_page: 100,
             });
             for (const run of runs) {
-              if (run.conclusion !== 'success' || Date.parse(run.created_at) < cutoff) continue;
+              const created = Date.parse(run.created_at);
+              if (
+                run.head_sha !== commit ||
+                !run.path?.startsWith('.github/workflows/correctness.yml@') ||
+                run.conclusion !== 'success' ||
+                !Number.isFinite(created) ||
+                created < cutoff
+              )
+                continue;
               const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -64,7 +72,7 @@ jobs:
                 per_page: 100,
               });
               const hasArtifact = (name) =>
-                artifacts.filter((artifact) => artifact.name === name && !artifact.expired).length === 1;
+                artifacts.filter((artifact) => artifact.name === name && artifact.expired === false).length === 1;
               if (!hasArtifact('sikka-1.0-validation') || !hasArtifact('sikka-candidate')) continue;
               core.setOutput('run-id', run.id);
               core.setOutput('created-at', run.created_at);
