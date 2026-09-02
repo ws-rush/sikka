@@ -45,7 +45,7 @@ jobs:
               const created = Date.parse(run.created_at);
               if (
                 run.head_sha !== commit ||
-                !run.path?.includes('.github/workflows/correctness.yml@') ||
+                run.path !== '.github/workflows/correctness.yml' ||
                 run.conclusion !== 'success' ||
                 !Number.isFinite(created) ||
                 created < cutoff
