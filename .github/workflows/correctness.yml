@@ -117,3 +117,53 @@ jobs:
           name: sikka-browser-report
           path: .ci/browser-report.json
           if-no-files-found: error
+
+  sikka-1.0-validation:
+    name: sikka-1.0-validation
+    needs: [node, strict-csp-precompiled]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: node-line
+        name: Read project Node.js line
+        shell: bash
+        run: |
+          node_line="$(awk -F '"' '/^node = / { print $2; exit }' mise.toml)"
+          test -n "$node_line"
+          echo "version=$node_line" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node-line.outputs.version }}
+      - name: Download exact candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: sikka-candidate
+          path: .ci/candidate
+      - name: Download browser artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sikka-browser-artifacts
+          path: .ci/browser
+      - name: Download node report
+        uses: actions/download-artifact@v4
+        with:
+          name: sikka-node-report
+          path: .ci/node-report
+      - name: Download browser report
+        uses: actions/download-artifact@v4
+        with:
+          name: sikka-browser-report
+          path: .ci/browser-report
+      - name: Aggregate immutable validation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          tarball=(.ci/candidate/*.tgz)
+          test "${#tarball[@]}" -eq 1
+          node scripts/aggregate-validation.mjs "${tarball[0]}" .ci/browser .ci/node-report/node-report.json .ci/browser-report/browser-report.json .ci/evidence
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sikka-1.0-validation
+          path: .ci/evidence
+          if-no-files-found: error

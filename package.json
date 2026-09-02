@@ -110,7 +110,8 @@
     "release": "node scripts/release.cjs",
     "bench": "node --expose-gc bench/index.js",
     "ci:candidate": "node scripts/ci-candidate.mjs",
-    "ci:strict-csp": "node scripts/strict-csp-precompiled.mjs"
+    "ci:strict-csp": "node scripts/strict-csp-precompiled.mjs",
+    "ci:aggregate-validation": "node scripts/aggregate-validation.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
