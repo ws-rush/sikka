@@ -2,5 +2,5 @@
   "$schema": "./node_modules/fallow/schema.json",
   "entry": ["src/**/*.ts"],
   "ignorePatterns": ["examples/**", "test/**", "bench/**", "benchmark/**", "scripts/**"],
-  "ignoreDependencies": ["chalk", "enquirer", "execa", "fast-check", "semver", "tinybench", "zod"]
+  "ignoreDependencies": ["chalk", "enquirer", "execa", "fast-check", "semver", "zod"]
 }

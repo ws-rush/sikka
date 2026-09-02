@@ -41,9 +41,6 @@ importers:
       semver:
         specifier: ^7.5.4
         version: 7.7.4
-      tinybench:
-        specifier: ^6.0.0
-        version: 6.0.0
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -858,10 +855,6 @@ packages:
   through@2.3.8:
     resolution: {integrity: sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==}
 
-  tinybench@6.0.0:
-    resolution: {integrity: sha512-BWlWpVbbZXaYjRV0twGLNQO00Zj4HA/sjLOQP2IvzQqGwRGp+2kh7UU3ijyJ3ywFRogYDRbiHDMrUOfaMnN56g==}
-    engines: {node: '>=20.0.0'}
-
   tinypool@2.1.0:
     resolution: {integrity: sha512-Pugqs6M0m7Lv1I7FtxN4aoyToKg1C4tu+/381vH35y8oENM/Ai7f7C4StcoK4/+BSw9ebcS8jRiVrORFKCALLw==}
     engines: {node: ^20.0.0 || >=22.0.0}
@@ -1505,8 +1498,6 @@ snapshots:
   text-extensions@2.4.0: {}
 
   through@2.3.8: {}
-
-  tinybench@6.0.0: {}
 
   tinypool@2.1.0: {}
 

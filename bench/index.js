@@ -1,13 +1,19 @@
-import { Bench } from 'tinybench';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Sikka } from '../dist/esm/index.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Sikka } from 'sikka';
+import { compile as precompile } from 'sikka/precompile';
 
+const rootDirectory = fileURLToPath(new URL('..', import.meta.url));
+const generatedModuleDirectory = path.join(rootDirectory, 'bench', '.generated');
 const requireBenchmarkDependency = createRequire(
   new URL('../benchmark/package.json', import.meta.url)
 );
+const { Bench } = await import(requireBenchmarkDependency.resolve('tinybench'));
 const ejs = requireBenchmarkDependency('ejs');
 const Handlebars = requireBenchmarkDependency('handlebars');
 const dust = requireBenchmarkDependency('dustjs-linkedin');
@@ -21,6 +27,7 @@ const DEFAULT_WARMUP_TIME = 250;
 const benchmarkTime = parseDuration('SIKKA_BENCH_TIME', DEFAULT_TIME);
 const warmupTime = parseDuration('SIKKA_BENCH_WARMUP_TIME', DEFAULT_WARMUP_TIME);
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'sikka-bench-'));
+fs.mkdirSync(generatedModuleDirectory, { recursive: true });
 
 const escapeData = { name: '<Sikka & Friends>' };
 const conditionalData = {
@@ -107,21 +114,18 @@ const engines = [
   {
     id: 'sikka',
     name: 'Sikka',
-    compile(template) {
-      const sikka = new Sikka({
-        cache: true,
-        mode: 'source',
-        resolver: () => ({ id: 'sikka-bench.astro', source: template }),
+    async compile(template, scenarioName) {
+      const [artifact] = precompile('entry', {
+        resolver: () => ({ id: `${scenarioName}.astro`, source: template }),
       });
-      sikka.render('entry', {});
+      const modulePath = path.join(generatedModuleDirectory, `${scenarioName}.sikka.mjs`);
+      fs.writeFileSync(modulePath, wrapSikkaArtifact(artifact));
+      const module = await import(pathToFileURL(modulePath).href);
+      const sikka = new Sikka({ mode: 'precompiled', resolver: () => module });
       return (data) => sikka.render('entry', data);
     },
   },
-  {
-    id: 'ejs',
-    name: 'EJS',
-    compile: (template) => ejs.compile(template),
-  },
+  { id: 'ejs', name: 'EJS', compile: (template) => ejs.compile(template) },
   {
     id: 'eta',
     name: 'Eta',
@@ -131,11 +135,7 @@ const engines = [
       return (data) => compiled.call(eta, data, { async: false });
     },
   },
-  {
-    id: 'handlebars',
-    name: 'Handlebars',
-    compile: (template) => Handlebars.compile(template),
-  },
+  { id: 'handlebars', name: 'Handlebars', compile: (template) => Handlebars.compile(template) },
   {
     id: 'liquid',
     name: 'LiquidJS',
@@ -145,11 +145,7 @@ const engines = [
       return (data) => liquid.renderSync(parsed, data);
     },
   },
-  {
-    id: 'pug',
-    name: 'Pug',
-    compile: (template) => pug.compile(template),
-  },
+  { id: 'pug', name: 'Pug', compile: (template) => pug.compile(template) },
   {
     id: 'dust',
     name: 'Dust.js',
@@ -172,32 +168,58 @@ const engines = [
 ];
 
 try {
-  console.log('Sikka template-engine benchmark');
-  console.log(
-    `Node ${process.version} · ${os.cpus()[0].model} · ${process.platform}/${process.arch}`
-  );
-  console.log(
-    `Cached render only · ${benchmarkTime}ms per engine · ${warmupTime}ms warmup per engine\n`
-  );
-
-  const scores = new Map(engines.map((engine) => [engine.name, []]));
-
+  printRunContext();
   for (const scenario of scenarios) {
     globalThis.gc?.();
-    const renderers = await compileRenderers(scenario);
-    validateRenderers(scenario, renderers);
-    const results = await benchmarkScenario(scenario, renderers);
-    printScenarioResults(scenario.name, results);
-
-    const fastest = results[0].operationsPerSecond;
-    for (const result of results) {
-      scores.get(result.name).push(result.operationsPerSecond / fastest);
-    }
+    const renderers = await setupRenderers(scenario);
+    await validateRenderers(scenario, renderers);
+    console.log(`Validated exact expected HTML: ${scenario.name}`);
+    printScenarioResults(scenario.name, await benchmarkScenario(scenario, renderers));
   }
-
-  printOverallRanking(scores);
 } finally {
   fs.rmSync(temporaryDirectory, { force: true, recursive: true });
+  fs.rmSync(generatedModuleDirectory, { force: true, recursive: true });
+}
+
+function wrapSikkaArtifact(artifact) {
+  return `import { runtime } from 'sikka/runtime';
+export function render(props, slots = {}) {
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const __components = {};
+${artifact.renderString}
+}
+export async function* stream(props, slots = {}) {
+  const { escape: __escape, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, aggregateAssets: __aggregateAssets } = runtime(this);
+  const __components = {};
+${artifact.streamString}
+}`;
+}
+
+function printRunContext() {
+  const cpu = os.cpus()[0];
+  const revision = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: rootDirectory,
+    encoding: 'utf8',
+  }).trim();
+  const locks = ['lock.yaml', 'benchmark/package-lock.json'].map((lock) => {
+    const digest = createHash('sha256')
+      .update(fs.readFileSync(path.join(rootDirectory, lock)))
+      .digest('hex');
+    return `${lock} sha256:${digest}`;
+  });
+
+  console.log('Sikka local template-engine benchmark');
+  console.log(`Run date: ${new Date().toISOString()}`);
+  console.log(`Benchmark revision: ${revision}`);
+  console.log(`Runtime: Node ${process.version}`);
+  console.log(
+    `Machine/platform: ${cpu?.model ?? 'unknown CPU'} (${os.cpus().length} CPUs) · ${os.type()} ${os.release()} · ${process.platform}/${process.arch}`
+  );
+  console.log(`Dependency locks: ${locks.join(' · ')}`);
+  console.log(`Scenarios: ${scenarios.map((scenario) => scenario.name).join(', ')}`);
+  console.log(
+    `Scope: local manual comparison of exact scenario HTML; timed work is precompiled render only (${benchmarkTime}ms per engine, ${warmupTime}ms warmup). Sikka precompile, generated-module setup, and validation are excluded. This is not a runtime compatibility or performance leadership claim.\n`
+  );
 }
 
 function parseDuration(variable, defaultValue) {
@@ -212,7 +234,7 @@ function parseDuration(variable, defaultValue) {
   return parsed;
 }
 
-async function compileRenderers(scenario) {
+async function setupRenderers(scenario) {
   return Promise.all(
     engines.map(async (engine) => {
       const template = scenario.templates[engine.id === 'igoDust' ? 'dust' : engine.id];
@@ -277,31 +299,6 @@ function printScenarioResults(name, results) {
       RME: `±${result.relativeMarginOfError.toFixed(2)}%`,
     }))
   );
-}
-
-function printOverallRanking(scores) {
-  const results = [...scores]
-    .map(([name, caseScores]) => ({
-      name,
-      score: geometricMean(caseScores),
-    }))
-    .toSorted((left, right) => right.score - left.score);
-
-  console.log('Overall ranking (geometric mean of each case relative to its fastest engine)');
-  console.table(
-    results.map((result, index) => ({
-      Rank: index + 1,
-      Engine: result.name,
-      'Normalized score': `${(result.score * 100).toFixed(1)}%`,
-    }))
-  );
-
-  const sikkaRank = results.findIndex((result) => result.name === 'Sikka') + 1;
-  console.log(`Sikka rank: #${sikkaRank} of ${results.length}`);
-}
-
-function geometricMean(values) {
-  return Math.exp(values.reduce((sum, value) => sum + Math.log(value), 0) / values.length);
 }
 
 function renderDust(name, data) {
