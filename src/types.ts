@@ -10,16 +10,18 @@ export interface RenderFunction {
   renderSync(props: Record<string, unknown>, slots?: Record<string, string>): string;
 }
 
-/** Options accepted by `new Sikka()`. */
-export interface SikkaOptions {
-  /** Directory path for template resolution. */
-  views?: string;
-  /** Sync function to read file content. */
-  readFile?: (path: string) => string;
-  /** Sync/Async function to resolve paths. */
-  resolvePath?: (base: string, specifier: string) => string | Promise<string>;
-  /** Custom name for the props variable (default: "Astro"). */
-  varName?: string;
+/** A named Template returned by a source-mode resolver. */
+export interface SourceTemplate {
+  /** Canonical Template identity for caches and diagnostics. */
+  id: string;
+  /** Template source to compile. */
+  source: string;
+}
+
+/** Resolves a Template request synchronously. */
+export type SourceResolver = (request: string, importer?: string) => SourceTemplate;
+
+interface SikkaRuntimeOptions {
   /** Enables pretty-printing of runtime errors. */
   debug?: boolean;
   /** Whether to cache templates. */
@@ -36,6 +38,31 @@ export interface SikkaOptions {
   aggregateAssets?: boolean;
 }
 
+/** Options for named source Template rendering. */
+export interface SourceModeOptions extends SikkaRuntimeOptions {
+  mode: 'source';
+  resolver: SourceResolver;
+  /** Compile-time custom name for the props variable (default: "Astro"). */
+  varName?: string;
+}
+
+/** A statically generated Template module that has already been loaded by its host. */
+export interface PrecompiledModule {
+  /** Named regular Render export. */
+  render(props: Record<string, unknown>, slots?: Record<string, string>): string;
+  /** Named Streaming render export. */
+  stream(props: Record<string, unknown>, slots?: Record<string, string>): AsyncGenerator<string>;
+}
+
+/** Synchronously resolves an entry key to an already-loaded generated module. */
+export type PrecompiledResolver = (entry: string) => PrecompiledModule;
+
+/** Options for named precompiled Template rendering. */
+export interface PrecompiledModeOptions extends SikkaRuntimeOptions {
+  mode: 'precompiled';
+  resolver: PrecompiledResolver;
+}
+
 // ─── AST types ────────────────────────────────────────────────────────────────
 
 /** The root AST node produced by the parser. */
@@ -48,6 +75,8 @@ export interface TemplateAST {
 /** The raw JS/TS source extracted from between the `---` fences. */
 export interface FrontmatterNode {
   source: string;
+  /** Whether the Frontmatter contains an `await` expression. */
+  hasAwait: boolean;
 }
 
 /** A component import recorded from the frontmatter. */
@@ -56,6 +85,8 @@ export interface ComponentImport {
   localName: string;
   /** The module specifier, e.g. `"./Button.astro"`. */
   specifier: string;
+  /** Whether this import has the `.astro` Component specifier required by Sikka. */
+  isComponent: boolean;
 }
 
 /** Union of all possible template body nodes. */
@@ -107,6 +138,10 @@ export interface SlotNode {
   name: string;
   /** Dynamic expression for the slot name (takes precedence over `name` at runtime). */
   nameExpr?: ExpressionNode;
+  /** Slot assignment when this Slot forwards content to a child Component. */
+  slot?: string;
+  /** Dynamic expression for the forwarded Slot assignment. */
+  slotExpr?: ExpressionNode;
   /** Fallback content. */
   children: TemplateNode[];
 }
@@ -128,10 +163,26 @@ export interface RawNode {
   html: string;
 }
 
+// ─── Diagnostics ─────────────────────────────────────────────────────────────
+
+/** Stable category for every public Sikka failure. */
+export type SikkaDiagnosticCategory = 'Parse' | 'Resolve' | 'Compile' | 'Render';
+
+/** Stable machine-readable diagnostic context. Message wording is not stable API. */
+export interface SikkaDiagnostic {
+  message: string;
+  category: SikkaDiagnosticCategory;
+  template?: string;
+  request?: string;
+  importer?: string;
+  construct?: string;
+  cause?: unknown;
+}
+
 // ─── Parser result types ──────────────────────────────────────────────────────
 
-export interface ParseError {
-  message: string;
+export interface ParseError extends SikkaDiagnostic {
+  category: 'Parse';
   line: number;
   column: number;
 }
@@ -148,7 +199,7 @@ export type StreamingRenderFunction = (
 
 // ─── Compiler result types ────────────────────────────────────────────────────
 
-export interface CompileError {
+export interface CompileError extends SikkaDiagnostic {
   message: string;
   /** The import specifier that could not be resolved, if applicable. */
   specifier?: string;

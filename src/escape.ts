@@ -7,8 +7,10 @@
  */
 
 /** Wraps a string that should be inserted into HTML output verbatim (no escaping). */
+const RAW_HTML = Symbol.for('sikka.raw-html');
+
 export class RawHtml {
-  __isRawHtml = true;
+  [RAW_HTML] = true;
   constructor(public readonly value: string) {}
 }
 
@@ -19,8 +21,30 @@ const ESCAPE_TEST_RE = /[&<>"']/;
  */
 export function escapeHtml(value: unknown): string {
   if (typeof value === 'string') return escapeString(value);
-  if (value instanceof RawHtml) return value.value;
-  return escapeNonString(value);
+  if (isRawHtml(value)) return value.value;
+  if (Array.isArray(value)) return escapeArray(value);
+  return escapeString(stringifyHtml(value));
+}
+
+/** Coerce an Expression value without HTML escaping. */
+export function stringifyHtml(value: unknown): string {
+  return Array.isArray(value) ? stringifyArray(value) : stringifyValue(value);
+}
+
+function stringifyValue(value: unknown): string {
+  if (value == null || typeof value === 'boolean') return '';
+  if (isRawHtml(value)) return value.value;
+  return String(value);
+}
+
+function isRawHtml(value: unknown): value is { value: string } {
+  return value instanceof RawHtml || isBrandedRawHtml(value);
+}
+
+function isBrandedRawHtml(value: unknown): value is { value: string } {
+  if (Object(value) !== value) return false;
+  const raw = value as { [RAW_HTML]?: unknown; value?: unknown };
+  return raw[RAW_HTML] === true && typeof raw.value === 'string';
 }
 
 function escapeString(value: string): string {
@@ -32,52 +56,43 @@ function replaceEscapedCharacters(value: string, start: number): string {
   let output = '';
   let lastIndex = 0;
   for (let index = start; index < value.length; index++) {
-    const escaped = escapeCharacterCode(value.charCodeAt(index));
-    if (escaped === undefined) continue;
+    let escaped: string;
+    switch (value.charCodeAt(index)) {
+      case 34:
+        escaped = '&quot;';
+        break;
+      case 38:
+        escaped = '&amp;';
+        break;
+      case 39:
+        escaped = '&#39;';
+        break;
+      case 60:
+        escaped = '&lt;';
+        break;
+      case 62:
+        escaped = '&gt;';
+        break;
+      default:
+        continue;
+    }
     output += value.slice(lastIndex, index) + escaped;
     lastIndex = index + 1;
   }
   return output + value.slice(lastIndex);
 }
 
-function escapeCharacterCode(code: number): string | undefined {
-  return code < 40 ? escapeLowCharacterCode(code) : escapeHighCharacterCode(code);
-}
-
-function escapeLowCharacterCode(code: number): string | undefined {
-  switch (code) {
-    case 34:
-      return '&quot;';
-    case 38:
-      return '&amp;';
-    case 39:
-      return '&#39;';
-  }
-}
-
-function escapeHighCharacterCode(code: number): string | undefined {
-  switch (code) {
-    case 60:
-      return '&lt;';
-    case 62:
-      return '&gt;';
-  }
-}
-
-function escapeNonString(value: unknown): string {
-  if (typeof value === 'number') return '' + value;
-  if (value == null) return '';
-  return escapeRemaining(value);
-}
-
-function escapeRemaining(value: unknown): string {
-  if (typeof value === 'boolean') return '';
-  if (Array.isArray(value)) return escapeArray(value);
-  return escapeString(String(value));
-}
-
 function escapeArray(values: unknown[]): string {
   let output = '';
-  for (let index = 0; index < values.length; index++) output += escapeHtml(values[index]);
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index];
+    output += value instanceof RawHtml ? value.value : escapeHtml(value);
+  }
+  return output;
+}
+
+function stringifyArray(values: unknown[]): string {
+  let output = '';
+  for (let index = 0; index < values.length; index++) output += stringifyHtml(values[index]);
   return output;
 }

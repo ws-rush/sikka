@@ -50,7 +50,13 @@ function positionAt(source: string, offset: number): Position {
 
 function makeError(message: string, source: string, offset: number): ParseError {
   const { line, column } = positionAt(source, offset);
-  return { message, line, column };
+  return { message, category: 'Parse', line, column, construct: rejectedConstruct(message) };
+}
+
+function rejectedConstruct(message: string): string | undefined {
+  if (message.startsWith('InvalidDirective:')) return 'directive';
+  if (message.startsWith('InvalidFragment:')) return 'Fragment';
+  return undefined;
 }
 
 // ─── Frontmatter extraction ───────────────────────────────────────────────────
@@ -85,7 +91,10 @@ function extractFrontmatter(
 }
 
 function emptyFrontmatter(): { ok: true; result: FrontmatterResult } {
-  return { ok: true, result: { frontmatter: { source: '' }, imports: [], bodyStart: 0 } };
+  return {
+    ok: true,
+    result: { frontmatter: { source: '', hasAwait: false }, imports: [], bodyStart: 0 },
+  };
 }
 
 function extractFrontmatterContent(
@@ -104,7 +113,7 @@ function extractFrontmatterContent(
   return {
     ok: true,
     result: {
-      frontmatter: { source: fmSource },
+      frontmatter: { source: fmSource, hasAwait: hasAwait(fmSource) },
       imports: collectImports(fmSource),
       bodyStart: skipFrontmatterNewline(source, closeIndex + 4),
     },
@@ -115,14 +124,20 @@ function skipFrontmatterNewline(source: string, bodyStart: number): number {
   return source[bodyStart] === '\n' ? bodyStart + 1 : bodyStart;
 }
 
+function hasAwait(source: string): boolean {
+  return /\bawait\b/.test(
+    source.replace(/\/\*[\s\S]*?\*\/|\/\/.*|(['"`])(?:\\.|(?!\1)[^\\])*\1/g, '')
+  );
+}
+
 // ─── Import collection ────────────────────────────────────────────────────────
 
 function collectImports(fmSource: string): ComponentImport[] {
   const imports: ComponentImport[] = [];
-  const re = /^\s*import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/gm;
+  const re = /^\s*import(?:\s+([\s\S]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
   let match: RegExpExecArray | null;
   while ((match = re.exec(fmSource)) !== null) {
-    collectImportClause(match[1].trim(), match[2], imports);
+    collectImportClause(match[1]?.trim() ?? '', match[2], imports);
   }
   return imports;
 }
@@ -132,11 +147,25 @@ function collectImportClause(
   specifier: string,
   imports: ComponentImport[]
 ): void {
-  if (importClause.startsWith('type ')) return;
+  if (isTypeOnlyImport(importClause)) return;
   if (collectNamespaceImport(importClause, specifier, imports)) return;
-  for (const part of splitImportClause(importClause)) {
-    collectImportPart(part, specifier, imports);
-  }
+  collectRegularImports(importClause, specifier, imports);
+}
+
+function collectRegularImports(
+  importClause: string,
+  specifier: string,
+  imports: ComponentImport[]
+): void {
+  const start = imports.length;
+  for (const part of splitImportClause(importClause)) collectImportPart(part, specifier, imports);
+  if (imports.length === start) imports.push({ localName: '', specifier, isComponent: false });
+}
+
+function isTypeOnlyImport(importClause: string): boolean {
+  if (importClause.startsWith('type ')) return true;
+  const parts = importClause.replaceAll(/[{}]/g, '').split(',');
+  return parts.length > 0 && parts.every((part) => part.trim().startsWith('type '));
 }
 
 function collectNamespaceImport(
@@ -145,7 +174,7 @@ function collectNamespaceImport(
   imports: ComponentImport[]
 ): boolean {
   if (!importClause.startsWith('* as ')) return false;
-  imports.push({ localName: importClause.slice(5).trim(), specifier });
+  imports.push(componentImport(importClause.slice(5).trim(), specifier));
   return true;
 }
 
@@ -183,15 +212,23 @@ function isTopLevelImportComma(char: string, braceDepth: number): boolean {
 
 function collectNamedImports(part: string, specifier: string, imports: ComponentImport[]): void {
   const namedParts = part.slice(1).replace(/}$/, '').split(',');
-  for (const named of namedParts) {
-    const localName = /(?:\s+as\s+)?(\w+)$/.exec(named.trim())?.[1];
-    if (localName) imports.push({ localName, specifier });
-  }
+  for (const named of namedParts) collectNamedImport(named, specifier, imports);
+}
+
+function collectNamedImport(named: string, specifier: string, imports: ComponentImport[]): void {
+  const trimmed = named.trim();
+  const localName = /(?:\s+as\s+)?(\w+)$/.exec(trimmed)?.[1];
+  if (localName && !trimmed.startsWith('type '))
+    imports.push(componentImport(localName, specifier));
 }
 
 function collectDefaultImport(part: string, specifier: string, imports: ComponentImport[]): void {
   const localName = /(\w+)$/.exec(part)?.[1];
-  if (localName) imports.push({ localName, specifier });
+  if (localName) imports.push(componentImport(localName, specifier));
+}
+
+function componentImport(localName: string, specifier: string): ComponentImport {
+  return { localName, specifier, isComponent: specifier.endsWith('.astro') };
 }
 
 // ─── Body parser ─────────────────────────────────────────────────────────────
@@ -584,24 +621,31 @@ class Parser {
   private getSlotDetails(attrs: (AttrNode | SpreadAttrNode)[]): {
     name: string;
     nameExpr: ExpressionNode | undefined;
+    slot: string | undefined;
+    slotExpr: ExpressionNode | undefined;
   } {
-    const details: { name: string; nameExpr: ExpressionNode | undefined } = {
-      name: '',
-      nameExpr: undefined,
-    };
-    for (const attr of attrs) {
-      const value = this.getSlotNameAttributeValue(attr);
-      if (value !== undefined) this.assignSlotName(details, value);
-    }
+    const details: {
+      name: string;
+      nameExpr: ExpressionNode | undefined;
+      slot: string | undefined;
+      slotExpr: ExpressionNode | undefined;
+    } = { name: '', nameExpr: undefined, slot: undefined, slotExpr: undefined };
+    for (const attr of attrs) this.assignSlotDetail(details, attr);
     return details;
   }
 
-  private getSlotNameAttributeValue(
+  private assignSlotDetail(
+    details: {
+      name: string;
+      nameExpr: ExpressionNode | undefined;
+      slot: string | undefined;
+      slotExpr: ExpressionNode | undefined;
+    },
     attr: AttrNode | SpreadAttrNode
-  ): AttrNode['value'] | undefined {
-    if ('type' in attr) return undefined;
-    if (attr.name !== 'name') return undefined;
-    return attr.value;
+  ): void {
+    if ('type' in attr) return;
+    if (attr.name === 'name') this.assignSlotName(details, attr.value);
+    else if (attr.name === 'slot') this.assignSlotAssignment(details, attr.value);
   }
 
   private assignSlotName(
@@ -612,9 +656,19 @@ class Parser {
     else if (value !== true) details.nameExpr = value;
   }
 
+  private assignSlotAssignment(
+    details: { slot: string | undefined; slotExpr: ExpressionNode | undefined },
+    value: AttrNode['value']
+  ): void {
+    if (typeof value === 'string') details.slot = value;
+    else if (value !== true) details.slotExpr = value;
+  }
+
   private parseSlotContent(details: {
     name: string;
     nameExpr: ExpressionNode | undefined;
+    slot: string | undefined;
+    slotExpr: ExpressionNode | undefined;
   }): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     if (this.at('/>')) {
       this.advance(2);
@@ -630,6 +684,8 @@ class Parser {
   private parseSlotChildren(details: {
     name: string;
     nameExpr: ExpressionNode | undefined;
+    slot: string | undefined;
+    slotExpr: ExpressionNode | undefined;
   }): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     const children: TemplateNode[] = [];
     while (!this.eof()) {
@@ -655,7 +711,12 @@ class Parser {
 
   private completeSlotChildResult(
     status: 'closing' | 'stop',
-    details: { name: string; nameExpr: ExpressionNode | undefined },
+    details: {
+      name: string;
+      nameExpr: ExpressionNode | undefined;
+      slot: string | undefined;
+      slotExpr: ExpressionNode | undefined;
+    },
     children: TemplateNode[]
   ): { ok: true; node: SlotNode } | { ok: false; error: ParseError } {
     return status === 'closing'
@@ -723,8 +784,10 @@ class Parser {
   private parseSelfClosingElement(
     tag: string,
     attrs: (AttrNode | SpreadAttrNode)[]
-  ): { ok: true; selfClosing: true; node: ElementNode } {
+  ): { ok: true; selfClosing: true; node: ElementNode } | { ok: false; error: ParseError } {
     this.advance(2);
+    if ((tag === 'Fragment' || tag === '') && this.hasRawAttribute(attrs))
+      return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
     return {
       ok: true,
       selfClosing: true,
@@ -748,7 +811,7 @@ class Parser {
     attrs: (AttrNode | SpreadAttrNode)[]
   ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
     if (tag === 'Fragment' || tag === '') {
-      return { ok: false, error: this.error('is:raw is not supported on Fragments') };
+      return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
     }
     const closeIdx = this.findRawClosingTag(tag);
     if (closeIdx === -1) {
@@ -956,7 +1019,8 @@ class Parser {
 
   private parseNamedAttribute(): AttributeParseResult {
     const name = this.readAttrName();
-    if (!name) return this.missingAttributeNameError();
+    const nameError = this.attributeNameError(name);
+    if (nameError) return nameError;
 
     this.skipWhitespace();
     if (this.peek() !== '=') return { ok: true, attr: { name, value: true } };
@@ -964,12 +1028,14 @@ class Parser {
     this.advance(); // consume '='
     this.skipWhitespace();
     const valueResult = this.parseAttrValue();
-    if (!valueResult.ok) return valueResult;
-    return { ok: true, attr: { name, value: valueResult.value } };
+    return valueResult.ok ? { ok: true, attr: { name, value: valueResult.value } } : valueResult;
   }
 
-  private missingAttributeNameError(): AttributeParseResult {
-    return { ok: false, error: this.error('Expected attribute name') };
+  private attributeNameError(name: string): AttributeParseResult | undefined {
+    if (!name) return { ok: false, error: this.error('Expected attribute name') };
+    return name === 'is:inline'
+      ? { ok: false, error: this.error('InvalidDirective: is:inline is not supported') }
+      : undefined;
   }
 
   private readAttrName(): string {

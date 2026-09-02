@@ -1,5 +1,5 @@
 import express from 'express';
-import { Sikka } from '../src';
+import { Sikka } from 'sikka';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,13 +21,16 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const sikka = new Sikka({
-  views: resolve(__dirname, 'views'),
-  readFile: (p: string) => readFileSync(p, 'utf-8'),
+  mode: 'source',
+  resolver(request, importer) {
+    if (request === 'stream')
+      return { id: resolve(__dirname, 'views', 'stream.astro'), source: streamTemplate };
+    const id = importer
+      ? resolve(dirname(importer), request)
+      : resolve(__dirname, 'views', request);
+    return { id, source: readFileSync(id, 'utf-8') };
+  },
 });
-
-// Register Card as a global component
-const cardTemplate = readFileSync(resolve(__dirname, 'components', 'Card.astro'), 'utf-8');
-sikka.loadComponent('Card', cardTemplate);
 
 const app = express();
 
@@ -69,7 +72,7 @@ app.get('/about/:index', (req, res) => {
 });
 
 app.get('/stream', async (_req, res) => {
-  const gen = sikka.streamString(streamTemplate, { items: streamItems });
+  const gen = sikka.stream('stream', { items: streamItems });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Transfer-Encoding', 'chunked');

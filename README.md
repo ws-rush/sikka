@@ -1,327 +1,109 @@
 # Sikka (سكّة)
 
-> A vibecoded, zero-dependency, runtime-agnostic template engine with Astro-like syntax.
+Sikka is a zero-dependency Template engine. Its [1.0 Contract](docs/SIKKA_1.0_CONTRACT.md) is the normative API and syntax reference; [the syntax guide](README.astro-syntax.md) is a concise, self-contained guide.
 
-> [!WARNING]
-> This project is currently under **heavy development**. APIs and internal behaviors are subject to significant changes as we optimize for performance and expand Astro syntax support.
+## Install
 
-## Features
+```bash
+npm install sikka
+```
 
-- **Astro-like syntax**: Use familiar `.astro` components, frontmatter, and JSX-like template bodies.
-- **Runtime-agnostic**: Works in Node.js, Bun, Deno, and the browser. No dependencies on Node.js built-ins.
-- **Fast**: Templates are compiled once and cached for high performance.
-- **Secure**: Automatic HTML escaping for all interpolated values to protect against XSS.
-- **Component-driven**: Built-in support for component composition and slots.
-- **Typed**: Written in TypeScript with full type support for props and slots.
+## Render Template source
+
+Choose `source` explicitly. Its synchronous resolver owns storage, paths, and canonical Template identities. It receives an entry request or a Frontmatter Component specifier plus the importing identity.
+
+```ts
+import { Sikka } from 'sikka';
+
+const templates = new Map([
+  [
+    'home',
+    {
+      id: 'pages/home.astro',
+      source: '---\nimport Card from "./Card.astro";\n---\n<Card title={Astro.props.title} />',
+    },
+  ],
+  ['./Card.astro', { id: 'components/Card.astro', source: '<h1>{Astro.props.title}</h1>' }],
+]);
+
+const sikka = new Sikka({
+  mode: 'source',
+  resolver(request, importer) {
+    const template = templates.get(request);
+    if (!template) throw new Error(`Unknown Template ${request} from ${importer ?? 'entry'}`);
+    return template;
+  },
+});
+
+const html = sikka.render('home', { title: 'Hello' });
+for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
+  // write(chunk)
+}
+```
+
+Components come only from non-type `.astro` imports in Frontmatter. Source regular and Streaming compilation caches are separate and use the canonical `id`; `invalidate(id)` clears both for that identity and `invalidate()` clears both caches. `cache: true`, `cache: false`, `cacheSize`, or a custom `Cache` control caching.
+
+Source mode dynamically evaluates Template source. Treat every Template as trusted application code; it is not suitable for a strict Content Security Policy.
+
+## Precompile Template graphs
+
+`compile` is the standalone synchronous build API, exported only from `sikka/precompile`. It follows the same resolver contract, returns one artifact per canonical identity, and never writes files or evaluates generated source.
+
+```ts
+import { compile, emitModule } from 'sikka/precompile';
+
+const artifacts = compile(['home', 'about'], { resolver });
+const moduleSource = emitModule(artifacts[0], {
+  componentSpecifier: ({ id }) => outputSpecifierFor(id),
+});
+```
+
+An artifact's `components` are its direct Frontmatter edges: `{ localName, specifier, id }`. `emitModule` owns ESM wrapping, runtime-helper binding, and static Component links. A build tool supplies `componentSpecifier` to map each edge to its generated module, and may override `runtimeSpecifier` from its default of `sikka/runtime`. The build tool still owns output paths and I/O; the conventional emitted filename is `*.sikka.mjs`.
+
+The emitted module has named `render` and `stream` exports and no default export. It statically links Component `render` exports into the regular body and `stream` exports into the Streaming body. `sikka/runtime` remains the generated-code ABI, while `emitModule` keeps its helper wiring inside Sikka.
+
+## Render precompiled Templates
+
+Load generated modules before rendering. In `precompiled` mode the synchronous resolver returns an already-loaded module; Sikka does not import, compile, or evaluate it. Precompiled rendering performs no string evaluation and is the strict-CSP path.
+
+```ts
+const modules = new Map([['home', await import('./generated/home.sikka.mjs')]]);
+const sikka = new Sikka({
+  mode: 'precompiled',
+  resolver(entry) {
+    const module = modules.get(entry);
+    if (!module) throw new Error(`Unknown loaded Template ${entry}`);
+    return module;
+  },
+});
+
+sikka.render('home', { title: 'Hello' });
+```
+
+Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, and `debug`. `varName` (default `Astro`) renames the props variable during source-mode compilation only; generated modules always bind `Astro`.
+
+## Escaping and trust
+
+With default escaping, interpolated values, HTML attribute values, and `set:text` values are escaped. `set:html`, including `{...{ 'set:html': value }}`, inserts verbatim HTML; it is not sanitization. `is:raw` emits its child Template source verbatim rather than evaluating it. `autoEscape: false` disables automatic escaping globally. `RawHtml` is a generated-runtime helper for trusted verbatim values, not an application rendering API.
+
+Only use `set:html`, `RawHtml`, `autoEscape: false`, and trusted Template source with content your application has decided to trust. Sikka does not sanitize data or make that decision for you.
+
+## Streaming and diagnostics
+
+Streaming produces the same Rendered HTML as regular rendering except that awaited Frontmatter is Streaming-only; regular `render` rejects it. Pending source content flushes before each Component, which renders in source order. Other chunk boundaries are not Stable.
+
+Public failures are `SikkaError` instances. Their stable `category` is `Parse`, `Resolve`, `Compile`, or `Render`; context can include `template`, `request`, `importer`, `construct`, `cause`, and parse `line`/`column`. Message wording is not Stable.
+
+## Release evidence
+
+Node.js 24 and bundled Chromium are release-evidence targets only, not runtime or version support promises. This project makes no security-response or service-level commitment.
 
 ## Development
 
-The project uses the latest TypeScript compiler, [oxlint](https://oxc.rs/docs/guide/usage/linter), and [oxfmt](https://oxc.rs/docs/guide/usage/formatter) for strict, fast validation:
-
 ```bash
 nub install
-nub run format
-nub run lint
-nub run fallow
-nub run typecheck
-nub run test
-nub run test:coverage
+nub run format && nub run lint && nub run fallow && nub run typecheck && nub run test && nub run test:coverage
 ```
-
-Configuration lives in `.oxlintrc.json` and `.oxfmtrc.json`.
-
-## Installation
-
-```bash
-deno add @rush/sikka
-# or
-nubx jsr add @rush/sikka
-# or
-nubx jsr add @rush/sikka
-# or
-bunx jsr add @rush/sikka
-```
-
-Import in your code:
-
-```typescript
-import { Sikka } from '@rush/sikka';
-```
-
-## Quick Start
-
-### Basic Rendering
-
-Render a template string directly with props:
-
-```javascript
-import { Sikka } from '@rush/sikka';
-
-const sikka = new Sikka();
-
-const template = `
----
-const { name } = Astro.props;
----
-<h1>Hello, {name}!</h1>
-`;
-
-const html = await sikka.renderString(template, { name: 'World' });
-console.log(html); // <h1>Hello, World!</h1>
-```
-
-### Compiling and File Resolution
-
-To load templates from the file system, provide `views`, `readFile`, and `resolvePath` in the options:
-
-```javascript
-import { Sikka } from '@rush/sikka';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-
-const sikka = new Sikka({
-  views: path.join(process.cwd(), 'templates'),
-  readFile: (p) => readFile(p, 'utf-8'),
-  resolvePath: (base, specifier) => path.resolve(path.dirname(base), specifier),
-});
-
-const html = await sikka.render('index.astro', { title: 'Home' });
-```
-
-### Component System
-
-You can register components globally using `loadComponent`:
-
-```javascript
-sikka.loadComponent('Header', '<header><h1>{Astro.props.title}</h1></header>');
-
-const template = `
-<Header title="My Website" />
-<main><slot /></main>
-`;
-
-const html = await sikka.renderString(template);
-```
-
-## Streaming
-
-For HTTP frameworks (Hono, Express, etc.), the engine supports streaming HTML to the client incrementally. Static content is flushed immediately, while component calls are awaited and yielded as single opaque chunks.
-
-```javascript
-import { Sikka } from '@rush/sikka';
-
-const sikka = new Sikka();
-
-// Stream a template string
-const gen = sikka.streamString(template, { name: 'World' });
-for await (const chunk of gen) {
-  res.write(chunk); // Send each chunk to the client immediately
-}
-
-// Stream a template file
-const gen = sikka.stream('page.astro', { title: 'Home' });
-for await (const chunk of gen) {
-  res.write(chunk);
-}
-```
-
-Streaming supports:
-
-- **Async frontmatter**: `await` expressions in frontmatter are fully supported
-- **Static flushing**: Static HTML is yielded immediately without waiting for dynamic content
-- **Component boundaries**: Component calls are awaited and yielded as single chunks
-- **Independent caching**: Streaming functions are cached separately from sync functions
-- **Shared compilation**: Sync and streaming rendering share AST emission logic, so syntax behavior remains aligned
-
-## Testing
-
-Tests use Node.js's built-in `node:test` runner, so no test framework runtime is required:
-
-```bash
-nub run test
-nub run test:coverage
-```
-
-## Performance
-
-Sikka includes a reproducible comparison suite for the precompiled render phase. It measures Sikka alongside EJS, Eta, Handlebars, LiquidJS, Pug, Dust.js, and igo-dust using identical static HTML, escaped interpolation, conditional-attribute, and nested-loop workloads.
-
-```bash
-npm ci --prefix benchmark
-nub run build && nub run bench
-```
-
-The runner verifies that every engine produces identical HTML before timing it, prints each scenario in descending ops/sec order (with Tinybench's relative margin of error), and reports an overall score. The overall score is the geometric mean of an engine's speed relative to the fastest engine in each scenario, so workloads receive equal weight. It intentionally excludes compilation and file I/O; templates are precompiled once before measurement. Results are machine- and runtime-specific, so use the current local run rather than checked-in numbers when deciding on optimization work.
-
-For quicker local feedback, reduce the duration while preserving the same workloads:
-
-```bash
-SIKKA_BENCH_TIME=200 SIKKA_BENCH_WARMUP_TIME=50 nub run bench
-```
-
-It achieves strong performance through:
-
-- **Zero-allocation caching**: Large templates are compiled once and stored in a high-speed cache.
-- **Compile-time static merging**: Adjacent static HTML parts and attributes are folded into single continuous strings.
-- **Fast-path escaper**: Optimized HTML escaping using type-dispatching and regex-skipping.
-- **Expression inlining**: JSX within loops is transformed into direct string concatenations to avoid function call overhead.
-
-## Core Principles
-
-- **Runtime-agnostic core**: No dependency on Node.js built-ins. File I/O and path resolution are injected via interfaces.
-- **Security by default**: Every interpolated value is HTML-escaped automatically.
-- **Compile-then-cache**: Templates are compiled once to a JavaScript closure and cached for subsequent renders.
-
-## Syntax Features
-
-- **Frontmatter**: Use `---` fences at the top of the file for light template setup only, such as prop destructuring, small constants, and `.astro` component imports.
-- **JSX-like Body**: Standard HTML tags mixed with JavaScript expressions in curly braces `{...}`.
-- **Component Composition**: Import `.astro` files in the frontmatter and use them as tags (e.g., `<MyComponent />`).
-- **Slots**:
-  - Default: `<slot />`
-  - Named: `<slot name="header" />`
-  - Fallback content: `<slot>Default content</slot>`
-- **Conditional Rendering**: `{condition && <p>Visible</p>}` or `{condition ? <A /> : <B />}`.
-- **Loops**: `{items.map(item => <li>{item}</li>)}`.
-- **Special Tags**: `<script>` and `<style>` tags are preserved verbatim in the output.
-- **`class:list`**: `<div class:list={['a', { b: true }]} />` → `<div class="a b" />`
-- **`style` objects**: `<div style={{ color: 'red' }} />` → `<div style="color:red" />`
-- **Auto Escaping**: Control how values are processed via `autoEscape` and `autoFilter` options.
-
-## Public API Reference
-
-### `new Sikka(options)`
-
-Creates a configured engine instance.
-
-#### `options`
-
-- `views`: Base directory for templates.
-- `readFile`: Sync function to read file content from disk.
-- `resolvePath`: Sync/Async function to resolve import paths.
-- `varName`: Name of the global variable (default: `"Astro"`).
-- `debug`: Enable runtime error debugging.
-- `cache`: Enable template caching.
-- `autoEscape`: Enable HTML escaping (default: `true`).
-- `autoFilter`: Enable automatic value filtering.
-- `filterFunction`: Custom filter for interpolated values.
-
-### `sikka.renderString(template, props?): string`
-
-Renders a template string and returns the HTML result.
-
-### `sikka.render(name, props?): string`
-
-Renders a template file from the `views` directory and returns the HTML result.
-
-### `sikka.streamString(template, props?): AsyncGenerator<string>`
-
-Streams a template string, yielding HTML chunks as they are produced. Static content is yielded immediately; component calls are awaited and yielded as single opaque chunks.
-
-### `sikka.stream(name, props?): AsyncGenerator<string>`
-
-Streams a template file from the `views` directory, yielding HTML chunks as they are produced.
-
-### `sikka.compile(template, config?): RenderFunction`
-
-Compiles a template string into a render function.
-
-### `sikka.compileToString(template, config?): string`
-
-Compiles a template string into its JavaScript source body.
-
-### `sikka.loadComponent(name, template): void`
-
-Registers a global component.
-
-### `sikka.invalidate(key?): void`
-
-Clears specific or all cache entries.
-
-## Frontmatter Scope and Intended Usage
-
-Sikka frontmatter is intentionally best treated as a **small template setup area**, not as a general application-logic layer.
-
-Use frontmatter for:
-
-- destructuring `Astro.props`
-- defining small local constants
-- simple conditional helpers
-- importing other `.astro` components
-- lightweight template-local preparation
-
-Avoid using frontmatter for:
-
-- heavy business logic
-- data fetching orchestration
-- database access
-- large transformations or normalization pipelines
-- application service wiring
-- browser runtime behavior
-
-### Important limitation: imports in frontmatter
-
-In Sikka, frontmatter imports are intended for **`.astro` component composition**. Do not rely on frontmatter as a general-purpose module-loading system for arbitrary runtime logic.
-
-Recommended rule of thumb:
-
-- if the work prepares data for rendering, do it in your **controller / route handler / server function** and pass the result as props
-- if the code must run in the **browser at runtime**, put it in a `<script>` tag
-- if you need reusable UI composition, import another **`.astro` component**
-
-Example:
-
-```ts
-// controller / route handler
-const users = await userService.list();
-const cards = users.map((user) => ({
-  title: user.name,
-  description: user.email,
-  href: `/users/${user.id}`,
-}));
-
-const html = await sikka.render('users.astro', { cards });
-```
-
-```astro
----
-const { cards } = Astro.props;
-import Card from '../components/Card.astro';
----
-{cards.map((card) => <Card {...card} />)}
-```
-
-For browser runtime imports or client-side behavior, use normal browser mechanisms inside `<script>` tags.
-
-## TypeScript and Editor Tooling: Global Components
-
-Components registered via `sikka.loadComponent()` are available everywhere at runtime, but editor tooling for `.astro` files may still report `Cannot find name 'Card'` (or similar) for component tags that are not explicitly imported.
-
-This happens because `loadComponent()` is a runtime registration mechanism, while most `.astro` language tooling performs static analysis and usually only recognizes:
-
-- components imported in frontmatter
-- local variables in scope
-- framework-specific built-in globals
-
-A declaration file can still help plain TypeScript understand a global symbol:
-
-```typescript
-declare function Card(props: { title: string; description: string; href: string }): void;
-```
-
-However, some editors and `.astro` language servers will still flag `<Card />` in templates even when that declaration exists, because component-tag resolution is handled by the `.astro` tooling layer, not by plain TypeScript alone.
-
-### Recommendation
-
-If you want the best editor experience, explicitly import globally-registered components in templates as well:
-
-```astro
----
-import Card from '../components/Card.astro';
----
-```
-
-You can still keep `sikka.loadComponent('Card', template)` for runtime global registration. The import is mainly for static tooling and autocomplete.
 
 ## License
 

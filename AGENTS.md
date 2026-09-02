@@ -37,4 +37,4 @@ After code changes, run:
 nub run format && nub run lint && nub run fallow && nub run typecheck && nub run test && nub run test:coverage
 ```
 
-Update `README.md` for user-visible behavior and this file when agent guidance changes. For render-performance work, verify equivalent output and benchmark with `npm ci --prefix benchmark && nub run build && nub run bench`. Use `gh` for GitHub Issues.
+Update `README.md` for user-visible behavior and this file when agent guidance changes. For render-performance work, verify equivalent output and benchmark with `nub run build && nub run bench`.

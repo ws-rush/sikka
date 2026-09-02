@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { stream } from 'hono/streaming';
-import { Sikka } from '../src';
+import { Sikka } from 'sikka';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,13 +24,16 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const sikka = new Sikka({
-  views: resolve(__dirname, 'views'),
-  readFile: (p: string) => readFileSync(p, 'utf-8'),
+  mode: 'source',
+  resolver(request, importer) {
+    if (request === 'stream')
+      return { id: resolve(__dirname, 'views', 'stream.astro'), source: streamTemplate };
+    const id = importer
+      ? resolve(dirname(importer), request)
+      : resolve(__dirname, 'views', request);
+    return { id, source: readFileSync(id, 'utf-8') };
+  },
 });
-
-// Register Card as a global component
-const cardTemplate = readFileSync(resolve(__dirname, 'components', 'Card.astro'), 'utf-8');
-sikka.loadComponent('Card', cardTemplate);
 
 // ── App setup ──────────────────────────────────────────────────────────────
 
@@ -75,7 +78,7 @@ app.get('/about/:index', (c) => {
 });
 
 app.get('/stream', async (c) => {
-  const gen = sikka.streamString(streamTemplate, { items: streamItems });
+  const gen = sikka.stream('stream', { items: streamItems });
   return stream(c, async (s) => {
     for await (const chunk of gen) {
       await s.write(chunk);

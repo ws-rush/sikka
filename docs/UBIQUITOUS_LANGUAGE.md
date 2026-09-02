@@ -2,27 +2,28 @@
 
 ## Templates and composition
 
-| Term | Definition | Aliases to avoid |
-| --- | --- | --- |
-| **Template** | An Astro-syntax source document that defines HTML output. | View, page, markup file |
-| **Component** | A reusable **Template** that can be composed into another **Template**. | Widget, partial, include |
-| **Template source** | The text of a **Template**, supplied directly or loaded from a file. | Source file, input |
-| **Frontmatter** | The fenced setup section at the beginning of a **Template**. | Script block, preamble |
-| **Props** | Named input values supplied to a **Template** or **Component**. | Parameters, attributes, data |
-| **Slot** | A named or default insertion point through which a parent supplies child content to a **Component**. | Placeholder, content projection |
-| **Fallback content** | The content a **Slot** renders when its parent supplies no matching slot content. | Default content |
+| Term                    | Definition                                                                                                                               | Aliases to avoid                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| **Template**            | An Astro-syntax source document that defines HTML output.                                                                                | View, page, markup file         |
+| **Component**           | A reusable **Template** that can be composed into another **Template**.                                                                  | Widget, partial, include        |
+| **Template source**     | The text of a **Template**, supplied directly or loaded from a file.                                                                     | Source file, input              |
+| **Template resolution** | The mapping of a Template request, optionally relative to an importing Template, to its canonical Template identity and Template source. | Lookup, loading                 |
+| **Frontmatter**         | The fenced setup section at the beginning of a **Template**.                                                                             | Script block, preamble          |
+| **Props**               | Named input values supplied to a **Template** or **Component**.                                                                          | Parameters, attributes, data    |
+| **Slot**                | A named or default insertion point through which a parent supplies child content to a **Component**.                                     | Placeholder, content projection |
+| **Fallback content**    | The content a **Slot** renders when its parent supplies no matching slot content.                                                        | Default content                 |
 
 ## Rendering and output
 
-| Term | Definition | Aliases to avoid |
-| --- | --- | --- |
-| **Render** | The act of evaluating a **Template** with **Props** and slot content to produce HTML. | Execute, compile |
-| **Rendered HTML** | The HTML string or stream produced by a **Render**. | Response, output |
-| **Expression** | An embedded JavaScript or TypeScript value source evaluated during a **Render**. | Interpolation, dynamic value |
-| **Directive** | A reserved template attribute that changes how an element's content is rendered. | Special attribute, modifier |
-| **Raw HTML** | Trusted HTML intentionally inserted without HTML escaping. | Unescaped text, safe string |
-| **Escaped value** | An interpolated value encoded so it is safe to include in HTML. | Sanitized value |
-| **Streaming render** | A **Render** that produces **Rendered HTML** incrementally as asynchronous chunks. | Async render, chunked output |
+| Term                 | Definition                                                                            | Aliases to avoid             |
+| -------------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
+| **Render**           | The act of evaluating a **Template** with **Props** and slot content to produce HTML. | Execute, compile             |
+| **Rendered HTML**    | The HTML string or stream produced by a **Render**.                                   | Response, output             |
+| **Expression**       | An embedded JavaScript or TypeScript value source evaluated during a **Render**.      | Interpolation, dynamic value |
+| **Directive**        | A reserved template attribute that changes how an element's content is rendered.      | Special attribute, modifier  |
+| **Raw HTML**         | Trusted HTML intentionally inserted without HTML escaping.                            | Unescaped text, safe string  |
+| **Escaped value**    | An interpolated value encoded so it is safe to include in HTML.                       | Sanitized value              |
+| **Streaming render** | A **Render** that produces **Rendered HTML** incrementally as asynchronous chunks.    | Async render, chunked output |
 
 ## Relationships
 

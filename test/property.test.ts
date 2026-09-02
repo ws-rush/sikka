@@ -1,97 +1,138 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
-import fc from 'fast-check';
+import {
+  PORTABLE_RUNS,
+  PORTABLE_SEED,
+  PortableGenerator,
+  runPortableProperty,
+} from './portable.js';
 import { Sikka } from '../src/index.js';
+import { compile, emitModule } from '../src/precompile.js';
 
-// Strings that are safe to embed in template bodies
-const safeText = fc
-  .string({ maxLength: 50 })
-  .filter(
-    (s) =>
-      !s.includes('{') &&
-      !s.includes('}') &&
-      !s.includes('---') &&
-      !s.includes('`') &&
-      !s.includes('<')
-  );
+const text = new PortableGenerator().string().filter((value) => value.length > 0);
+const props = new PortableGenerator().object({
+  name: text,
+  items: new PortableGenerator().array(text, 5),
+});
 
-// Alphanumeric strings only (for prop values etc.)
-const alphaNum = fc.string({ minLength: 1, maxLength: 20 }).filter((s) => /^[a-zA-Z0-9]+$/.test(s));
+function templateFor(template: string, components: Record<string, string> = {}) {
+  return (request: string) => {
+    const templateSource = request === 'page' ? template : components[request];
+    if (templateSource === undefined) throw new Error(`Unknown Template: ${request}`);
+    return { id: request, source: templateSource };
+  };
+}
 
-describe('Property-Based Tests', () => {
-  it('render determinism: same template + props always produce same output', () => {
-    fc.assert(
-      fc.property(safeText, (str) => {
-        const template = `---\n---\n<div>${str}</div>`;
-        const sikka = new Sikka();
-        const html1 = sikka.renderString(template);
-        const html2 = sikka.renderString(template);
-        expect(html1).toBe(html2);
+function source(template: string, components?: Record<string, string>): Sikka {
+  return new Sikka({ mode: 'source', resolver: templateFor(template, components) });
+}
+
+async function precompiled(template: string, components?: Record<string, string>): Promise<Sikka> {
+  const artifacts = compile('page', { resolver: templateFor(template, components) });
+  const byId = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+  const urls = new Map<string, string>();
+  const moduleUrl = (id: string): string => {
+    const known = urls.get(id);
+    if (known) return known;
+    const artifact = byId.get(id);
+    if (!artifact) throw new Error(`Missing artifact: ${id}`);
+    const url = `data:text/javascript,${encodeURIComponent(
+      emitModule(artifact, {
+        runtimeSpecifier: new URL('../src/runtime.ts', import.meta.url).href,
+        componentSpecifier: ({ id: componentId }) => moduleUrl(componentId),
       })
-    );
-  });
+    )}`;
+    urls.set(id, url);
+    return url;
+  };
+  const module = await import(moduleUrl('page'));
+  return new Sikka({ mode: 'precompiled', resolver: () => module });
+}
 
-  it('cache identity: compile returns same reference for same template', () => {
-    fc.assert(
-      fc.property(safeText, (str) => {
-        const template = `<div>${str}</div>`;
-        const sikka = new Sikka({ cache: true });
-        const fn1 = sikka.compile(template);
-        const fn2 = sikka.compile(template);
-        expect(fn1).toBe(fn2);
+function escaped(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+describe('Portable properties', () => {
+  it('is deterministic and reports replay data', () => {
+    const first = new PortableGenerator(PORTABLE_SEED);
+    const second = new PortableGenerator(PORTABLE_SEED);
+    expect(first.string().sample(first)).toBe(second.string().sample(second));
+    expect(PORTABLE_RUNS).toBe(100);
+    expect(() =>
+      runPortableProperty('portable-failure', text, () => {
+        throw new Error('broken');
       })
-    );
+    ).toThrow(/portable-failure.*seed 0x53494b4b.*run 1.*input/);
   });
 
-  it('cache bypass: compile with config returns new reference', () => {
-    const sikka = new Sikka({ cache: true });
-    const template = '<div>test</div>';
-    const fn1 = sikka.compile(template);
-    const fn2 = sikka.compile(template, { autoEscape: false });
-    expect(fn1).not.toBe(fn2);
+  it('portable-deterministic-render', async () => {
+    const template = '<p>{Astro.props.value}</p>';
+    const sourceSikka = source(template);
+    const precompiledSikka = await precompiled(template);
+    runPortableProperty('portable-deterministic-render', text, (value) => {
+      const input = { value };
+      const sourceHtml = sourceSikka.render('page', input);
+      expect(sourceSikka.render('page', input)).toBe(sourceHtml);
+      expect(precompiledSikka.render('page', input)).toBe(sourceHtml);
+    });
   });
 
-  it('null-safety: renderString with no props matches empty object', () => {
-    const sikka = new Sikka();
-    const template = '<div>static content</div>';
-    expect(sikka.renderString(template)).toBe(sikka.renderString(template, {}));
+  it('portable-null-default-props', async () => {
+    const template = '<p>static</p>';
+    const sourceSikka = source(template);
+    const precompiledSikka = await precompiled(template);
+    runPortableProperty('portable-null-default-props', text, () => {
+      const sourceHtml = sourceSikka.render('page');
+      expect(sourceSikka.render('page', {})).toBe(sourceHtml);
+      expect(precompiledSikka.render('page')).toBe(sourceHtml);
+      expect(precompiledSikka.render('page', {})).toBe(sourceHtml);
+    });
   });
 
-  it('empty frontmatter equivalence: body renders same with or without --- fences', () => {
-    fc.assert(
-      fc.property(safeText, (str) => {
-        const body = `<span>${str}</span>`;
-        const sikka = new Sikka();
-        const withFM = sikka.renderString(`---\n---\n${body}`);
-        const withoutFM = sikka.renderString(body);
-        expect(withFM).toBe(withoutFM);
-      })
-    );
+  it('portable-frontmatter-equivalence', async () => {
+    const body = '<p>{Astro.props.value}</p>';
+    const plain = source(body);
+    const fenced = source(`---\n---\n${body}`);
+    const precompiledPlain = await precompiled(body);
+    const precompiledFenced = await precompiled(`---\n---\n${body}`);
+    runPortableProperty('portable-frontmatter-equivalence', text, (value) => {
+      const input = { value };
+      const html = plain.render('page', input);
+      expect(fenced.render('page', input)).toBe(html);
+      expect(precompiledPlain.render('page', input)).toBe(html);
+      expect(precompiledFenced.render('page', input)).toBe(html);
+    });
   });
 
-  it('prop reflection: rendered output contains expected text for string props', () => {
-    fc.assert(
-      fc.property(alphaNum, (propVal) => {
-        const sikka = new Sikka();
-        const html = sikka.renderString(
-          '---\nconst { name } = Astro.props;\n---\n<div>{name}</div>',
-          { name: propVal }
-        );
-        expect(html).toContain(propVal);
-      })
-    );
+  it('portable-escaping-list', async () => {
+    const template =
+      '<h1>{Astro.props.name}</h1><ul>{Astro.props.items.map((item) => <li>{item}</li>)}</ul>';
+    const sourceSikka = source(template);
+    const precompiledSikka = await precompiled(template);
+    runPortableProperty('portable-escaping-list', props, (input) => {
+      const expected = `<h1>${escaped(input.name)}</h1><ul>${input.items.map((item) => `<li>${escaped(item)}</li>`).join('')}</ul>`;
+      expect(sourceSikka.render('page', input)).toBe(expected);
+      expect(precompiledSikka.render('page', input)).toBe(expected);
+    });
   });
 
-  it('component isolation: different props produce different outputs', () => {
-    fc.assert(
-      fc.property(alphaNum, alphaNum, (valA, valB) => {
-        fc.pre(valA !== valB);
-        const sikka = new Sikka();
-        sikka.loadComponent('Item', '<span>{Astro.props.text}</span>');
-        const htmlA = sikka.renderString(`<Item text="${valA}" />`);
-        const htmlB = sikka.renderString(`<Item text="${valB}" />`);
-        expect(htmlA).not.toBe(htmlB);
-      })
-    );
+  it('portable-component-isolation', async () => {
+    const template =
+      '---\nimport Item from "./item.astro";\n---\n<Item text={Astro.props.left} /><Item text={Astro.props.right} />';
+    const components = { './item.astro': '<span>{Astro.props.text}</span>' };
+    const sourceSikka = source(template, components);
+    const precompiledSikka = await precompiled(template, components);
+    const pairs = text.map((left) => ({ left, right: `${left}x` }));
+    runPortableProperty('portable-component-isolation', pairs, (input) => {
+      const expected = `<span>${escaped(input.left)}</span><span>${escaped(input.right)}</span>`;
+      expect(sourceSikka.render('page', input)).toBe(expected);
+      expect(precompiledSikka.render('page', input)).toBe(expected);
+    });
   });
 });

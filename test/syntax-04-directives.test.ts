@@ -29,36 +29,18 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<div class="a a"></div>');
     });
 
-    it('renders empty class attribute for falsy top-level (false)', () => {
-      const html = render('<div class:list={false} />');
-      expect(html).toBe('<div class=""></div>');
+    it('omits class for falsy values', () => {
+      for (const value of ['false', '0', '[]', '{}']) {
+        expect(render(`<div class:list={${value}} />`)).toBe('<div></div>');
+      }
     });
 
-    it('renders empty class attribute for 0', () => {
-      const html = render('<div class:list={0} />');
-      expect(html).toBe('<div class=""></div>');
+    it('merges class and class:list in source order', () => {
+      expect(render('<div class="x" class:list={["y"]} />')).toBe('<div class="x y"></div>');
     });
 
-    it('renders empty class attribute for empty array', () => {
-      const html = render('<div class:list={[]} />');
-      expect(html).toBe('<div class=""></div>');
-    });
-
-    it('renders empty class attribute for empty object', () => {
-      const html = render('<div class:list={{}} />');
-      expect(html).toBe('<div class=""></div>');
-    });
-
-    it('merges with static class attribute', () => {
-      const html = render('<div class="x" class:list={["y"]} />');
-      expect(html).toContain('class="x"');
-      expect(html).toContain('class="y"');
-    });
-
-    it('merges with className attribute', () => {
-      const html = render('<div className="x" class:list={["y"]} />');
-      expect(html).toContain('class="x"');
-      expect(html).toContain('class="y"');
+    it('merges className and class:list in source order', () => {
+      expect(render('<div className="x" class:list={["y"]} />')).toBe('<div class="x y"></div>');
     });
 
     it('renders dynamic string templates', () => {
@@ -88,25 +70,21 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<div style="z-index:99"></div>');
     });
 
-    it('renders null values as "null" string', () => {
-      const html = render('<div style={{ color: null }} />');
-      expect(html).toBe('<div style="color:null"></div>');
+    it('omits nullish and empty values', () => {
+      const html = render('<div style={{ color: null, background: undefined, padding: "" }} />');
+      expect(html).toBe('<div></div>');
     });
 
-    it('renders undefined values as "undefined" string', () => {
-      const html = render('<div style={{ color: undefined }} />');
-      expect(html).toBe('<div style="color:undefined"></div>');
+    it('omits boolean values while retaining zero', () => {
+      const html = render('<div style={{ hidden: false, enabled: true, zIndex: 0 }} />');
+      expect(html).toBe('<div style="z-index:0"></div>');
     });
 
-    it('renders empty string values', () => {
-      const html = render('<div style={{ color: "" }} />');
-      expect(html).toBe('<div style="color:"></div>');
-    });
-
-    it('combines style string with style object', () => {
-      const html = render('<div style="margin:0" style={{ padding: "10px" }} />');
-      expect(html).toContain('margin:0');
-      expect(html).toContain('padding:10px');
+    it('combines style strings and objects in source order', () => {
+      const html = render(
+        '---\nconst first = { style: { marginTop: 0 } };\nconst second = { style: "color:red;" };\n---\n<div style="display:block;" {...first} style={{ padding: "10px" }} {...second} />'
+      );
+      expect(html).toBe('<div style="display:block;margin-top:0;padding:10px;color:red"></div>');
     });
 
     it('renders quotes in values', () => {
@@ -165,6 +143,10 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<b>hi</b>');
     });
 
+    it('renders spread set:html', () => {
+      expect(render('<div {...{ "set:html": "<b>hi</b>" }} />')).toBe('<div><b>hi</b></div>');
+    });
+
     it('renders set:html with script tags verbatim', () => {
       const html = render('<div set:html={"<script>alert()</script>"} />');
       expect(html).toContain('<script>alert()</script>');
@@ -205,14 +187,13 @@ describe('Syntax: Built-in Directives', () => {
   });
 
   describe('is:raw and is:inline', () => {
-    it('preserves is:inline script verbatim with attribute', () => {
-      const html = render('<script is:inline>console.log(1);</script>');
-      expect(html).toBe('<script is:inline>console.log(1);</script>');
-    });
-
-    it('preserves is:inline style verbatim with attribute', () => {
-      const html = render('<style is:inline>body{}</style>');
-      expect(html).toBe('<style is:inline>body{}</style>');
+    it('diagnoses unsupported is:inline', () => {
+      expect(() => render('<script is:inline>console.log(1);</script>')).toThrow(
+        /ParseError.*InvalidDirective.*is:inline/
+      );
+      expect(() => render('<style is:inline>body{}</style>')).toThrow(
+        /ParseError.*InvalidDirective.*is:inline/
+      );
     });
 
     it('renders is:raw content verbatim (expression text preserved)', () => {
@@ -274,9 +255,9 @@ describe('Syntax: Built-in Directives', () => {
   });
 
   describe('style Edge Cases', () => {
-    it('uses custom toString when defined', () => {
+    it('uses custom toString as the complete style value', () => {
       const html = render('<div style={{ toString: () => "color:red" }} />');
-      expect(html).toContain('color:red');
+      expect(html).toBe('<div style="color:red"></div>');
     });
   });
 
