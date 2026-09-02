@@ -31,7 +31,12 @@ function run(directory: string, nodeReport: string, browserReport: string, evide
       browserReport,
       evidence,
     ],
-    { stdio: 'ignore' }
+    {
+      stdio: 'ignore',
+      // Match the fixture report identity so the aggregator's cross-run
+      // environment guard stays satisfied when CI provides GITHUB_* values.
+      env: { ...process.env, GITHUB_SHA: 'commit', GITHUB_RUN_ID: 'run' },
+    }
   );
 }
 
