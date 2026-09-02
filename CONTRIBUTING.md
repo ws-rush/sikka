@@ -65,6 +65,10 @@ This reads git history and appends new entries to the top of `CHANGELOG.md`. It 
 
 ## Release
 
+After 1.0, the Stable application API, precompile API, generated-runtime ABI, public types, diagnostics context, and documented Supported syntax follow semantic versioning: breaking changes are major, compatible features are minor, and compatible fixes are patch releases. Intentionally rejected and explicitly unsupported behavior has no compatibility commitment until documented as Supported.
+
+Node.js 24 and bundled Chromium are release-evidence targets, not runtime support promises. Record the target and candidate revision with any benchmark result; do not present it as a general performance claim.
+
 The release script handles version bumping, building, testing, changelog generation, and git tagging.
 
 ```bash

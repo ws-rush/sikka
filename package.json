@@ -1,7 +1,7 @@
 {
   "name": "sikka",
   "version": "0.1.0",
-  "description": "A zero-dependency, runtime-agnostic template engine with Astro-like syntax.",
+  "description": "A zero-dependency Template engine.",
   "keywords": [
     "astro",
     "compiler",

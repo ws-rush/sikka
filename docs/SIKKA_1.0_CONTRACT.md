@@ -77,6 +77,23 @@ A generated module has named `render` and `stream` exports and no default
 export. `stream` uses its distinct async-generator body. Precompiled rendering
 performs no string evaluation and is the strict-CSP path.
 
+## Trust boundaries
+
+With default escaping, Expressions, HTML attribute values, and `set:text` values
+escape. Direct `set:html` and HTML-element spread `set:html` insert their values
+verbatim; neither sanitizes. `is:raw` emits its child Template source verbatim
+instead of evaluating it. `autoEscape: false` disables automatic
+escaping for the invoking `Sikka` instance. `RawHtml` is a generated-runtime
+helper that marks a value as trusted verbatim HTML, not an application rendering
+API.
+
+Template source, `set:html`, `is:raw` content, `RawHtml`, and `autoEscape: false`
+are application-author trust boundaries. Applications must decide which source
+and values to trust and must perform any required validation, sanitization, and
+authorization themselves. Source mode dynamically evaluates Template source and
+is not strict-CSP safe; the precompiled path avoids string evaluation but does
+not make any security or response-SLA promise.
+
 ## Syntax Contract classifications
 
 Every documented construct has exactly one classification:
@@ -166,9 +183,10 @@ The following Template structure is **Supported**:
 
 Content Directives are limited to direct `set:html`, direct `set:text`, and spread
 `set:html` on HTML elements. The two `set` Directives cannot be combined or used
-with child content. Fragments allow only `slot`, `set:html`, and `set:text`;
+with child content. `is:raw` on an element preserves its child Template source
+instead of evaluating it. Fragments allow only `slot`, `set:html`, and `set:text`;
 attributes, spreads, and other Directives (including `is:raw`) are rejected.
-`is:inline` is unsupported.
+`is:inline` is intentionally rejected.
 
 The broader Astro Frontmatter module model, client directives, hydration,
 framework components, browser behavior, and other `Astro` globals are
@@ -201,7 +219,7 @@ Rendered HTML.
 
 ## Release evidence policy
 
-Node.js 24 and Playwright Chromium are release-evidence targets, not Supported
+Node.js 24 and bundled Chromium are release-evidence targets, not Supported
 Runtime or runtime-version promises. A release candidate must execute the
 portable corpus against the exact candidate in the selected Node target and
 applicable precompiled service-worker target. This evidence does not imply
