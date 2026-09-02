@@ -4,7 +4,7 @@
 
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 import { SikkaError } from './error.js';
-import { parse, VOID_ELEMENTS } from './parser.js';
+import { VOID_ELEMENTS } from './parser.js';
 import type {
   TemplateAST,
   TemplateNode,
@@ -32,8 +32,6 @@ interface CompileOptions {
   filterFunction?: (val: unknown) => unknown;
   /** Whether to enable debug mode. */
   debug?: boolean;
-  /** Custom path resolution function. */
-  resolvePath?: (base: string, specifier: string) => string | Promise<string>;
   /** Whether to aggregate <script> and <style> tags. */
   aggregateAssets?: boolean;
   /** Generated bodies call statically linked Component exports directly. */
@@ -81,11 +79,6 @@ const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
   'reversed',
   'selected',
 ]);
-
-type CompileSetupOptions = CompileOptions & {
-  fileReader?: (path: string) => string;
-  basePath?: string;
-};
 
 interface RuntimeHelpers {
   escapeHelper: (val: unknown) => string;
@@ -145,173 +138,6 @@ function toKebabCase(match: string): string {
   return '-' + match.toLowerCase();
 }
 
-// ─── Component resolution ─────────────────────────────────────────────────────
-
-type ResolveResult =
-  | { ok: true; components: Record<string, RenderFunction> }
-  | { ok: false; error: CompileError };
-type ComponentFailure = { ok: false; error: CompileError };
-type ComponentResolution = { ok: true; fn: RenderFunction } | ComponentFailure;
-
-/**
- * Recursively resolve and compile all component imports in an AST (Synchronous).
- */
-function resolveComponentsSync(
-  imports: ComponentImport[],
-  fileReader: ((path: string) => string) | undefined,
-  basePath: string,
-  options: CompileOptions,
-  inProgress: Set<string> = new Set()
-): ResolveResult {
-  const components: Record<string, RenderFunction> = {};
-  for (const imp of imports.filter((item) => !options.components?.[item.localName])) {
-    const result = resolveComponentImport(imp, fileReader, basePath, options, inProgress);
-    if (!result.ok) return result;
-    components[imp.localName] = result.fn;
-  }
-  return { ok: true, components };
-}
-
-function resolveComponentImport(
-  imp: ComponentImport,
-  fileReader: ((path: string) => string) | undefined,
-  basePath: string,
-  options: CompileOptions,
-  inProgress: Set<string>
-): ComponentResolution {
-  if (!fileReader) return missingComponentReader(imp);
-  const pathResult = resolveComponentPath(imp, basePath, inProgress);
-  if (!pathResult.ok) return pathResult;
-  return compileResolvedComponent(imp, fileReader, pathResult.path, options, inProgress);
-}
-
-function resolveComponentPath(
-  imp: ComponentImport,
-  basePath: string,
-  inProgress: Set<string>
-): { ok: true; path: string } | { ok: false; error: CompileError } {
-  const path = resolvePath(basePath, imp.specifier);
-  if (inProgress.has(path)) return circularComponentError(imp, inProgress, path);
-  return { ok: true, path };
-}
-
-function compileResolvedComponent(
-  imp: ComponentImport,
-  fileReader: (path: string) => string,
-  resolvedPath: string,
-  options: CompileOptions,
-  inProgress: Set<string>
-): ComponentResolution {
-  const astResult = readComponentAST(imp, fileReader, resolvedPath);
-  if (!astResult.ok) return astResult;
-
-  const childResult = resolveComponentsSync(
-    astResult.ast.imports,
-    fileReader,
-    resolvedPath,
-    options,
-    new Set([...inProgress, resolvedPath])
-  );
-  if (!childResult.ok) return childResult;
-  return compileResolvedComponentAST(astResult.ast, options, childResult.components);
-}
-
-function compileResolvedComponentAST(
-  ast: TemplateAST,
-  options: CompileOptions,
-  childComponents: Record<string, RenderFunction>
-): ComponentResolution {
-  const result = compileAST(ast, {
-    ...options,
-    components: { ...options.components, ...childComponents },
-  });
-  return result.ok ? { ok: true, fn: result.fn } : result;
-}
-
-function missingComponentReader(imp: ComponentImport): ComponentFailure {
-  return {
-    ok: false,
-    error: {
-      message: `Cannot resolve component: ${imp.specifier} (no readFileSync provided)`,
-      category: 'Resolve',
-      request: imp.specifier,
-      specifier: imp.specifier,
-    },
-  };
-}
-
-function circularComponentError(
-  imp: ComponentImport,
-  inProgress: Set<string>,
-  resolvedPath: string
-): ComponentFailure {
-  const cycle = [...inProgress, resolvedPath];
-  return {
-    ok: false,
-    error: {
-      message: `Circular component dependency detected: ${cycle.join(' → ')}`,
-      category: 'Resolve',
-      request: imp.specifier,
-      template: resolvedPath,
-      specifier: imp.specifier,
-      cycle,
-    },
-  };
-}
-
-function readComponentAST(
-  imp: ComponentImport,
-  fileReader: (path: string) => string,
-  resolvedPath: string
-): { ok: true; ast: TemplateAST } | { ok: false; error: CompileError } {
-  const sourceResult = readComponentSource(imp, fileReader, resolvedPath);
-  if (!sourceResult.ok) return sourceResult;
-  return parseComponentSource(imp, sourceResult.source);
-}
-
-function readComponentSource(
-  imp: ComponentImport,
-  fileReader: (path: string) => string,
-  resolvedPath: string
-): { ok: true; source: string } | { ok: false; error: CompileError } {
-  try {
-    const source = fileReader(resolvedPath);
-    return source == null ? unresolvedComponentError(imp) : { ok: true, source };
-  } catch {
-    return unresolvedComponentError(imp);
-  }
-}
-
-function unresolvedComponentError(imp: ComponentImport): { ok: false; error: CompileError } {
-  return {
-    ok: false,
-    error: {
-      message: `Cannot resolve component: ${imp.specifier}`,
-      category: 'Resolve',
-      request: imp.specifier,
-      specifier: imp.specifier,
-    },
-  };
-}
-
-function parseComponentSource(
-  imp: ComponentImport,
-  source: string
-): { ok: true; ast: TemplateAST } | { ok: false; error: CompileError } {
-  const result = parse(source);
-  if (result.ok) return { ok: true, ast: result.ast };
-  return {
-    ok: false,
-    error: {
-      message: `Parse error in component ${imp.specifier}: ${result.error.message}`,
-      category: 'Parse',
-      request: imp.specifier,
-      construct: result.error.construct,
-      specifier: imp.specifier,
-    },
-  };
-}
-
 export const compile = compileSync;
 
 /** Returns a diagnostic when regular rendering cannot execute Frontmatter await. */
@@ -344,94 +170,13 @@ export function unsupportedFrontmatterImport(
   };
 }
 
-/**
- * Higher-level compile entry point (Synchronous): resolves component imports then compiles the AST.
- */
-function compileSync(ast: TemplateAST, options?: CompileSetupOptions): CompileResult {
+/** Compiles an AST after its Component graph has been resolved by the host. */
+function compileSync(ast: TemplateAST, options?: CompileOptions): CompileResult {
   const awaitError = unsupportedFrontmatterAwait(ast);
   if (awaitError) return { ok: false, error: awaitError };
-  const result = resolveCompileOptions(ast, options);
-  if (!result.ok) return result;
-  return compileAST(ast, { ...options, components: result.components });
-}
-
-function resolveCompileOptions(ast: TemplateAST, options?: CompileSetupOptions): ResolveResult {
   const importError = unsupportedFrontmatterImport(ast.imports, options?.basePath);
   if (importError) return { ok: false, error: importError };
-  return ast.imports.length === 0
-    ? resolvedInitialComponents(options)
-    : resolveImportedComponents(ast.imports, options);
-}
-
-function resolvedInitialComponents(options?: CompileSetupOptions): ResolveResult {
-  return { ok: true, components: initialComponents(options) };
-}
-
-function resolveImportedComponents(
-  imports: ComponentImport[],
-  options?: CompileSetupOptions
-): ResolveResult {
-  const components = initialComponents(options);
-  const result = resolveComponentImports(imports, options, components);
-  return mergeResolvedComponents(result, components);
-}
-
-function resolveComponentImports(
-  imports: ComponentImport[],
-  options: CompileSetupOptions | undefined,
-  components: Record<string, RenderFunction>
-): ResolveResult {
-  return resolveComponentsSync(imports, componentFileReader(options), componentBasePath(options), {
-    ...options,
-    components,
-  });
-}
-
-function componentFileReader(
-  options: CompileSetupOptions | undefined
-): ((path: string) => string) | undefined {
-  return options?.fileReader;
-}
-
-function componentBasePath(options: CompileSetupOptions | undefined): string {
-  return options?.basePath ?? '';
-}
-
-function mergeResolvedComponents(
-  result: ResolveResult,
-  components: Record<string, RenderFunction>
-): ResolveResult {
-  if (!result.ok) return result;
-  return { ok: true, components: { ...result.components, ...components } };
-}
-
-function initialComponents(options?: CompileSetupOptions): Record<string, RenderFunction> {
-  return options?.components ?? {};
-}
-
-function resolvePath(basePath: string, specifier: string): string {
-  if (!isRelativeSpecifier(specifier)) return specifier;
-  const lastSlash = basePath.lastIndexOf('/');
-  const baseDir = lastSlash >= 0 ? basePath.slice(0, lastSlash) : '';
-  return normalisePath(baseDir ? `${baseDir}/${specifier}` : specifier);
-}
-
-function isRelativeSpecifier(specifier: string): boolean {
-  return specifier.startsWith('./') || specifier.startsWith('../');
-}
-
-function normalisePath(path: string): string {
-  const resolved: string[] = [];
-  for (const part of path.split('/')) {
-    appendPathSegment(resolved, part);
-  }
-  return (path.startsWith('/') ? '/' : '') + resolved.join('/');
-}
-
-function appendPathSegment(resolved: string[], part: string): void {
-  if (part === '.' || part === '') return;
-  if (part === '..') resolved.pop();
-  else resolved.push(part);
+  return compileAST(ast, options);
 }
 
 /**
@@ -575,20 +320,11 @@ function buildFunctionBody(
 function buildFunctionPreamble(ast: TemplateAST, options?: CompileOptions): string[] {
   const varName = options?.varName || 'Astro';
   return [
-    ...buildPrecompiledRawHtmlPreamble(options),
     ...buildAstroPreamble(ast, varName),
     '',
     ...buildComponentPreamble(ast.imports),
     ...buildFrontmatterPreamble(ast.frontmatter.source),
   ];
-}
-
-function buildPrecompiledRawHtmlPreamble(options?: CompileOptions): string[] {
-  return options?.precompiled
-    ? [
-        'function __RawHtml(value) { this[Symbol.for("sikka.raw-html")] = true; this.value = value; }',
-      ]
-    : [];
 }
 
 function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
@@ -1759,17 +1495,14 @@ function isSingleOutputLine(lines: string[]): boolean {
 
 // ─── Streaming Compiler ─────────────────────────────────────────────────────
 
-/**
- * Higher-level streaming compile entry point: resolves component imports then
- * compiles the AST for streaming.
- */
+/** Compiles an AST for Streaming after its Component graph has been resolved by the host. */
 function compileStreamingInternal(
   ast: TemplateAST,
-  options?: CompileSetupOptions
+  options?: CompileOptions
 ): StreamingCompileResult {
-  const result = resolveCompileOptions(ast, options);
-  if (!result.ok) return result;
-  return compileStreamingAST(ast, { ...options, components: result.components });
+  const importError = unsupportedFrontmatterImport(ast.imports, options?.basePath);
+  if (importError) return { ok: false, error: importError };
+  return compileStreamingAST(ast, options);
 }
 
 export const compileStreaming = compileStreamingInternal;

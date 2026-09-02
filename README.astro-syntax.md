@@ -464,7 +464,15 @@ const fullName = Astro.props.fullName();
 Passing functions as props:
 
 ```javascript
-sikka.renderString('<p>{Astro.props.name}</p><p>{Astro.props.fullName()}</p>', {
+const sikka = new Sikka({
+  mode: 'source',
+  resolver: () => ({
+    id: 'profile.astro',
+    source: '<p>{Astro.props.name}</p><p>{Astro.props.fullName()}</p>',
+  }),
+});
+
+sikka.render('profile', {
   name: 'runs',
   fullName: () => 'rush q. wusaby',
 });

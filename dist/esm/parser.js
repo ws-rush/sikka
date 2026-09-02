@@ -24,7 +24,14 @@ function positionAt(source, offset) {
 }
 function makeError(message, source, offset) {
     const { line, column } = positionAt(source, offset);
-    return { message, line, column };
+    return { message, category: 'Parse', line, column, construct: rejectedConstruct(message) };
+}
+function rejectedConstruct(message) {
+    if (message.startsWith('InvalidDirective:'))
+        return 'directive';
+    if (message.startsWith('InvalidFragment:'))
+        return 'Fragment';
+    return undefined;
 }
 function extractFrontmatter(source) {
     if (!source.startsWith('---'))
@@ -36,7 +43,10 @@ function extractFrontmatter(source) {
     return extractFrontmatterContent(source, afterOpen);
 }
 function emptyFrontmatter() {
-    return { ok: true, result: { frontmatter: { source: '' }, imports: [], bodyStart: 0 } };
+    return {
+        ok: true,
+        result: { frontmatter: { source: '', hasAwait: false }, imports: [], bodyStart: 0 },
+    };
 }
 function extractFrontmatterContent(source, afterOpen) {
     const closeIndex = source.indexOf('\n---', afterOpen);
@@ -50,7 +60,7 @@ function extractFrontmatterContent(source, afterOpen) {
     return {
         ok: true,
         result: {
-            frontmatter: { source: fmSource },
+            frontmatter: { source: fmSource, hasAwait: hasAwait(fmSource) },
             imports: collectImports(fmSource),
             bodyStart: skipFrontmatterNewline(source, closeIndex + 4),
         },
@@ -59,29 +69,41 @@ function extractFrontmatterContent(source, afterOpen) {
 function skipFrontmatterNewline(source, bodyStart) {
     return source[bodyStart] === '\n' ? bodyStart + 1 : bodyStart;
 }
+function hasAwait(source) {
+    return /\bawait\b/.test(source.replace(/\/\*[\s\S]*?\*\/|\/\/.*|(['"`])(?:\\.|(?!\1)[^\\])*\1/g, ''));
+}
 // ─── Import collection ────────────────────────────────────────────────────────
 function collectImports(fmSource) {
     const imports = [];
-    const re = /^\s*import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/gm;
+    const re = /^\s*import(?:\s+([\s\S]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
     let match;
     while ((match = re.exec(fmSource)) !== null) {
-        collectImportClause(match[1].trim(), match[2], imports);
+        collectImportClause(match[1]?.trim() ?? '', match[2], imports);
     }
     return imports;
 }
 function collectImportClause(importClause, specifier, imports) {
-    if (importClause.startsWith('type '))
+    if (isTypeOnlyImport(importClause))
         return;
+    const start = imports.length;
     if (collectNamespaceImport(importClause, specifier, imports))
         return;
     for (const part of splitImportClause(importClause)) {
         collectImportPart(part, specifier, imports);
     }
+    if (imports.length === start)
+        imports.push({ localName: '', specifier, isComponent: false });
+}
+function isTypeOnlyImport(importClause) {
+    if (importClause.startsWith('type '))
+        return true;
+    const parts = importClause.replaceAll(/[{}]/g, '').split(',');
+    return parts.length > 0 && parts.every((part) => part.trim().startsWith('type '));
 }
 function collectNamespaceImport(importClause, specifier, imports) {
     if (!importClause.startsWith('* as '))
         return false;
-    imports.push({ localName: importClause.slice(5).trim(), specifier });
+    imports.push(componentImport(importClause.slice(5).trim(), specifier));
     return true;
 }
 function collectImportPart(part, specifier, imports) {
@@ -122,14 +144,17 @@ function collectNamedImports(part, specifier, imports) {
     const namedParts = part.slice(1).replace(/}$/, '').split(',');
     for (const named of namedParts) {
         const localName = /(?:\s+as\s+)?(\w+)$/.exec(named.trim())?.[1];
-        if (localName)
-            imports.push({ localName, specifier });
+        if (localName && !named.trim().startsWith('type '))
+            imports.push(componentImport(localName, specifier));
     }
 }
 function collectDefaultImport(part, specifier, imports) {
     const localName = /(\w+)$/.exec(part)?.[1];
     if (localName)
-        imports.push({ localName, specifier });
+        imports.push(componentImport(localName, specifier));
+}
+function componentImport(localName, specifier) {
+    return { localName, specifier, isComponent: specifier.endsWith('.astro') };
 }
 // ─── Body parser ─────────────────────────────────────────────────────────────
 class Parser {
@@ -465,29 +490,30 @@ class Parser {
         return this.parseSlotContent(this.getSlotDetails(attrsResult.attrs));
     }
     getSlotDetails(attrs) {
-        const details = {
-            name: '',
-            nameExpr: undefined,
-        };
-        for (const attr of attrs) {
-            const value = this.getSlotNameAttributeValue(attr);
-            if (value !== undefined)
-                this.assignSlotName(details, value);
-        }
+        const details = { name: '', nameExpr: undefined, slot: undefined, slotExpr: undefined };
+        for (const attr of attrs)
+            this.assignSlotDetail(details, attr);
         return details;
     }
-    getSlotNameAttributeValue(attr) {
+    assignSlotDetail(details, attr) {
         if ('type' in attr)
-            return undefined;
-        if (attr.name !== 'name')
-            return undefined;
-        return attr.value;
+            return;
+        if (attr.name === 'name')
+            this.assignSlotName(details, attr.value);
+        else if (attr.name === 'slot')
+            this.assignSlotAssignment(details, attr.value);
     }
     assignSlotName(details, value) {
         if (typeof value === 'string')
             details.name = value;
         else if (value !== true)
             details.nameExpr = value;
+    }
+    assignSlotAssignment(details, value) {
+        if (typeof value === 'string')
+            details.slot = value;
+        else if (value !== true)
+            details.slotExpr = value;
     }
     parseSlotContent(details) {
         if (this.at('/>')) {
@@ -570,6 +596,8 @@ class Parser {
     }
     parseSelfClosingElement(tag, attrs) {
         this.advance(2);
+        if ((tag === 'Fragment' || tag === '') && this.hasRawAttribute(attrs))
+            return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
         return {
             ok: true,
             selfClosing: true,
@@ -584,7 +612,7 @@ class Parser {
     }
     parseRawElement(tag, attrs) {
         if (tag === 'Fragment' || tag === '') {
-            return { ok: false, error: this.error('is:raw is not supported on Fragments') };
+            return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
         }
         const closeIdx = this.findRawClosingTag(tag);
         if (closeIdx === -1) {
@@ -749,6 +777,8 @@ class Parser {
         const name = this.readAttrName();
         if (!name)
             return this.missingAttributeNameError();
+        if (name === 'is:inline')
+            return { ok: false, error: this.error('InvalidDirective: is:inline is not supported') };
         this.skipWhitespace();
         if (this.peek() !== '=')
             return { ok: true, attr: { name, value: true } };

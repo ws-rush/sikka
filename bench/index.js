@@ -108,9 +108,13 @@ const engines = [
     id: 'sikka',
     name: 'Sikka',
     compile(template) {
-      const sikka = new Sikka({ cache: true });
-      const compiled = sikka.compile(template);
-      return (data) => compiled.renderSync(data, {});
+      const sikka = new Sikka({
+        cache: true,
+        mode: 'source',
+        resolver: () => ({ id: 'sikka-bench.astro', source: template }),
+      });
+      sikka.render('entry', {});
+      return (data) => sikka.render('entry', data);
     },
   },
   {
@@ -173,7 +177,7 @@ try {
     `Node ${process.version} · ${os.cpus()[0].model} · ${process.platform}/${process.arch}`
   );
   console.log(
-    `Precompiled render only · ${benchmarkTime}ms per engine · ${warmupTime}ms warmup per engine\n`
+    `Cached render only · ${benchmarkTime}ms per engine · ${warmupTime}ms warmup per engine\n`
   );
 
   const scores = new Map(engines.map((engine) => [engine.name, []]));

@@ -1,75 +1,28 @@
-import type { RenderFunction, SikkaOptions } from './types.js';
+import type { PrecompiledModeOptions, SourceModeOptions } from './types.js';
+export { SikkaError } from './error.js';
+export type { SikkaDiagnostic, SikkaDiagnosticCategory } from './types.js';
+export type { PrecompiledModeOptions, PrecompiledModule, PrecompiledResolver, SourceModeOptions, SourceResolver, SourceTemplate, } from './types.js';
+type RuntimeOptions = SourceModeOptions | PrecompiledModeOptions;
 export declare class Sikka {
     private options;
     private cache;
     private streamCache;
-    private globalComponents;
-    constructor(options?: SikkaOptions);
-    /**
-     * Renders a template string with the provided props.
-     *
-     * @param template - The template content to render.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    renderString(template: string, props?: Record<string, unknown>): string;
-    /**
-     * Renders a template file from the configured views directory.
-     *
-     * @param name - The path or name of the template file.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    render(name: string, props?: Record<string, unknown>): string;
-    /**
-     * Streams a template string, yielding HTML chunks as they are produced.
-     * Static content is yielded immediately; component calls are awaited and
-     * yielded as single opaque chunks.
-     *
-     * @param template - The template content to stream.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    streamString(template: string, props?: Record<string, unknown>): AsyncGenerator<string>;
-    /**
-     * Streams a template file from the configured views directory, yielding
-     * HTML chunks as they are produced.
-     *
-     * @param name - The path or name of the template file.
-     * @param props - Data object to pass as `Astro.props`.
-     */
-    stream(name: string, props?: Record<string, unknown>): AsyncGenerator<string>;
-    /**
-     * Pre-loads and compiles a component for use in other templates.
-     */
-    loadComponent(name: string, template: string): void;
-    /**
-     * Registers a pre-compiled render function as a global component.
-     */
-    registerComponent(name: string, fn: RenderFunction): void;
-    /**
-     * Invalidates the template cache.
-     * @param key - Optional specific key to remove. If omitted, the entire cache is cleared.
-     */
-    invalidate(key?: string): void;
-    /**
-     * Compiles a template string into a render function.
-     *
-     * @param str - The template content.
-     * @param config - Optional configuration overrides for this compilation.
-     */
-    compile(str: string, config?: SikkaOptions): RenderFunction;
-    /**
-     * Compiles a template string to its JavaScript function body string.
-     *
-     * @param str - The template content.
-     * @param config - Optional configuration overrides for this compilation.
-     */
-    compileToString(str: string, config?: SikkaOptions): string;
-    private compileString;
-    private compileFile;
-    private compileStreamingString;
-    private compileStreamingFile;
-    private compileTemplate;
+    constructor(options: RuntimeOptions);
+    /** Renders an entry Template with Props. */
+    render(entry: string, props?: Record<string, unknown>): string;
+    /** Streams an entry Template with Props. */
+    stream(entry: string, props?: Record<string, unknown>): AsyncGenerator<string>;
+    /** Invalidates one canonical Template identity, or both compilation caches. */
+    invalidate(id?: string): void;
+    private compileSource;
+    private resolveSourceComponents;
+    private compileSourceTemplate;
+    private throwUnsupportedFrontmatterImport;
+    private throwSourceCycle;
+    private renderPrecompiled;
+    private streamPrecompiled;
+    private resolvePrecompiled;
+    private resolveSource;
     private parseTemplate;
-    private resolveTemplatePath;
-    private readTemplateFile;
 }
 //# sourceMappingURL=index.d.ts.map

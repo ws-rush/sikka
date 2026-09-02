@@ -1,4 +1,4 @@
-import { escapeHtml, stringifyHtml } from './escape.js';
+import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 
 /** The generated-runtime ABI version. */
 export const RUNTIME_ABI_VERSION = 2;
@@ -17,6 +17,7 @@ export interface RuntimeReceiver {
 /** Shared helpers supplied to generated render bodies. */
 export interface RuntimeHelpers {
   escape: (value: unknown) => string;
+  RawHtml: typeof RawHtml;
   components: Record<string, import('./types.js').RenderFunction>;
   classList: (value: ClassListArg) => string;
   styleObject: (value: StyleObjectArg) => string;
@@ -44,6 +45,7 @@ export function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers {
   const options = receiver?.options ?? receiver;
   return {
     escape: options?.autoEscape === false ? stringifyHtml : escapeHtml,
+    RawHtml,
     components: options?.components ?? {},
     classList,
     styleObject,
