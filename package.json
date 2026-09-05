@@ -57,7 +57,6 @@
     "dist/cjs/template-resolution.js",
     "dist/cjs/types.d.ts",
     "README.md",
-    "README.astro-syntax.md",
     "CHANGELOG.md",
     "LICENSE"
   ],

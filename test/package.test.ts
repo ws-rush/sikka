@@ -10,7 +10,6 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const packageFiles = [
   'CHANGELOG.md',
   'LICENSE',
-  'README.astro-syntax.md',
   'README.md',
   'dist/cjs/cache.js',
   'dist/cjs/compiler.js',
