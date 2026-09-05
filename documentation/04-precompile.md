@@ -107,7 +107,7 @@ Because options are read from the receiver at call time, one emitted artifact se
 
 ## Runtime options for generated modules
 
-Options on the rendering `Sikka` instance apply: `autoEscape`, `autoFilter`, `filterFunction`, `aggregateAssets`, plus caching. `varName` does **not** apply — generated modules always bind `Astro`.
+Options on the rendering `Sikka` instance apply: `autoEscape`, `autoFilter`, `filterFunction`, `aggregateAssets`, plus caching. `varName` does **not** apply — generated modules always bind `Sikka`.
 
 ## Why precompile?
 

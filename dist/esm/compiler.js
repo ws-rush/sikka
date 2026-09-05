@@ -97,7 +97,7 @@ export function unsupportedFrontmatterImport(imports, templateId) {
         return undefined;
     const context = templateId ? ` in canonical Template ${JSON.stringify(templateId)}` : '';
     return {
-        message: `Unsupported Frontmatter import ${JSON.stringify(invalid.specifier)}${context}: only .astro Component imports are supported`,
+        message: `Unsupported Frontmatter import ${JSON.stringify(invalid.specifier)}${context}: only .sikka Component imports are supported`,
         category: 'Compile',
         template: templateId,
         request: invalid.specifier,
@@ -199,18 +199,18 @@ function buildFunctionBody(ast, components, options, target, completion) {
     ].join('\n');
 }
 function buildFunctionPreamble(ast, options) {
-    const varName = options?.varName || 'Astro';
+    const varName = options?.varName || 'Sikka';
     return [
-        ...buildAstroPreamble(ast, varName),
+        ...buildSikkaPreamble(ast, varName),
         '',
         ...buildComponentPreamble(ast.imports),
         ...buildFrontmatterPreamble(ast.frontmatter.source),
     ];
 }
-function buildAstroPreamble(ast, varName) {
-    if (!usesAstroGlobal(ast, varName))
+function buildSikkaPreamble(ast, varName) {
+    if (!usesSikkaGlobal(ast, varName))
         return [];
-    if (usesOnlyAstroProps(ast, varName))
+    if (usesOnlySikkaProps(ast, varName))
         return [`const ${varName} = { props };`];
     return [
         `const ${varName} = {
@@ -223,10 +223,10 @@ function buildAstroPreamble(ast, varName) {
     };`,
     ];
 }
-function usesAstroGlobal(ast, varName) {
+function usesSikkaGlobal(ast, varName) {
     return ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
 }
-function usesOnlyAstroProps(ast, varName) {
+function usesOnlySikkaProps(ast, varName) {
     const source = ast.frontmatter.source + JSON.stringify(ast.body);
     return !source.replaceAll(`${varName}.props`, '').includes(varName);
 }

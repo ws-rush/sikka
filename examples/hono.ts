@@ -27,7 +27,7 @@ const sikka = new Sikka({
   mode: 'source',
   resolver(request, importer) {
     if (request === 'stream')
-      return { id: resolve(__dirname, 'views', 'stream.astro'), source: streamTemplate };
+      return { id: resolve(__dirname, 'views', 'stream.sikka'), source: streamTemplate };
     const id = importer
       ? resolve(dirname(importer), request)
       : resolve(__dirname, 'views', request);
@@ -59,22 +59,22 @@ app.use('/todos/*', async (c, next) => {
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 
-app.get('/', (c) => c.html(sikka.render('index.astro')));
+app.get('/', (c) => c.html(sikka.render('index.sikka')));
 
-app.get('/about', (c) => c.html(sikka.render('about.astro', { team })));
+app.get('/about', (c) => c.html(sikka.render('about.sikka', { team })));
 
-app.get('/users', (c) => c.html(sikka.render('users.astro', { users })));
+app.get('/users', (c) => c.html(sikka.render('users.sikka', { users })));
 
 app.get('/users/:id', (c) => {
   const user = findUser(parseInt(c.req.param('id')));
   if (!user) return c.notFound();
-  return c.html(sikka.render('user-detail.astro', { user }));
+  return c.html(sikka.render('user-detail.sikka', { user }));
 });
 
 app.get('/about/:index', (c) => {
   const member = findTeamMember(parseInt(c.req.param('index')));
   if (!member) return c.notFound();
-  return c.html(sikka.render('team-detail.astro', { member }));
+  return c.html(sikka.render('team-detail.sikka', { member }));
 });
 
 app.get('/stream', async (c) => {
@@ -86,7 +86,7 @@ app.get('/stream', async (c) => {
   });
 });
 
-app.get('/todos', (c) => c.html(sikka.render('todos.astro', { todos })));
+app.get('/todos', (c) => c.html(sikka.render('todos.sikka', { todos })));
 
 app.post('/todos', async (c) => {
   const body = c.get('body') || (await c.req.parseBody());

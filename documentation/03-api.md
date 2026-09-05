@@ -46,7 +46,7 @@ Source-mode-only:
 
 | Option    | Type     | Default | Notes                                                            |
 | --------- | -------- | ------- | ---------------------------------------------------------------- |
-| `varName` | `string` | `Astro` | Name of the props variable in generated code (source mode only). |
+| `varName` | `string` | `Sikka` | Name of the props variable in generated code (source mode only). |
 
 ### Caching behavior
 
@@ -142,5 +142,5 @@ Guarantees:
 - Common failure categories:
   - `Parse` — malformed template (with line/column).
   - `Resolve` — resolver threw/returned garbage, or a circular component dependency.
-  - `Compile` — unsupported constructs (non-`.astro` imports, frontmatter `await` in sync mode, invalid directive combinations).
+  - `Compile` — unsupported constructs (non-`.sikka` imports, frontmatter `await` in sync mode, invalid directive combinations).
   - `Render` — runtime failures inside generated code (with `debug: true`, wrapped with template context; precompiled ABI violations).

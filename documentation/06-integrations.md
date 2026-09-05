@@ -32,13 +32,13 @@ import { Sikka } from 'sikka';
 const app = express();
 
 app.get('/', (_req, res) => {
-  res.send(sikka.render('index.astro'));
+  res.send(sikka.render('index.sikka'));
 });
 
 app.get('/users/:id', (req, res) => {
   const user = findUser(parseInt(req.params.id));
   if (!user) return res.status(404).send('Not found');
-  res.send(sikka.render('user-detail.astro', { user }));
+  res.send(sikka.render('user-detail.sikka', { user }));
 });
 
 app.get('/stream', async (_req, res) => {
@@ -55,7 +55,7 @@ app.get('/stream', async (_req, res) => {
 ```ts
 import { stream } from 'hono/streaming';
 
-app.get('/', (c) => c.html(sikka.render('index.astro')));
+app.get('/', (c) => c.html(sikka.render('index.sikka')));
 
 app.get('/stream', async (c) => {
   const gen = sikka.stream('stream', { items: streamItems });

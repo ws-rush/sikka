@@ -25,8 +25,8 @@ export const streamItems = [
 ];
 
 export const streamTemplate = `---
-import Card from "../components/Card.astro";
-const { items } = Astro.props;
+import Card from "../components/Card.sikka";
+const { items } = Sikka.props;
 ---
 <div>
   <h1>Streaming Demo</h1>

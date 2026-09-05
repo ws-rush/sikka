@@ -1,8 +1,8 @@
 # Template Syntax
 
-Sikka templates are Astro-like: an optional frontmatter block, then HTML-like markup with `{expression}` interpolation. This is the complete syntax reference.
+Sikka templates use Sikka syntax: an optional frontmatter block, then HTML-like markup with `{expression}` interpolation. This is the complete syntax reference.
 
-"Astro-like" describes the spelling only — Astro documentation does not define Sikka behavior, and future Astro syntax does not become Sikka syntax unless documented here as supported.
+"Sikka-like" describes the spelling only — Sikka documentation does not define Sikka behavior, and future Sikka syntax does not become Sikka syntax unless documented here as supported.
 
 A template is:
 
@@ -20,7 +20,7 @@ The block between two `---` fences at the very start of the file (no leading whi
 ```astro
 ---
 const items = [1, 2, 3];
-import Card from './Card.astro';
+import Card from './Card.sikka';
 ---
 ```
 
@@ -30,15 +30,15 @@ Rules:
 - Frontmatter code is inlined into the generated render function, so it runs on every render with `props` in scope. Keep it to template setup — browser behavior belongs in `<script>`.
 - `export` prefixes are stripped; `import` statements are removed from the generated body (they are compiled into component bindings).
 - `await` is allowed **only for streaming renders** — `render()` fails compilation with a diagnostic.
-- Imports: only **non-type `.astro` imports** are supported as components. Default, named, namespace (`* as X`), and `type` imports are recognized; any non-`.astro` specifier is a compile error.
+- Imports: only **non-type `.sikka` imports** are supported as components. Default, named, namespace (`* as X`), and `type` imports are recognized; any non-`.sikka` specifier is a compile error.
 
 Import forms recognized:
 
 ```astro
 ---
-import Card from './Card.astro';              // default
-import { Card, Chip as Badge } from './ui.astro';
-import * as UI from './ui.astro';
+import Card from './Card.sikka';              // default
+import { Card, Chip as Badge } from './ui.sikka';
+import * as UI from './ui.sikka';
 import type { Props } from './types';         // erased, not a component
 ---
 ```
@@ -126,7 +126,7 @@ Any tag starting with an uppercase letter is a component call:
 
 ```astro
 ---
-import Card from './Card.astro';
+import Card from './Card.sikka';
 ---
 <Card title="Hello" items={list}>
   <p>goes to the default slot</p>
@@ -182,17 +182,17 @@ Parsed as raw content (no expression evaluation inside). Emitted in place, unles
 </style>
 ```
 
-## The `Astro` global
+## The `Sikka` global
 
-Within a template, `Astro` exposes:
+Within a template, `Sikka` exposes:
 
 ```ts
-Astro.props; // the render props
-Astro.slots.render(name); // named/default slot content as RawHtml
-Astro.slots.has(name); // whether a slot was provided
+Sikka.props; // the render props
+Sikka.slots.render(name); // named/default slot content as RawHtml
+Sikka.slots.has(name); // whether a slot was provided
 ```
 
-The compiler only emits this binding when the template actually references it, and a slimmer `Astro = { props }` when only `Astro.props` is used. In source mode you can rename the variable with the `varName` option (default `Astro`); generated precompiled modules always bind `Astro`.
+The compiler only emits this binding when the template actually references it, and a slimmer `Sikka = { props }` when only `Sikka.props` is used. In source mode you can rename the variable with the `varName` option (default `Sikka`); generated precompiled modules always bind `Sikka`.
 
 ## Parse errors
 

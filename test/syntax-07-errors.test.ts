@@ -10,7 +10,7 @@ import { render } from './helpers.js';
 function source(template: string): Sikka {
   return new Sikka({
     mode: 'source',
-    resolver: () => ({ id: 'invalid.astro', source: template }),
+    resolver: () => ({ id: 'invalid.sikka', source: template }),
   });
 }
 
@@ -26,7 +26,7 @@ describe('Syntax: Error Handling', () => {
       (error: unknown) =>
         error instanceof SikkaError &&
         error.category === 'Parse' &&
-        error.template === 'invalid.astro' &&
+        error.template === 'invalid.sikka' &&
         error.line === 1
     );
   });

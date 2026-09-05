@@ -220,7 +220,7 @@ async function runPortableProperties({
     expectedHtml: '',
     modes: ['source', 'precompiled'],
   });
-  const deterministic = candidate('property-render', '<p>{Astro.props.value}</p>');
+  const deterministic = candidate('property-render', '<p>{Sikka.props.value}</p>');
   const deterministicSource = sourceSikka(deterministic, modules);
   const deterministicPrecompiled = await precompiledSikka(deterministic, modules);
   runPortableProperty('portable-deterministic-render', text, (value) => {
@@ -242,7 +242,7 @@ async function runPortableProperties({
   });
   onComplete('portable-null-default-props');
 
-  const body = '<p>{Astro.props.value}</p>';
+  const body = '<p>{Sikka.props.value}</p>';
   const plain = candidate('property-plain', body);
   const fenced = candidate('property-fenced', `---\n---\n${body}`);
   const plainSource = sourceSikka(plain, modules);
@@ -260,7 +260,7 @@ async function runPortableProperties({
 
   const list = candidate(
     'property-list',
-    '<h1>{Astro.props.name}</h1><ul>{Astro.props.items.map((item) => <li>{item}</li>)}</ul>'
+    '<h1>{Sikka.props.name}</h1><ul>{Sikka.props.items.map((item) => <li>{item}</li>)}</ul>'
   );
   const listSource = sourceSikka(list, modules);
   const listPrecompiled = await precompiledSikka(list, modules);
@@ -273,8 +273,8 @@ async function runPortableProperties({
 
   const component = candidate(
     'property-component',
-    '---\nimport Item from "./item.astro";\n---\n<Item text={Astro.props.left} /><Item text={Astro.props.right} />',
-    { './item.astro': '<span>{Astro.props.text}</span>' }
+    '---\nimport Item from "./item.sikka";\n---\n<Item text={Sikka.props.left} /><Item text={Sikka.props.right} />',
+    { './item.sikka': '<span>{Sikka.props.text}</span>' }
   );
   const componentSource = sourceSikka(component, modules);
   const componentPrecompiled = await precompiledSikka(component, modules);
@@ -290,16 +290,16 @@ async function runPortableProperties({
 function propertyCases() {
   return {
     'portable-deterministic-render': [
-      { id: 'property-render', template: '<p>{Astro.props.value}</p>', components: {}, props: {} },
+      { id: 'property-render', template: '<p>{Sikka.props.value}</p>', components: {}, props: {} },
     ],
     'portable-null-default-props': [
       { id: 'property-null-props', template: '<p>static</p>', components: {}, props: {} },
     ],
     'portable-frontmatter-equivalence': [
-      { id: 'property-plain', template: '<p>{Astro.props.value}</p>', components: {}, props: {} },
+      { id: 'property-plain', template: '<p>{Sikka.props.value}</p>', components: {}, props: {} },
       {
         id: 'property-fenced',
-        template: '---\n---\n<p>{Astro.props.value}</p>',
+        template: '---\n---\n<p>{Sikka.props.value}</p>',
         components: {},
         props: {},
       },
@@ -308,7 +308,7 @@ function propertyCases() {
       {
         id: 'property-list',
         template:
-          '<h1>{Astro.props.name}</h1><ul>{Astro.props.items.map((item) => <li>{item}</li>)}</ul>',
+          '<h1>{Sikka.props.name}</h1><ul>{Sikka.props.items.map((item) => <li>{item}</li>)}</ul>',
         components: {},
         props: {},
       },
@@ -317,8 +317,8 @@ function propertyCases() {
       {
         id: 'property-component',
         template:
-          '---\nimport Item from "./item.astro";\n---\n<Item text={Astro.props.left} /><Item text={Astro.props.right} />',
-        components: { './item.astro': '<span>{Astro.props.text}</span>' },
+          '---\nimport Item from "./item.sikka";\n---\n<Item text={Sikka.props.left} /><Item text={Sikka.props.right} />',
+        components: { './item.sikka': '<span>{Sikka.props.text}</span>' },
         props: {},
       },
     ],

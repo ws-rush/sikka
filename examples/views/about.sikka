@@ -1,7 +1,7 @@
 ---
-import Layout from '../components/Layout.astro';
-import Header from '../components/Header.astro';
-import Card from '../components/Card.astro';
+import Layout from '../components/Layout.sikka';
+import Header from '../components/Header.sikka';
+import Card from '../components/Card.sikka';
 const navItems = [
   { label: 'Home', href: '/' },
   { label: 'About', href: '/about' },
@@ -9,7 +9,7 @@ const navItems = [
   { label: 'Todos', href: '/todos' },
   { label: 'Stream', href: '/stream' },
 ];
-const { team } = Astro.props;
+const { team } = Sikka.props;
 ---
 <Layout title="About - Sikka Example">
   <Header navItems={navItems} />

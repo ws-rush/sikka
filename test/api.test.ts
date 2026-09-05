@@ -21,12 +21,12 @@ describe('Sikka 1.0 application API', () => {
         requests.push([request, importer]);
         if (request === 'page')
           return {
-            id: 'templates/page.astro',
+            id: 'templates/page.sikka',
             source:
-              '---\nimport Card from "./Card.astro";\n---\nbefore<Card title={Astro.props.title} />after',
+              '---\nimport Card from "./Card.sikka";\n---\nbefore<Card title={Sikka.props.title} />after',
           };
-        if (request === './Card.astro')
-          return { id: 'templates/Card.astro', source: '<b>{Astro.props.title}</b>' };
+        if (request === './Card.sikka')
+          return { id: 'templates/Card.sikka', source: '<b>{Sikka.props.title}</b>' };
         throw new Error('missing Template');
       },
     });
@@ -37,9 +37,9 @@ describe('Sikka 1.0 application API', () => {
     );
     expect(requests).toEqual([
       ['page', undefined],
-      ['./Card.astro', 'templates/page.astro'],
+      ['./Card.sikka', 'templates/page.sikka'],
       ['page', undefined],
-      ['./Card.astro', 'templates/page.astro'],
+      ['./Card.sikka', 'templates/page.sikka'],
     ]);
   });
 
@@ -122,7 +122,7 @@ describe('Sikka 1.0 application API', () => {
         yield '<p>ok</p>';
       },
     };
-    // varName is a source-mode compile-time option; generated modules always bind Astro.
+    // varName is a source-mode compile-time option; generated modules always bind Sikka.
     // @ts-expect-error varName is not a precompiled-mode option
     const sikka = new Sikka({ mode: 'precompiled', resolver: () => module, varName: 'Page' });
 

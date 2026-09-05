@@ -19,11 +19,11 @@ const templates = new Map([
   [
     'home',
     {
-      id: 'pages/home.astro',
-      source: '---\nimport Card from "./Card.astro";\n---\n<Card title={Astro.props.title} />',
+      id: 'pages/home.sikka',
+      source: '---\nimport Card from "./Card.sikka";\n---\n<Card title={Sikka.props.title} />',
     },
   ],
-  ['./Card.astro', { id: 'components/Card.astro', source: '<h1>{Astro.props.title}</h1>' }],
+  ['./Card.sikka', { id: 'components/Card.sikka', source: '<h1>{Sikka.props.title}</h1>' }],
 ]);
 
 const sikka = new Sikka({
@@ -41,7 +41,7 @@ for await (const chunk of sikka.stream('home', { title: 'Hello' })) {
 }
 ```
 
-Components come only from non-type `.astro` imports in Frontmatter. Source regular and Streaming compilation caches are separate and use the canonical `id`; `invalidate(id)` clears both for that identity and `invalidate()` clears both caches. `cache: true`, `cache: false`, `cacheSize`, or a custom `Cache` control caching.
+Components come only from non-type `.sikka` imports in Frontmatter. Source regular and Streaming compilation caches are separate and use the canonical `id`; `invalidate(id)` clears both for that identity and `invalidate()` clears both caches. `cache: true`, `cache: false`, `cacheSize`, or a custom `Cache` control caching.
 
 Source mode dynamically evaluates Template source. Treat every Template as trusted application code; it is not suitable for a strict Content Security Policy.
 
@@ -80,7 +80,7 @@ const sikka = new Sikka({
 sikka.render('home', { title: 'Hello' });
 ```
 
-Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, and `debug`. `varName` (default `Astro`) renames the props variable during source-mode compilation only; generated modules always bind `Astro`.
+Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, and `debug`. `varName` (default `Sikka`) renames the props variable during source-mode compilation only; generated modules always bind `Sikka`.
 
 ## Escaping and trust
 
