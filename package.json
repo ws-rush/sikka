@@ -39,31 +39,12 @@
     "dist/esm/template-resolution.d.ts",
     "dist/esm/template-resolution.js",
     "dist/esm/types.d.ts",
-    "dist/cjs/cache.js",
-    "dist/cjs/compiler.js",
-    "dist/cjs/error.d.ts",
-    "dist/cjs/error.js",
-    "dist/cjs/escape.d.ts",
-    "dist/cjs/escape.js",
-    "dist/cjs/index.d.ts",
-    "dist/cjs/index.js",
-    "dist/cjs/package.json",
-    "dist/cjs/parser.js",
-    "dist/cjs/precompile.d.ts",
-    "dist/cjs/precompile.js",
-    "dist/cjs/runtime.d.ts",
-    "dist/cjs/runtime.js",
-    "dist/cjs/template-resolution.d.ts",
-    "dist/cjs/template-resolution.js",
-    "dist/cjs/types.d.ts",
     "README.md",
-    "README.astro-syntax.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
   "exports": {
@@ -71,35 +52,23 @@
       "import": {
         "types": "./dist/esm/index.d.ts",
         "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "types": "./dist/cjs/index.d.ts",
-        "default": "./dist/cjs/index.js"
       }
     },
     "./precompile": {
       "import": {
         "types": "./dist/esm/precompile.d.ts",
         "default": "./dist/esm/precompile.js"
-      },
-      "require": {
-        "types": "./dist/cjs/precompile.d.ts",
-        "default": "./dist/cjs/precompile.js"
       }
     },
     "./runtime": {
       "import": {
         "types": "./dist/esm/runtime.d.ts",
         "default": "./dist/esm/runtime.js"
-      },
-      "require": {
-        "types": "./dist/cjs/runtime.d.ts",
-        "default": "./dist/cjs/runtime.js"
       }
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
+    "build": "tsc -p tsconfig.esm.json",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix --deny-warnings .",
     "format": "oxfmt --write .",
