@@ -4,19 +4,19 @@ function source(template: string, options: { autoEscape?: boolean; debug?: boole
   return new Sikka({
     ...options,
     mode: 'source',
-    resolver: () => ({ id: 'test-entry.astro', source: template }),
+    resolver: () => ({ id: 'test-entry.sikka', source: template }),
   });
 }
 
 export function render(template: string, props?: Record<string, unknown>): string {
-  return source(template).render('test-entry.astro', props);
+  return source(template).render('test-entry.sikka', props);
 }
 
 export async function renderStream(
   template: string,
   props?: Record<string, unknown>
 ): Promise<string> {
-  return collectHtml(source(template).stream('test-entry.astro', props));
+  return collectHtml(source(template).stream('test-entry.sikka', props));
 }
 
 export async function consume(gen: AsyncGenerator<string>): Promise<void> {

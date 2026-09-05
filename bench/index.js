@@ -48,7 +48,7 @@ const scenarios = [
     data: escapeData,
     expected: '<p>Hello, &lt;Template &amp; Friends&gt;!</p>',
     templates: {
-      sikka: '<p>Hello, {Astro.props.name}!</p>',
+      sikka: '<p>Hello, {Sikka.props.name}!</p>',
       eta: '<p>Hello, <%= it.name %>!</p>',
     },
   },
@@ -58,7 +58,7 @@ const scenarios = [
     expected: '<div class="negative">-$12.50</div>',
     templates: {
       sikka:
-        "<div class={Astro.props.account.isNegative ? 'negative' : 'positive'}>{Astro.props.account.isOpen ? Astro.props.account.label : 'Closed'}</div>",
+        "<div class={Sikka.props.account.isNegative ? 'negative' : 'positive'}>{Sikka.props.account.isOpen ? Sikka.props.account.label : 'Closed'}</div>",
       eta: "<div class=\"<%= it.account.isNegative ? 'negative' : 'positive' %>\"><%= it.account.isOpen ? it.account.label : 'Closed' %></div>",
     },
   },
@@ -68,7 +68,7 @@ const scenarios = [
     expected: renderExpectedNestedLoops(nestedLoopData.items),
     templates: {
       sikka:
-        '<ul>{Astro.props.items.map((item) => <li data-id={item.id}><span>{item.name}</span><ul>{item.tags.map((tag) => <li>{tag}</li>)}</ul></li>)}</ul>',
+        '<ul>{Sikka.props.items.map((item) => <li data-id={item.id}><span>{item.name}</span><ul>{item.tags.map((tag) => <li>{tag}</li>)}</ul></li>)}</ul>',
       eta: '<ul><% it.items.forEach((item) => { %><li data-id="<%= item.id %>"><span><%= item.name %></span><ul><% item.tags.forEach((tag) => { %><li><%= tag %></li><% }) %></ul></li><% }) %></ul>',
     },
   },
@@ -80,7 +80,7 @@ const engines = [
     name: 'Sikka',
     async compile(template, scenarioName) {
       const [artifact] = precompile('entry', {
-        resolver: () => ({ id: `${scenarioName}.astro`, source: template }),
+        resolver: () => ({ id: `${scenarioName}.sikka`, source: template }),
       });
       const module = await import(
         `data:text/javascript,${encodeURIComponent(

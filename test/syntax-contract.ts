@@ -23,7 +23,7 @@ export const syntaxContractCases: readonly SyntaxContractCase[] = [
   {
     id: 'ada-escaping-and-list',
     template: `---
-const { name, items } = Astro.props;
+const { name, items } = Sikka.props;
 ---
 <h1>Hello, {name}!</h1><ul>{items.map((item) => <li>{item}</li>)}</ul>`,
     props: {
@@ -38,7 +38,7 @@ const { name, items } = Astro.props;
   {
     id: 'native-attribute-coercion',
     template: `---
-const { value } = Astro.props;
+const { value } = Sikka.props;
 ---
 <input disabled={null} data-x={null} /><input disabled={undefined} data-x={undefined} /><input disabled={false} data-x={false} /><input disabled={0} data-x={0} /><input disabled={""} data-x={""} /><input disabled={true} data-x={true} /><input disabled="yes" data-x={value} />`,
     props: { value: `a&"<'>` },
@@ -50,7 +50,7 @@ const { value } = Astro.props;
   {
     id: 'custom-element-attribute-coercion',
     template: `---
-const { value } = Astro.props;
+const { value } = Sikka.props;
 ---
 <my-toggle selected={false} enabled={true} count={0} empty={""} label={value} />`,
     props: { value: `<&"'>` },
@@ -62,13 +62,13 @@ const { value } = Astro.props;
   {
     id: 'component-and-tag-classification',
     template: `---
-import Box from './box.astro';
+import Box from './box.sikka';
 const Tag = 'my-toggle';
 const div = 'ignored';
 ---
 <Box label="self" /><Box label="child"><b>slot</b></Box><Tag selected={false} /><Tag enabled={true}>tag child</Tag><div>lowercase</div><Unbound x={false}>literal</Unbound>`,
     components: {
-      './box.astro': '<section data-label={Astro.props.label}><slot /></section>',
+      './box.sikka': '<section data-label={Sikka.props.label}><slot /></section>',
     },
     props: {},
     expectedHtml:
@@ -119,7 +119,7 @@ const spread = { class: "spread", className: "spread-name", "class:list": ["spre
   },
   {
     id: 'class-without-escaping',
-    template: '<div class={Astro.props.name} class:list={Astro.props.list}></div>',
+    template: '<div class={Sikka.props.name} class:list={Sikka.props.list}></div>',
     props: { name: 'direct&<', list: ['list&<'] },
     expectedHtml: '<div class="direct&< list&<"></div>',
     modes: ['source', 'precompiled'],
@@ -160,7 +160,7 @@ const second = { style: 'color:red;content:"<&;' };
   },
   {
     id: 'style-without-auto-escaping',
-    template: '<div style={Astro.props.value} />',
+    template: '<div style={Sikka.props.value} />',
     props: { value: 'content:"<&' },
     expectedHtml: '<div style="content:"<&"></div>',
     modes: ['source', 'precompiled'],
@@ -169,7 +169,7 @@ const second = { style: 'color:red;content:"<&;' };
   },
   {
     id: 'set-html-trusted',
-    template: '<div set:html={Astro.props.html} />',
+    template: '<div set:html={Sikka.props.html} />',
     props: { html: '<b>Ada &amp; <i>loves</i> code</b>' },
     expectedHtml: '<div><b>Ada &amp; <i>loves</i> code</b></div>',
     modes: ['source', 'precompiled'],
@@ -177,7 +177,7 @@ const second = { style: 'color:red;content:"<&;' };
   },
   {
     id: 'set-text-escaped',
-    template: '<div set:text={Astro.props.text} />',
+    template: '<div set:text={Sikka.props.text} />',
     props: { text: '<b>bold</b>' },
     expectedHtml: '<div>&lt;b&gt;bold&lt;/b&gt;</div>',
     modes: ['source', 'precompiled'],
@@ -193,7 +193,7 @@ const second = { style: 'color:red;content:"<&;' };
   },
   {
     id: 'spread-set-html',
-    template: "---\nconst spread = { 'set:html': Astro.props.html };\n---\n<div {...spread} />",
+    template: "---\nconst spread = { 'set:html': Sikka.props.html };\n---\n<div {...spread} />",
     props: { html: '<b>spread</b>' },
     expectedHtml: '<div><b>spread</b></div>',
     modes: ['source', 'precompiled'],
@@ -221,7 +221,7 @@ const second = { style: 'color:red;content:"<&;' };
 const greeting = 'Hello';
 function uppercase(value) { return value.toUpperCase(); }
 ---
-{greeting}, {uppercase(Astro.props.name)}!`,
+{greeting}, {uppercase(Sikka.props.name)}!`,
     props: { name: 'Ada' },
     expectedHtml: 'Hello, ADA!',
     modes: ['source', 'precompiled'],
@@ -242,16 +242,16 @@ greeting += await Promise.resolve(', Ada!');
   {
     id: 'async-components-source-order',
     template: `---
-import First from './first.astro';
-import Second from './second.astro';
+import First from './first.sikka';
+import Second from './second.sikka';
 ---
 before<First /><Second />after`,
     components: {
-      './first.astro': `---
+      './first.sikka': `---
 const label = await Promise.resolve('first');
 ---
 <i>{label}</i>`,
-      './second.astro': `---
+      './second.sikka': `---
 const label = await Promise.resolve('second');
 ---
 <i>{label}</i>`,
@@ -305,7 +305,7 @@ const label = await Promise.resolve('second');
   },
   {
     id: 'astro-props',
-    template: '<p>{Astro.props.title}</p>',
+    template: '<p>{Sikka.props.title}</p>',
     props: { title: 'Sikka' },
     expectedHtml: '<p>Sikka</p>',
     modes: ['source', 'precompiled'],
@@ -313,10 +313,10 @@ const label = await Promise.resolve('second');
   },
   {
     id: 'astro-slots',
-    template: '---\nimport Layout from "./layout.astro";\n---\n<Layout><b>content</b></Layout>',
+    template: '---\nimport Layout from "./layout.sikka";\n---\n<Layout><b>content</b></Layout>',
     components: {
-      './layout.astro':
-        '<section>{Astro.slots.has("default") ? Astro.slots.render("default") : "none"}</section>',
+      './layout.sikka':
+        '<section>{Sikka.slots.has("default") ? Sikka.slots.render("default") : "none"}</section>',
     },
     props: {},
     expectedHtml: '<section><b>content</b></section>',
@@ -326,12 +326,12 @@ const label = await Promise.resolve('second');
   {
     id: 'slot-routing-order-and-fallback',
     template: `---
-import Layout from './layout.astro';
+import Layout from './layout.sikka';
 ---
 <Layout label="kept"><i>first</i><b slot="named">third</b><em slot="default">second</em><u slot="named">fourth</u><span slot="unused">hidden</span></Layout>`,
     components: {
-      './layout.astro':
-        '<section data-label={Astro.props.label}><slot /><slot name="named" /><slot name="missing">fallback</slot></section>',
+      './layout.sikka':
+        '<section data-label={Sikka.props.label}><slot /><slot name="named" /><slot name="missing">fallback</slot></section>',
     },
     props: {},
     expectedHtml:
@@ -342,11 +342,11 @@ import Layout from './layout.astro';
   {
     id: 'slot-presence-suppresses-fallback',
     template: `---
-import Empty from './empty.astro';
+import Empty from './empty.sikka';
 ---
 <Empty><Fragment></Fragment><Fragment slot="fragment"></Fragment><Fragment slot="null">{null}</Fragment><Fragment slot="undefined">{undefined}</Fragment><Fragment slot="empty">{""}</Fragment><Fragment slot="whitespace"> </Fragment></Empty>`,
     components: {
-      './empty.astro':
+      './empty.sikka':
         '<slot>default</slot>|<slot name="fragment">fragment</slot>|<slot name="null">null</slot>|<slot name="undefined">undefined</slot>|<slot name="empty">empty</slot>|<slot name="whitespace">whitespace</slot>',
     },
     props: {},
@@ -357,12 +357,12 @@ import Empty from './empty.astro';
   {
     id: 'slot-forward-default-order',
     template: `---
-import Middle from './middle.astro';
+import Middle from './middle.sikka';
 ---
 <Middle><i>first</i><b>second</b></Middle>`,
     components: {
-      './middle.astro': "---\nimport Child from './child.astro';\n---\n<Child><slot /></Child>",
-      './child.astro': '<main><slot>fallback</slot></main>',
+      './middle.sikka': "---\nimport Child from './child.sikka';\n---\n<Child><slot /></Child>",
+      './child.sikka': '<main><slot>fallback</slot></main>',
     },
     props: {},
     expectedHtml: '<main><i>first</i><b>second</b></main>',
@@ -372,13 +372,13 @@ import Middle from './middle.astro';
   {
     id: 'slot-forward-named',
     template: `---
-import Middle from './middle.astro';
+import Middle from './middle.sikka';
 ---
 <Middle><i slot="header">first</i><b slot="header">second</b><em slot="aside">third</em></Middle>`,
     components: {
-      './middle.astro':
-        '---\nimport Child from \'./child.astro\';\n---\n<Child><slot name="header" slot="header" /><slot name="aside" slot="title" /></Child>',
-      './child.astro':
+      './middle.sikka':
+        '---\nimport Child from \'./child.sikka\';\n---\n<Child><slot name="header" slot="header" /><slot name="aside" slot="title" /></Child>',
+      './child.sikka':
         '<main><slot name="header">fallback</slot><slot name="title">fallback</slot></main>',
     },
     props: {},
@@ -389,13 +389,13 @@ import Middle from './middle.astro';
   {
     id: 'slot-forward-absent',
     template: `---
-import Middle from './middle.astro';
+import Middle from './middle.sikka';
 ---
 <Middle />`,
     components: {
-      './middle.astro':
-        '---\nimport Child from \'./child.astro\';\n---\n<Child><slot name="header" slot="title" /></Child>',
-      './child.astro': '<main><slot name="title">fallback</slot></main>',
+      './middle.sikka':
+        '---\nimport Child from \'./child.sikka\';\n---\n<Child><slot name="header" slot="title" /></Child>',
+      './child.sikka': '<main><slot name="title">fallback</slot></main>',
     },
     props: {},
     expectedHtml: '<main>fallback</main>',
@@ -405,16 +405,16 @@ import Middle from './middle.astro';
   {
     id: 'slot-forward-dynamic',
     template: `---
-import Middle from './middle.astro';
+import Middle from './middle.sikka';
 ---
-<Middle incoming={Astro.props.incoming} outgoing={Astro.props.outgoing}><b slot={Astro.props.incoming}>dynamic</b></Middle>`,
+<Middle incoming={Sikka.props.incoming} outgoing={Sikka.props.outgoing}><b slot={Sikka.props.incoming}>dynamic</b></Middle>`,
     components: {
-      './middle.astro': `---
-import Child from './child.astro';
-const { incoming, outgoing } = Astro.props;
+      './middle.sikka': `---
+import Child from './child.sikka';
+const { incoming, outgoing } = Sikka.props;
 ---
 <Child><slot name={incoming} slot={outgoing} /></Child>`,
-      './child.astro': '<main><slot name="target">fallback</slot></main>',
+      './child.sikka': '<main><slot name="target">fallback</slot></main>',
     },
     props: { incoming: 'source', outgoing: 'target' },
     expectedHtml: '<main><b>dynamic</b></main>',
@@ -450,7 +450,7 @@ function expressionFunction() {}
   },
   {
     id: 'expression-string-escaping',
-    template: '<p>{Astro.props.value}</p>',
+    template: '<p>{Sikka.props.value}</p>',
     props: { value: '&<>"\'' },
     expectedHtml: '<p>&amp;&lt;&gt;&quot;&#39;</p>',
     modes: ['source', 'precompiled'],
@@ -542,7 +542,7 @@ function isPortableValue(value: unknown): value is PortableValue {
   return Object.values(value).every(isPortableValue);
 }
 
-function isPortableObject(value: object): boolean {
+function isPortableObject(value: Record<string, unknown>): boolean {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }

@@ -29,8 +29,8 @@ describe('Health-risk paths', () => {
   });
 
   it('covers compiled render entry points and directives', async () => {
-    const html = compileTemplate('<div set:html={Astro.props.value} />');
-    const text = compileTemplate('<div set:text={Astro.props.value} />');
+    const html = compileTemplate('<div set:html={Sikka.props.value} />');
+    const text = compileTemplate('<div set:text={Sikka.props.value} />');
 
     expect(html.renderSync({ value: '<b>Ada</b>' })).toBe('<div><b>Ada</b></div>');
     expect(await text({ value: '<Ada>' })).toBe('<div>&lt;Ada&gt;</div>');

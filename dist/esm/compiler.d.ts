@@ -5,7 +5,7 @@ import type { TemplateAST, CompileResult, CompileError, RenderFunction, Streamin
 interface CompileOptions {
     /** Resolved component render functions keyed by local name. */
     components?: Record<string, RenderFunction>;
-    /** Custom name for the props variable (default: "Astro"). */
+    /** Custom name for the props variable (default: "Sikka"). */
     varName?: string;
     /** Whether to automatically escape HTML. Default: true. */
     autoEscape?: boolean;

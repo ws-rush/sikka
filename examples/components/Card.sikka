@@ -1,5 +1,5 @@
 ---
-const { title, description, href } = Astro.props;
+const { title, description, href } = Sikka.props;
 ---
 <div class="card">
   <h3><a href={href}>{title}</a></h3>

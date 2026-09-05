@@ -4,7 +4,7 @@
 
 | Term                    | Definition                                                                                                                               | Aliases to avoid                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| **Template**            | An Astro-syntax source document that defines HTML output.                                                                                | View, page, markup file         |
+| **Template**            | An Sikka-syntax source document that defines HTML output.                                                                                | View, page, markup file         |
 | **Component**           | A reusable **Template** that can be composed into another **Template**.                                                                  | Widget, partial, include        |
 | **Template source**     | The text of a **Template**, supplied directly or loaded from a file.                                                                     | Source file, input              |
 | **Template resolution** | The mapping of a Template request, optionally relative to an importing Template, to its canonical Template identity and Template source. | Lookup, loading                 |

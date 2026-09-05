@@ -1,5 +1,5 @@
 ---
-const { navItems = [] } = Astro.props;
+const { navItems = [] } = Sikka.props;
 ---
 <nav>
   {navItems.map((item) => <a href={item.href}>{item.label}</a>)}

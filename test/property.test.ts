@@ -72,7 +72,7 @@ describe('Portable properties', () => {
   });
 
   it('portable-deterministic-render', async () => {
-    const template = '<p>{Astro.props.value}</p>';
+    const template = '<p>{Sikka.props.value}</p>';
     const sourceSikka = source(template);
     const precompiledSikka = await precompiled(template);
     runPortableProperty('portable-deterministic-render', text, (value) => {
@@ -96,7 +96,7 @@ describe('Portable properties', () => {
   });
 
   it('portable-frontmatter-equivalence', async () => {
-    const body = '<p>{Astro.props.value}</p>';
+    const body = '<p>{Sikka.props.value}</p>';
     const plain = source(body);
     const fenced = source(`---\n---\n${body}`);
     const precompiledPlain = await precompiled(body);
@@ -112,7 +112,7 @@ describe('Portable properties', () => {
 
   it('portable-escaping-list', async () => {
     const template =
-      '<h1>{Astro.props.name}</h1><ul>{Astro.props.items.map((item) => <li>{item}</li>)}</ul>';
+      '<h1>{Sikka.props.name}</h1><ul>{Sikka.props.items.map((item) => <li>{item}</li>)}</ul>';
     const sourceSikka = source(template);
     const precompiledSikka = await precompiled(template);
     runPortableProperty('portable-escaping-list', props, (input) => {
@@ -124,8 +124,8 @@ describe('Portable properties', () => {
 
   it('portable-component-isolation', async () => {
     const template =
-      '---\nimport Item from "./item.astro";\n---\n<Item text={Astro.props.left} /><Item text={Astro.props.right} />';
-    const components = { './item.astro': '<span>{Astro.props.text}</span>' };
+      '---\nimport Item from "./item.sikka";\n---\n<Item text={Sikka.props.left} /><Item text={Sikka.props.right} />';
+    const components = { './item.sikka': '<span>{Sikka.props.text}</span>' };
     const sourceSikka = source(template, components);
     const precompiledSikka = await precompiled(template, components);
     const pairs = text.map((left) => ({ left, right: `${left}x` }));

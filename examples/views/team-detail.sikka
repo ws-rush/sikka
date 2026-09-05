@@ -1,6 +1,6 @@
 ---
-import Layout from '../components/Layout.astro';
-import Header from '../components/Header.astro';
+import Layout from '../components/Layout.sikka';
+import Header from '../components/Header.sikka';
 const navItems = [
   { label: 'Home', href: '/' },
   { label: 'About', href: '/about' },
@@ -8,7 +8,7 @@ const navItems = [
   { label: 'Todos', href: '/todos' },
   { label: 'Stream', href: '/stream' },
 ];
-const { member } = Astro.props;
+const { member } = Sikka.props;
 ---
 <Layout title={`${member.name} - Sikka Example`}>
   <Header navItems={navItems} />

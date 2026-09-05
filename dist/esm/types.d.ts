@@ -33,7 +33,7 @@ interface SikkaRuntimeOptions {
 export interface SourceModeOptions extends SikkaRuntimeOptions {
     mode: 'source';
     resolver: SourceResolver;
-    /** Compile-time custom name for the props variable (default: "Astro"). */
+    /** Compile-time custom name for the props variable (default: "Sikka"). */
     varName?: string;
 }
 /** A statically generated Template module that has already been loaded by its host. */
@@ -66,9 +66,9 @@ export interface FrontmatterNode {
 export interface ComponentImport {
     /** The local identifier used in the template body, e.g. `"Button"`. */
     localName: string;
-    /** The module specifier, e.g. `"./Button.astro"`. */
+    /** The module specifier, e.g. `"./Button.sikka"`. */
     specifier: string;
-    /** Whether this import has the `.astro` Component specifier required by Sikka. */
+    /** Whether this import has the `.sikka` Component specifier required by Sikka. */
     isComponent: boolean;
 }
 /** Union of all possible template body nodes. */

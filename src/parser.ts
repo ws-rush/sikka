@@ -1,7 +1,7 @@
 /**
  * Parser
  *
- * Parses Astro-like template source into a TemplateAST.
+ * Parses Sikka-like template source into a TemplateAST.
  *
  * Pipeline:
  *   1. Extract frontmatter between `---` fences
@@ -228,7 +228,7 @@ function collectDefaultImport(part: string, specifier: string, imports: Componen
 }
 
 function componentImport(localName: string, specifier: string): ComponentImport {
-  return { localName, specifier, isComponent: specifier.endsWith('.astro') };
+  return { localName, specifier, isComponent: specifier.endsWith('.sikka') };
 }
 
 // ─── Body parser ─────────────────────────────────────────────────────────────
@@ -1110,7 +1110,7 @@ export const VOID_ELEMENTS = new Set([
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Parse an Astro-like template source string into a `TemplateAST`.
+ * Parse an Sikka-like template source string into a `TemplateAST`.
  *
  * Returns `{ ok: true, ast }` on success or `{ ok: false, error }` on failure.
  * All errors include a `line` and `column` pointing to the fault location.

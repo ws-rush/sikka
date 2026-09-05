@@ -22,7 +22,7 @@ import type {
 interface CompileOptions {
   /** Resolved component render functions keyed by local name. */
   components?: Record<string, RenderFunction>;
-  /** Custom name for the props variable (default: "Astro"). */
+  /** Custom name for the props variable (default: "Sikka"). */
   varName?: string;
   /** Whether to automatically escape HTML. Default: true. */
   autoEscape?: boolean;
@@ -160,7 +160,7 @@ export function unsupportedFrontmatterImport(
   if (!invalid) return undefined;
   const context = templateId ? ` in canonical Template ${JSON.stringify(templateId)}` : '';
   return {
-    message: `Unsupported Frontmatter import ${JSON.stringify(invalid.specifier)}${context}: only .astro Component imports are supported`,
+    message: `Unsupported Frontmatter import ${JSON.stringify(invalid.specifier)}${context}: only .sikka Component imports are supported`,
     category: 'Compile',
     template: templateId,
     request: invalid.specifier,
@@ -344,18 +344,18 @@ function buildFunctionBody(
 }
 
 function buildFunctionPreamble(ast: TemplateAST, options?: CompileOptions): string[] {
-  const varName = options?.varName || 'Astro';
+  const varName = options?.varName || 'Sikka';
   return [
-    ...buildAstroPreamble(ast, varName),
+    ...buildSikkaPreamble(ast, varName),
     '',
     ...buildComponentPreamble(ast.imports),
     ...buildFrontmatterPreamble(ast.frontmatter.source),
   ];
 }
 
-function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
-  if (!usesAstroGlobal(ast, varName)) return [];
-  if (usesOnlyAstroProps(ast, varName)) return [`const ${varName} = { props };`];
+function buildSikkaPreamble(ast: TemplateAST, varName: string): string[] {
+  if (!usesSikkaGlobal(ast, varName)) return [];
+  if (usesOnlySikkaProps(ast, varName)) return [`const ${varName} = { props };`];
   return [
     `const ${varName} = {
       props,
@@ -368,11 +368,11 @@ function buildAstroPreamble(ast: TemplateAST, varName: string): string[] {
   ];
 }
 
-function usesAstroGlobal(ast: TemplateAST, varName: string): boolean {
+function usesSikkaGlobal(ast: TemplateAST, varName: string): boolean {
   return ast.frontmatter.source.includes(varName) || JSON.stringify(ast.body).includes(varName);
 }
 
-function usesOnlyAstroProps(ast: TemplateAST, varName: string): boolean {
+function usesOnlySikkaProps(ast: TemplateAST, varName: string): boolean {
   const source = ast.frontmatter.source + JSON.stringify(ast.body);
   return !source.replaceAll(`${varName}.props`, '').includes(varName);
 }

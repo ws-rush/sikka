@@ -21,11 +21,11 @@ const templates = new Map([
   [
     'home',
     {
-      id: 'pages/home.astro',
-      source: '---\nimport Card from "./Card.astro";\n---\n<Card title={Astro.props.title} />',
+      id: 'pages/home.sikka',
+      source: '---\nimport Card from "./Card.sikka";\n---\n<Card title={Sikka.props.title} />',
     },
   ],
-  ['./Card.astro', { id: 'components/Card.astro', source: '<h1>{Astro.props.title}</h1>' }],
+  ['./Card.sikka', { id: 'components/Card.sikka', source: '<h1>{Sikka.props.title}</h1>' }],
 ]);
 
 const sikka = new Sikka({
@@ -44,7 +44,7 @@ const html = sikka.render('home', { title: 'Hello' });
 Notes:
 
 - The resolver is called with `(request, importer)` — `importer` is the canonical id of the template containing a frontmatter `import`, or `undefined` for the entry. Use it to resolve relative specifiers.
-- Components come **only** from non-type `.astro` imports in frontmatter.
+- Components come **only** from non-type `.sikka` imports in frontmatter.
 - Every template must return a stable, non-empty canonical `id`. Caching, cycle detection, and invalidation key off it.
 
 ## Streaming
@@ -66,10 +66,10 @@ Streaming yields the same HTML as `render`, incrementally:
 
 ```astro
 ---
-const items = Astro.props.items ?? [];
+const items = Sikka.props.items ?? [];
 ---
 
-<h1 class={Astro.props.title ? 'big' : 'small'}>Hello</h1>
+<h1 class={Sikka.props.title ? 'big' : 'small'}>Hello</h1>
 <ul>
   {items.map((item) => <li>{item}</li>)}
 </ul>

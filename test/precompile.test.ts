@@ -43,18 +43,18 @@ describe('sikka/precompile', () => {
       [
         'home',
         {
-          id: 'templates/home.astro',
-          source: '---\nimport Card from "./Card.astro";\n---\n<Card />',
+          id: 'templates/home.sikka',
+          source: '---\nimport Card from "./Card.sikka";\n---\n<Card />',
         },
       ],
       [
         'about',
         {
-          id: 'templates/about.astro',
-          source: '---\nimport Card from "./Card.astro";\n---\n<Card />',
+          id: 'templates/about.sikka',
+          source: '---\nimport Card from "./Card.sikka";\n---\n<Card />',
         },
       ],
-      ['./Card.astro', { id: 'templates/components/card.astro', source: '<p>Card</p>' }],
+      ['./Card.sikka', { id: 'templates/components/card.sikka', source: '<p>Card</p>' }],
     ]);
     const artifacts = compile(['home', 'about'], {
       resolver(request, importer) {
@@ -67,21 +67,21 @@ describe('sikka/precompile', () => {
 
     expect(requests).toEqual([
       ['home', undefined],
-      ['./Card.astro', 'templates/home.astro'],
+      ['./Card.sikka', 'templates/home.sikka'],
       ['about', undefined],
-      ['./Card.astro', 'templates/about.astro'],
+      ['./Card.sikka', 'templates/about.sikka'],
     ]);
     expect(artifacts.map(({ id }) => id)).toEqual([
-      'templates/components/card.astro',
-      'templates/home.astro',
-      'templates/about.astro',
+      'templates/components/card.sikka',
+      'templates/home.sikka',
+      'templates/about.sikka',
     ]);
     expect(artifacts[1].abiVersion).toBe(PRECOMPILE_ABI_VERSION);
     expect(artifacts[1].components).toEqual([
       {
         localName: 'Card',
-        specifier: './Card.astro',
-        id: 'templates/components/card.astro',
+        specifier: './Card.sikka',
+        id: 'templates/components/card.sikka',
       },
     ]);
     expect(artifacts[1].renderString).not.toBe(artifacts[1].streamString);
@@ -92,16 +92,16 @@ describe('sikka/precompile', () => {
       resolver(request) {
         const templates: Record<string, { id: string; source: string }> = {
           page: {
-            id: 'templates/page.astro',
+            id: 'templates/page.sikka',
             source:
-              '---\nimport Card from "./Card.astro";\n---\n<main>before<Card name={Astro.props.name}><i>slot</i></Card>after</main>',
+              '---\nimport Card from "./Card.sikka";\n---\n<main>before<Card name={Sikka.props.name}><i>slot</i></Card>after</main>',
           },
-          './Card.astro': {
-            id: 'templates/Card.astro',
+          './Card.sikka': {
+            id: 'templates/Card.sikka',
             source:
-              '---\nimport Label from "./Label.astro";\n---\n<section><Label name={Astro.props.name}/><slot /></section>',
+              '---\nimport Label from "./Label.sikka";\n---\n<section><Label name={Sikka.props.name}/><slot /></section>',
           },
-          './Label.astro': { id: 'templates/Label.astro', source: '<b>{Astro.props.name}</b>' },
+          './Label.sikka': { id: 'templates/Label.sikka', source: '<b>{Sikka.props.name}</b>' },
         };
         const template = templates[request];
         if (!template) throw new Error(`Unknown Template: ${request}`);
@@ -109,7 +109,7 @@ describe('sikka/precompile', () => {
       },
     });
     const modules = generatedModules(artifacts);
-    const pageUrl = modules.get('templates/page.astro') as string;
+    const pageUrl = modules.get('templates/page.sikka') as string;
     const page = await import(pageUrl);
     const source = decodeURIComponent(pageUrl.slice(pageUrl.indexOf(',') + 1));
 
@@ -162,7 +162,7 @@ describe('sikka/precompile', () => {
         request === 'page'
           ? {
               id: 'page',
-              source: '---\nimport Async from "./async.astro";\n---\nbefore<Async />after',
+              source: '---\nimport Async from "./async.sikka";\n---\nbefore<Async />after',
             }
           : { id: 'async', source: '<i>regular</i>' },
     });
@@ -185,7 +185,7 @@ describe('sikka/precompile', () => {
   });
 
   it('applies aggregateAssets at precompiled render time', async () => {
-    const template = '<script>const x = 1;</script><p>{Astro.props.name}</p>';
+    const template = '<script>const x = 1;</script><p>{Sikka.props.name}</p>';
     const [artifact] = compile('page', {
       resolver: () => ({ id: 'page', source: template }),
     });
@@ -216,27 +216,27 @@ describe('sikka/precompile', () => {
 
   it('keeps Component import forms as graph edges and ignores type-only imports', async () => {
     const source = `---
-import Default from "./Card.astro";
-import { Named, Original as Aliased } from "./Card.astro";
-import Combined, { AlsoNamed } from "./Card.astro";
-import * as Namespace from "./Card.astro";
+import Default from "./Card.sikka";
+import { Named, Original as Aliased } from "./Card.sikka";
+import Combined, { AlsoNamed } from "./Card.sikka";
+import * as Namespace from "./Card.sikka";
 import type { Data } from "./data.ts";
 ---
 <Default /><Named /><Aliased /><Combined /><AlsoNamed /><Namespace />`;
     const resolver = (request: string) => {
-      if (request === 'page') return { id: 'templates/page.astro', source };
-      if (request === './Card.astro') return { id: 'templates/Card.astro', source: '<i>card</i>' };
+      if (request === 'page') return { id: 'templates/page.sikka', source };
+      if (request === './Card.sikka') return { id: 'templates/Card.sikka', source: '<i>card</i>' };
       throw new Error(`Unexpected request: ${request}`);
     };
     const artifacts = compile('page', { resolver });
-    const page = artifacts.find(({ id }) => id === 'templates/page.astro') as PrecompileArtifact;
+    const page = artifacts.find(({ id }) => id === 'templates/page.sikka') as PrecompileArtifact;
     const names = ['Default', 'Named', 'Aliased', 'Combined', 'AlsoNamed', 'Namespace'];
 
     expect(page.components.map(({ localName }) => localName)).toEqual(names);
     const sourceSikka = new Sikka({ mode: 'source', resolver });
     expect(sourceSikka.render('page')).toBe('<i>card</i>'.repeat(names.length));
     const generated = await import(
-      generatedModules(artifacts).get('templates/page.astro') as string
+      generatedModules(artifacts).get('templates/page.sikka') as string
     );
     expect(generated.render({})).toBe('<i>card</i>'.repeat(names.length));
   });
@@ -245,7 +245,7 @@ import type { Data } from "./data.ts";
     const resolver = (request: string) => {
       if (request === 'page') {
         return {
-          id: 'templates/page.astro',
+          id: 'templates/page.sikka',
           source:
             '---\nimport data from "./data.ts";\nconst title = "Page";\n---\n<h1>{title}</h1>',
         };
@@ -254,7 +254,7 @@ import type { Data } from "./data.ts";
     };
     const source = new Sikka({ mode: 'source', resolver });
     const diagnostic =
-      /Unsupported Frontmatter import.*data\.ts.*canonical Template.*templates\/page\.astro/;
+      /Unsupported Frontmatter import.*data\.ts.*canonical Template.*templates\/page\.sikka/;
 
     expect(() => source.render('page')).toThrow(diagnostic);
     expect(() => source.stream('page')).toThrow(diagnostic);
@@ -274,46 +274,46 @@ import type { Data } from "./data.ts";
         resolver: (request) => {
           if (request === 'page') {
             return {
-              id: 'templates/page.astro',
-              source: '---\nimport Card from "./Card.astro";\n---\n<Card />',
+              id: 'templates/page.sikka',
+              source: '---\nimport Card from "./Card.sikka";\n---\n<Card />',
             };
           }
           throw new Error('not found');
         },
       })
-    ).toThrow(/ResolveError.*Card.*templates\/page\.astro.*not found/);
+    ).toThrow(/ResolveError.*Card.*templates\/page\.sikka.*not found/);
     expect(() =>
       compile('page', {
         resolver: (request) =>
           request === 'page'
             ? {
-                id: 'templates/page.astro',
-                source: '---\nimport Card from "./Card.astro";\n---\n<Card />',
+                id: 'templates/page.sikka',
+                source: '---\nimport Card from "./Card.sikka";\n---\n<Card />',
               }
             : ({ id: '', source: '' } as never),
       })
-    ).toThrow(/ResolveError.*Card.*templates\/page\.astro/);
+    ).toThrow(/ResolveError.*Card.*templates\/page\.sikka/);
     expect(() =>
       compile('page', {
         resolver: (request) =>
-          request === 'page' || request === './page.astro'
+          request === 'page' || request === './page.sikka'
             ? {
-                id: 'templates/page.astro',
-                source: '---\nimport Card from "./Card.astro";\n---\n<Card />',
+                id: 'templates/page.sikka',
+                source: '---\nimport Card from "./Card.sikka";\n---\n<Card />',
               }
             : {
-                id: 'templates/Card.astro',
-                source: '---\nimport Page from "./page.astro";\n---\n<Page />',
+                id: 'templates/Card.sikka',
+                source: '---\nimport Page from "./page.sikka";\n---\n<Page />',
               },
       })
     ).toThrow(
-      /ResolveError.*templates\/Card\.astro.*templates\/page\.astro.*templates\/Card\.astro/
+      /ResolveError.*templates\/Card\.sikka.*templates\/page\.sikka.*templates\/Card\.sikka/
     );
   });
 
   it('emits complete static ESM modules and guards host links and ABI', () => {
     const [plain] = compile('page', {
-      resolver: () => ({ id: 'page', source: '<p>{Astro.props.name}</p>' }),
+      resolver: () => ({ id: 'page', source: '<p>{Sikka.props.name}</p>' }),
     });
     const source = emitModule(plain);
 
@@ -325,7 +325,7 @@ import type { Data } from "./data.ts";
     const artifacts = compile('page', {
       resolver: (request) =>
         request === 'page'
-          ? { id: 'page', source: '---\nimport Card from "./Card.astro";\n---\n<Card />' }
+          ? { id: 'page', source: '---\nimport Card from "./Card.sikka";\n---\n<Card />' }
           : { id: 'card', source: '<i>card</i>' },
     });
     const linked = artifacts.find(({ id }) => id === 'page');

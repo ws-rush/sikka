@@ -24,7 +24,7 @@ const sikka = new Sikka({
   mode: 'source',
   resolver(request, importer) {
     if (request === 'stream')
-      return { id: resolve(__dirname, 'views', 'stream.astro'), source: streamTemplate };
+      return { id: resolve(__dirname, 'views', 'stream.sikka'), source: streamTemplate };
     const id = importer
       ? resolve(dirname(importer), request)
       : resolve(__dirname, 'views', request);
@@ -48,27 +48,27 @@ app.use((req, _res, next) => {
 // ── Routes ─────────────────────────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
-  res.send(sikka.render('index.astro'));
+  res.send(sikka.render('index.sikka'));
 });
 
 app.get('/about', (_req, res) => {
-  res.send(sikka.render('about.astro', { team }));
+  res.send(sikka.render('about.sikka', { team }));
 });
 
 app.get('/users', (_req, res) => {
-  res.send(sikka.render('users.astro', { users }));
+  res.send(sikka.render('users.sikka', { users }));
 });
 
 app.get('/users/:id', (req, res) => {
   const user = findUser(parseInt(req.params.id));
   if (!user) return res.status(404).send('Not found');
-  res.send(sikka.render('user-detail.astro', { user }));
+  res.send(sikka.render('user-detail.sikka', { user }));
 });
 
 app.get('/about/:index', (req, res) => {
   const member = findTeamMember(parseInt(req.params.index));
   if (!member) return res.status(404).send('Not found');
-  res.send(sikka.render('team-detail.astro', { member }));
+  res.send(sikka.render('team-detail.sikka', { member }));
 });
 
 app.get('/stream', async (_req, res) => {
@@ -84,7 +84,7 @@ app.get('/stream', async (_req, res) => {
 });
 
 app.get('/todos', (_req, res) => {
-  res.send(sikka.render('todos.astro', { todos }));
+  res.send(sikka.render('todos.sikka', { todos }));
 });
 
 app.post('/todos', (req, res) => {
