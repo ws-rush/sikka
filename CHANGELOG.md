@@ -1,3 +1,22 @@
+## 0.3.0 (2026-09-05)
+
+- build!: ship ESM only, dropping CommonJS output ([125dd3a](https://github.com/ws-rush/sikka/commit/125dd3a))
+- refactor!: rename Astro templates to Sikka ([e6dcc0a](https://github.com/ws-rush/sikka/commit/e6dcc0a))
+- docs: add user documentation suite ([ee4ac30](https://github.com/ws-rush/sikka/commit/ee4ac30))
+- docs: fold root syntax guide into documentation ([219255f](https://github.com/ws-rush/sikka/commit/219255f))
+
+### BREAKING CHANGE
+
+- the package no longer ships CommonJS builds.
+  require('sikka') is unsupported on Node without native require(esm)
+  (< 20.19 / < 22.12); use import. Modern CJS consumers on
+  require(esm)-capable Node are unaffected.
+
+* remove dist/cjs output, tsconfig.cjs.json, the require conditions
+  in exports, and the main field; build emits dist/esm only
+* remove test/package.test.ts, which pinned the dual-format tarball
+  inventory and exercised the CJS consumers
+
 # Changelog
 
 All notable changes to this project are documented here.
