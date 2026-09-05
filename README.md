@@ -1,6 +1,6 @@
 # Sikka (سكّة)
 
-Sikka is a zero-dependency Template engine. [The syntax guide](README.astro-syntax.md) is a concise, self-contained guide.
+Sikka is a zero-dependency Template engine. [The syntax guide](documentation/02-syntax.md) is a concise, self-contained guide.
 
 ## Install
 
