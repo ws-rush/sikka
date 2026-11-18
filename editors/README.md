@@ -67,3 +67,8 @@ Load `editors/emacs/sikka-mode.el` in your init file:
 ```
 
 This enables `sikka-mode` (derived from `html-mode`) automatically for `*.sikka` files. For Tree-sitter (`treesit`) support in Emacs 29+, compile the grammar in `editors/tree-sitter-sikka/`.
+
+## TODO
+
+- [ ] Claim verified ownership of the `ws-rush` namespace on Open VSX (`Settings > Namespaces > Claim Ownership`).
+- [ ] Submit `editors/vscode/syntaxes/sikka.tmLanguage.json` to `github-linguist/linguist` for `.sikka` syntax highlighting on GitHub once `.sikka` files have public usage across GitHub repositories.
