@@ -1,0 +1,45 @@
+{
+  "name": "sikka-vscode",
+  "displayName": "Sikka",
+  "version": "0.1.0",
+  "description": "Syntax highlighting for Sikka (.sikka) templates",
+  "categories": [
+    "Programming Languages"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ws-rush/sikka.git"
+  },
+  "publisher": "ws-rush",
+  "contributes": {
+    "languages": [
+      {
+        "id": "sikka",
+        "aliases": [
+          "Sikka",
+          "sikka"
+        ],
+        "extensions": [
+          ".sikka"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sikka",
+        "scopeName": "source.sikka",
+        "path": "./syntaxes/sikka.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.ts": "typescript",
+          "source.js": "javascript",
+          "source.css": "css"
+        }
+      }
+    ]
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  }
+}

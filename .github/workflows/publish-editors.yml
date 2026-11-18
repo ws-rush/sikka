@@ -1,0 +1,34 @@
+name: Publish Editor Extensions
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vscode:
+    name: Package and publish VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Package .vsix
+        working-directory: editors/vscode
+        run: npx --yes @vscode/vsce package --out sikka.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sikka-vscode-vsix
+          path: editors/vscode/sikka.vsix
+      - name: Publish to Open VSX
+        working-directory: editors/vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -n "${OVSX_PAT:-}" ]; then
+            npx --yes ovsx publish sikka.vsix -p "$OVSX_PAT"
+          fi

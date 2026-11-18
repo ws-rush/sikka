@@ -100,6 +100,8 @@ Node.js 24 and bundled Chromium are release-evidence targets only, not runtime o
 
 ## Development
 
+Editor syntax highlighting for `.sikka` files (VS Code, Cursor, JetBrains, Vim/Neovim, Tree-sitter, Helix, Zed, Sublime Text, Emacs) is in [`editors/`](editors/README.md).
+
 ```bash
 nub install
 nub run format && nub run lint && nub run fallow && nub run typecheck && nub run test && nub run test:coverage
