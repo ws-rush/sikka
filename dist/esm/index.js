@@ -2,9 +2,10 @@ import { parse } from './parser.js';
 import { compile as internalCompile, compileStreaming as internalCompileStreaming, unsupportedFrontmatterImport, } from './compiler.js';
 import { createCache } from './cache.js';
 import { SikkaError } from './error.js';
-import { bindRuntime, runtime } from './runtime.js';
+import { bindRuntime, runWithAssetCollector, runtime } from './runtime.js';
 import { resolveSourceTemplate } from './template-resolution.js';
 export { SikkaError } from './error.js';
+export { inlineSvg } from './svg.js';
 const EMPTY_SLOTS = {};
 function createTemplateCaches(options) {
     const cache = templateCacheFor(options);
@@ -71,6 +72,22 @@ export class Sikka {
     /** Renders an entry Template with Props. */
     render(entry, props = {}) {
         return this.renderSource(entry, props);
+    }
+    /**
+     * Renders an entry Template while collecting and deduplicating `<style>` and `<script>` tags.
+     * When `inject` is not `false` and the rendered HTML contains `</head>`, injects them before `</head>`.
+     */
+    renderWithAssets(entry, props = {}, options = {}) {
+        const { result, styles, scripts } = runWithAssetCollector(() => this.render(entry, props));
+        let html = result;
+        if (options.inject !== false && (styles.length > 0 || scripts.length > 0)) {
+            const headClose = html.indexOf('</head>');
+            if (headClose !== -1) {
+                html =
+                    html.slice(0, headClose) + styles.join('') + scripts.join('') + html.slice(headClose);
+            }
+        }
+        return { html, styles, scripts };
     }
     renderSource(entry, props) {
         return this.compileSource(this.resolveSource(entry), internalCompile, this.cache).renderSync(props, EMPTY_SLOTS);

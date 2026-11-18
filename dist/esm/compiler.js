@@ -4,6 +4,7 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 import { SikkaError } from './error.js';
 import { VOID_ELEMENTS } from './parser.js';
+import { collectAsset } from './runtime.js';
 const STREAMING_TARGET = '__buf';
 const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
     'allowfullscreen',
@@ -150,7 +151,7 @@ function compileValidatedAST(ast, options, components) {
     };
 }
 function createSyncFunction(source) {
-    return new Function('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', source);
+    return new Function('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', '__collectAsset', source);
 }
 function createRenderFunction(syncFn, components, helpers, debug, template) {
     const renderFn = (async (props, slots) => renderFn.renderSync(props, slots));
@@ -168,7 +169,7 @@ function synchronousSlots(slots) {
 }
 function executeSyncFunction(syncFn, props, slots, components, helpers, debug, template) {
     try {
-        return syncFn(props, slots, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper);
+        return syncFn(props, slots, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper, collectAsset);
     }
     catch (err) {
         if (debug) {
@@ -458,13 +459,23 @@ function emitStaticSlot(node, components, options, target) {
     return lines;
 }
 function emitAssetNode(tag, content, attrs, components, options, target) {
-    if (options?.aggregateAssets)
-        return [];
+    const assetVar = '__asset';
     const lines = attrs.every(isStaticAttribute) && !attrs.some((attr) => isClassAttribute(attr.name))
-        ? emitStaticOpeningTag(tag, attrs, options, target)
-        : emitSpreadOpeningTag(tag, attrs, components, options, target);
-    lines.push(`${target} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
-    return options?.precompiled ? ['if (!__aggregateAssets) {', ...lines, '}'] : lines;
+        ? emitStaticOpeningTag(tag, attrs, options, assetVar)
+        : emitSpreadOpeningTag(tag, attrs, components, options, assetVar);
+    lines.push(`${assetVar} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
+    const emitInline = options?.precompiled
+        ? `if (!__aggregateAssets) ${target} += ${assetVar};`
+        : options?.aggregateAssets
+            ? ''
+            : `${target} += ${assetVar};`;
+    return [
+        `{ let ${assetVar} = "";`,
+        ...lines,
+        `if (!__collectAsset(${JSON.stringify(tag)}, ${assetVar})) {`,
+        ...(emitInline ? [`  ${emitInline}`] : []),
+        `} }`,
+    ];
 }
 function emitElement(node, components, options, target = '__out') {
     if (!node.tag || node.tag === 'Fragment')
@@ -1107,11 +1118,11 @@ function compileStreamingASTUnsafe(ast, options) {
 }
 function createStreamingFunction(source) {
     const AsyncGenCtor = Object.getPrototypeOf(async function* () { }).constructor;
-    return new AsyncGenCtor('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', source);
+    return new AsyncGenCtor('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', '__collectAsset', source);
 }
 function createStreamingRenderFunction(streamingFn, components, options) {
     const helpers = createRuntimeHelpers(options);
-    return (props, slots) => streamingFn(props, slots ?? {}, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper);
+    return (props, slots) => streamingFn(props, slots ?? {}, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper, collectAsset);
 }
 /**
  * Build the function body for a streaming (async generator) template.

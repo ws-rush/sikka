@@ -5,6 +5,7 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 import { SikkaError } from './error.js';
 import { VOID_ELEMENTS } from './parser.js';
+import { collectAsset } from './runtime.js';
 import type {
   TemplateAST,
   TemplateNode,
@@ -189,7 +190,8 @@ type GeneratedSyncFunction = (
   components: Record<string, RenderFunction>,
   classList: RuntimeHelpers['classListHelper'],
   styleObject: RuntimeHelpers['styleObjectHelper'],
-  filter: RuntimeHelpers['filterHelper']
+  filter: RuntimeHelpers['filterHelper'],
+  collectAssetFn: (tag: 'script' | 'style', html: string) => boolean
 ) => string;
 
 function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
@@ -248,6 +250,7 @@ function createSyncFunction(source: string): GeneratedSyncFunction {
     '__classList',
     '__styleObject',
     '__filter',
+    '__collectAsset',
     source
   ) as GeneratedSyncFunction;
 }
@@ -300,7 +303,8 @@ function executeSyncFunction(
       components,
       helpers.classListHelper,
       helpers.styleObjectHelper,
-      helpers.filterHelper
+      helpers.filterHelper,
+      collectAsset
     );
   } catch (err: unknown) {
     if (debug) {
@@ -742,13 +746,24 @@ function emitAssetNode(
   options: CompileOptions | undefined,
   target: string
 ): string[] {
-  if (options?.aggregateAssets) return [];
+  const assetVar = '__asset';
   const lines =
     attrs.every(isStaticAttribute) && !attrs.some((attr) => isClassAttribute(attr.name))
-      ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, target)
-      : emitSpreadOpeningTag(tag, attrs, components, options, target);
-  lines.push(`${target} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
-  return options?.precompiled ? ['if (!__aggregateAssets) {', ...lines, '}'] : lines;
+      ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, assetVar)
+      : emitSpreadOpeningTag(tag, attrs, components, options, assetVar);
+  lines.push(`${assetVar} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
+  const emitInline = options?.precompiled
+    ? `if (!__aggregateAssets) ${target} += ${assetVar};`
+    : options?.aggregateAssets
+      ? ''
+      : `${target} += ${assetVar};`;
+  return [
+    `{ let ${assetVar} = "";`,
+    ...lines,
+    `if (!__collectAsset(${JSON.stringify(tag)}, ${assetVar})) {`,
+    ...(emitInline ? [`  ${emitInline}`] : []),
+    `} }`,
+  ];
 }
 
 function emitElement(
@@ -1777,6 +1792,7 @@ function createStreamingFunction(source: string): GeneratedStreamingFunction {
     '__classList',
     '__styleObject',
     '__filter',
+    '__collectAsset',
     source
   );
 }
@@ -1796,7 +1812,8 @@ function createStreamingRenderFunction(
       components,
       helpers.classListHelper,
       helpers.styleObjectHelper,
-      helpers.filterHelper
+      helpers.filterHelper,
+      collectAsset
     );
 }
 

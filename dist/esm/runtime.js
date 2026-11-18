@@ -28,7 +28,29 @@ export function runtime(receiver) {
         filter,
         autoFilter: options?.autoFilter === true,
         aggregateAssets: options?.aggregateAssets === true,
+        collectAsset,
     };
+}
+let activeCollector;
+/** Runs a synchronous render callback while collecting deduplicated `<style>` and `<script>` tags. */
+export function runWithAssetCollector(fn) {
+    const previous = activeCollector;
+    const collector = { styles: new Set(), scripts: new Set() };
+    activeCollector = collector;
+    try {
+        const result = fn();
+        return { result, styles: [...collector.styles], scripts: [...collector.scripts] };
+    }
+    finally {
+        activeCollector = previous;
+    }
+}
+/** Records an aggregated `<script>` or `<style>` tag when an asset collector is active. */
+export function collectAsset(tag, html) {
+    if (!activeCollector)
+        return false;
+    (tag === 'style' ? activeCollector.styles : activeCollector.scripts).add(html);
+    return true;
 }
 function identity(value) {
     return value;

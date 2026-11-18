@@ -27,7 +27,7 @@ export function emitModule(artifact, options = {}) {
         .join('\n');
     const regularComponents = components.map(({ localName, render }) => `${JSON.stringify(localName)}: ${render}`);
     const streamingComponents = components.map(({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`);
-    const helpers = 'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets } = runtime(this);';
+    const helpers = 'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets, collectAsset: __collectAsset } = runtime(this);';
     return `import { runtime } from ${JSON.stringify(runtimeSpecifier)};
 ${imports}
 export function render(props, slots = {}) {

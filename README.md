@@ -82,6 +82,24 @@ sikka.render('home', { title: 'Hello' });
 
 Runtime options belong to the invoking `Sikka` instance in either mode: `autoEscape` (default `true`), `autoFilter`, `filterFunction`, `aggregateAssets`, `cache`, `cacheSize`, and `debug`. `varName` (default `Sikka`) renames the props variable during source-mode compilation only; generated modules always bind `Sikka`.
 
+## Vite plugin (`sikka/vite`)
+
+`sikka` from `sikka/vite` precompiles imported `.sikka` files into static ESM modules during Vite dev and build:
+
+```ts
+import { defineConfig } from 'vite';
+import { sikka } from 'sikka/vite';
+
+export default defineConfig({
+  plugins: [sikka()],
+});
+```
+
+## Asset aggregation and inline SVGs
+
+- `sikka.renderWithAssets(entry, props, { inject = true })` collects and deduplicates `<style>` and `<script>` tags across the rendered component tree, injects them before `</head>` when present, and returns `{ html, styles, scripts }`.
+- `inlineSvg(svg, attrs)` strips XML declarations, merges `class` and `aria-*`/HTML attributes onto the root `<svg>` element, and returns trusted `RawHtml` usable directly inside `{...}`.
+
 ## Escaping and trust
 
 With default escaping, interpolated values, HTML attribute values, and `set:text` values are escaped. `set:html`, including `{...{ 'set:html': value }}`, inserts verbatim HTML; it is not sanitization. `is:raw` emits its child Template source verbatim rather than evaluating it. `autoEscape: false` disables automatic escaping globally. `RawHtml` is a generated-runtime helper for trusted verbatim values, not an application rendering API.
