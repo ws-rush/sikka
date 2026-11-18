@@ -40,22 +40,29 @@ function parseAttributes(source: string): Map<string, string | true> {
   return map;
 }
 
+function mergeClassAttr(target: Map<string, string | true>, value: unknown): void {
+  const next = typeof value === 'string' ? value.trim() : '';
+  if (!next) return;
+  const prev = target.get('class');
+  target.set('class', typeof prev === 'string' && prev ? `${prev} ${next}` : next);
+}
+
+function applyAttribute(
+  target: Map<string, string | true>,
+  name: string,
+  value: SvgAttributes[string]
+): void {
+  if (name === 'class') return mergeClassAttr(target, value);
+  if (value === false || value == null) {
+    target.delete(name);
+    return;
+  }
+  target.set(name, value === true ? true : String(value));
+}
+
 function applyAttributes(target: Map<string, string | true>, attrs: SvgAttributes): void {
   for (const [name, value] of Object.entries(attrs)) {
-    if (name === 'class') {
-      const next = typeof value === 'string' ? value.trim() : '';
-      if (!next) continue;
-      const prev = target.get('class');
-      target.set('class', typeof prev === 'string' && prev ? `${prev} ${next}` : next);
-      continue;
-    }
-    if (value === false || value == null) {
-      target.delete(name);
-    } else if (value === true) {
-      target.set(name, true);
-    } else {
-      target.set(name, String(value));
-    }
+    applyAttribute(target, name, value);
   }
 }
 
