@@ -38,3 +38,9 @@ nub run format && nub run lint && nub run fallow && nub run typecheck && nub run
 ```
 
 Update `README.md` for user-visible behavior and this file when agent guidance changes. For render-performance work, verify equivalent output and benchmark with `nub run build && nub run bench`.
+
+## Release & Editor Grammars
+
+- **Tree-sitter:** Whenever `editors/tree-sitter-sikka/grammar.js` changes, run `npx tree-sitter-cli generate` inside `editors/tree-sitter-sikka/` and commit `src/`.
+- **VS Code / Open VSX:** Bump `version` in `editors/vscode/package.json` when changing `editors/vscode/`. `publish-editors.yml` skips unchanged versions on Open VSX via `--skip-duplicate`.
+- **Releasing `v*` tags:** Push `main` and wait for `Correctness` (`sikka-1.0-validation`) to pass on that commit before pushing the `v*` tag, since `publish.yml` requires a green run on the exact tagged SHA.

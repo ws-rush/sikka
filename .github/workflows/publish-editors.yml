@@ -30,5 +30,5 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           if [ -n "${OVSX_PAT:-}" ]; then
-            npx --yes ovsx publish sikka.vsix -p "$OVSX_PAT"
+            npx --yes ovsx publish sikka.vsix --skip-duplicate -p "$OVSX_PAT"
           fi
