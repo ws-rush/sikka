@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": ["src/**/*.ts"],
-  "ignorePatterns": ["examples/**", "test/**", "bench/**", "scripts/**"],
+  "ignorePatterns": ["examples/**", "test/**", "bench/**", "scripts/**", "editors/**"],
   "ignoreDependencies": [
     "chalk",
     "enquirer",

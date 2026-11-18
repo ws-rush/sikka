@@ -1,0 +1,25 @@
+{
+  "name": "tree-sitter-sikka",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for Sikka templates",
+  "keywords": [
+    "sikka",
+    "tree-sitter"
+  ],
+  "license": "MIT",
+  "main": "bindings/node",
+  "tree-sitter": [
+    {
+      "scope": "source.sikka",
+      "file-types": [
+        "sikka"
+      ],
+      "highlights": [
+        "queries/highlights.scm"
+      ],
+      "injections": [
+        "queries/injections.scm"
+      ]
+    }
+  ]
+}

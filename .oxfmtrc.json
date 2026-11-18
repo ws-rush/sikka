@@ -10,6 +10,7 @@
     "node_modules/**",
     "coverage/**",
     "benchmark/**",
+    "editors/tree-sitter-sikka/src/**",
     "**/lock.yaml",
     "**/package-lock.json"
   ]

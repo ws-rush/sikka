@@ -39,6 +39,7 @@
     "dist/esm/template-resolution.d.ts",
     "dist/esm/template-resolution.js",
     "dist/esm/types.d.ts",
+    "editors",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
