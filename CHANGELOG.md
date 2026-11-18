@@ -1,3 +1,7 @@
+## 0.4.0 (2026-11-18)
+
+- feat: add sikka/vite plugin, renderWithAssets, and inlineSvg ([59ac0bc](https://github.com/ws-rush/sikka/commit/59ac0bc))
+
 ## 0.3.0 (2026-09-05)
 
 - build!: ship ESM only, dropping CommonJS output ([125dd3a](https://github.com/ws-rush/sikka/commit/125dd3a))
