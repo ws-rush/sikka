@@ -352,13 +352,18 @@ async function copyRuntimeFiles(consumer, output) {
   const source = join(consumer, 'node_modules', 'sikka', 'dist', 'esm');
   const runtime = await readFile(join(source, 'runtime.js'), 'utf8');
   const escapeSource = await readFile(join(source, 'escape.js'), 'utf8');
-  const importLine = "import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';\n";
-  if (!runtime.startsWith(importLine)) throw new Error('Unexpected candidate runtime module');
+  const htmlSource = await readFile(join(source, 'html.js'), 'utf8');
+  const runtimeImports =
+    "import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';\n" +
+    "import { mergeHtmlAttributes } from './html.js';\n";
+  const htmlImport = "import { escapeHtml, isRawHtml } from './escape.js';\n";
+  if (!runtime.startsWith(runtimeImports) || !htmlSource.startsWith(htmlImport))
+    throw new Error('Unexpected candidate runtime module');
   await writeFile(join(output, 'runtime.js'), runtime);
   await writeFile(join(output, 'escape.js'), escapeSource);
   await writeFile(
     join(output, 'sikka-runtime.mjs'),
-    `${escapeSource}\n${runtime.slice(importLine.length)}`
+    `${escapeSource}\n${htmlSource.slice(htmlImport.length)}\n${runtime.slice(runtimeImports.length)}`
   );
 }
 
