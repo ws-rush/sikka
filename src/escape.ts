@@ -37,7 +37,7 @@ function stringifyValue(value: unknown): string {
   return String(value);
 }
 
-function isRawHtml(value: unknown): value is { value: string } {
+export function isRawHtml(value: unknown): value is { value: string } {
   return value instanceof RawHtml || isBrandedRawHtml(value);
 }
 

@@ -1,46 +1,85 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
-import { Sikka, SikkaError, inlineSvg } from '../src/index.js';
+import { extractAssets, Sikka, SikkaError } from '../src/index.js';
 import { compile, emitModule } from '../src/precompile.js';
 import { sikka as sikkaVite } from '../src/vite.js';
 
-describe('inlineSvg', () => {
-  it('strips XML declarations, merges classes, and updates attributes safely', () => {
+describe('Fragment set:html with attributes', () => {
+  it('strips XML declarations, merges classes, and updates attributes safely on any root element', () => {
     const raw =
       '<?xml version="1.0" encoding="utf-8"?>\n<svg class="icon" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>';
-    const result = inlineSvg(raw, {
-      class: 'h-8 w-8',
-      'aria-hidden': true,
-      'aria-label': 'Logo & "Brand"',
-      viewBox: null,
-    });
 
     const engine = new Sikka({
       mode: 'source',
-      resolver: () => ({ id: 'page', source: '<a>{Sikka.props.icon}</a>' }),
+      resolver: () => ({
+        id: 'page',
+        source:
+          '<a><Fragment set:html={Sikka.props.icon} class="h-8 w-8" aria-hidden aria-label={\'Logo & "Brand"\'} viewBox={null} /></a>',
+      }),
     });
-    const html = engine.render('page', { icon: result });
+    const html = engine.render('page', { icon: raw });
     expect(html).toBe(
       '<a><svg class="icon h-8 w-8" aria-hidden aria-label="Logo &amp; &quot;Brand&quot;"><path d="M0 0h24v24H0z"/></svg></a>'
     );
   });
 
-  it('preserves self-closing svg tags', () => {
-    const result = inlineSvg('<svg viewBox="0 0 10 10" />', { class: 'size-4' });
-    expect(result.value).toBe('<svg viewBox="0 0 10 10" class="size-4" />');
+  it('merges attributes onto arbitrary HTML root elements, handles class:list/style/spread, and preserves self-closing tags', async () => {
+    const template =
+      '<Fragment set:html={Sikka.props.card} class="active" class:list={["rounded", true && "shadow"]} style={{ color: "red" }} {...Sikka.props.extra} />';
+    const props = {
+      card: '<div class="card" data-expr="a>b" style="margin:0">Hi</div>',
+      extra: { id: 'main', class: 'extra' },
+    };
+
+    const sourceEngine = new Sikka({
+      mode: 'source',
+      resolver: () => ({ id: 'page', source: template }),
+    });
+    const expected =
+      '<div class="card active rounded shadow extra" data-expr="a&gt;b" style="margin:0; color:red" id="main">Hi</div>';
+    expect(sourceEngine.render('page', props)).toBe(expected);
+
+    let streamed = '';
+    for await (const chunk of sourceEngine.stream('page', props)) streamed += chunk;
+    expect(streamed).toBe(expected);
+
+    const [artifact] = compile('page', { resolver: () => ({ id: 'page', source: template }) });
+    const modSource = emitModule(artifact, {
+      runtimeSpecifier: new URL('../dist/esm/runtime.js', import.meta.url).href,
+    });
+    const mod = await import(
+      `data:text/javascript;base64,${Buffer.from(modSource).toString('base64')}`
+    );
+    const precompiledEngine = new Sikka({ mode: 'precompiled', resolver: () => mod });
+    expect(precompiledEngine.render('page', props)).toBe(expected);
+  });
+
+  it('preserves self-closing tags and rejects attributes on Fragment without set:html', () => {
+    const engine = new Sikka({
+      mode: 'source',
+      resolver: (id) => ({
+        id,
+        source:
+          id === 'self'
+            ? '<Fragment set:html="<svg viewBox=\'0 0 10 10\' />" class="size-4" />'
+            : '<Fragment class="nope"><span>hi</span></Fragment>',
+      }),
+    });
+    expect(engine.render('self')).toBe('<svg viewBox="0 0 10 10" class="size-4" />');
+    expect(() => engine.render('bad')).toThrow(/InvalidFragment/);
   });
 });
 
-describe('renderWithAssets', () => {
-  it('collects, deduplicates, and injects <style> and <script> into </head> in source and precompiled modes', async () => {
+describe('extractAssets', () => {
+  it('extracts, deduplicates, and injects <style> and <script> into </head> for render and stream output', async () => {
     const templates = new Map([
       [
         'page',
         {
           id: 'page.sikka',
           source:
-            '---\nimport Card from "./Card.sikka";\n---\n<html><head><title>App</title></head><body><Card /><Card /></body></html>',
+            '---\nimport Card from "./Card.sikka";\n---\n<html><head><title>App</title></head><body><!-- <style>.ignored{}</style> --><Card /><Card /></body></html>',
         },
       ],
       [
@@ -62,17 +101,24 @@ describe('renderWithAssets', () => {
       },
     });
 
-    const sourceResult = sourceEngine.renderWithAssets('page');
+    const rendered = sourceEngine.render('page');
+    const sourceResult = extractAssets(rendered);
     expect(sourceResult.styles).toEqual(['<style>.card{color:red}</style>']);
     expect(sourceResult.scripts).toEqual(['<script>console.log(1)</script>']);
     expect(sourceResult.html).toBe(
-      '<html><head><title>App</title><style>.card{color:red}</style><script>console.log(1)</script></head><body><div class="card">Hi</div><div class="card">Hi</div></body></html>'
+      '<html><head><title>App</title><style>.card{color:red}</style><script>console.log(1)</script></head><body><!-- <style>.ignored{}</style> --><div class="card">Hi</div><div class="card">Hi</div></body></html>'
     );
 
-    const noInject = sourceEngine.renderWithAssets('page', {}, { inject: false });
+    const noInject = extractAssets(rendered, { inject: false });
     expect(noInject.html).toBe(
-      '<html><head><title>App</title></head><body><div class="card">Hi</div><div class="card">Hi</div></body></html>'
+      '<html><head><title>App</title></head><body><!-- <style>.ignored{}</style> --><div class="card">Hi</div><div class="card">Hi</div></body></html>'
     );
+
+    let streamed = '';
+    for await (const chunk of sourceEngine.stream('page')) {
+      streamed += chunk;
+    }
+    expect(extractAssets(streamed)).toEqual(sourceResult);
 
     const artifacts = compile('page', {
       resolver: (req) => {
@@ -97,7 +143,7 @@ describe('renderWithAssets', () => {
       mode: 'precompiled',
       resolver: () => pageModule,
     });
-    const precompiledResult = precompiledEngine.renderWithAssets('page');
+    const precompiledResult = extractAssets(precompiledEngine.render('page'));
     expect(precompiledResult).toEqual(sourceResult);
   });
 });

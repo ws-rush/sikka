@@ -16,12 +16,12 @@ import {
 } from './compiler.js';
 import { createCache } from './cache.js';
 import { SikkaError } from './error.js';
-import { bindRuntime, runWithAssetCollector, runtime } from './runtime.js';
+import { bindRuntime, runtime } from './runtime.js';
 import { resolveSourceTemplate } from './template-resolution.js';
 
 export { SikkaError } from './error.js';
-export { inlineSvg } from './svg.js';
-export type { SvgAttributes } from './svg.js';
+export { extractAssets } from './html.js';
+export type { ExtractAssetsOptions, ExtractAssetsResult } from './html.js';
 export type { SikkaDiagnostic, SikkaDiagnosticCategory } from './types.js';
 export type {
   Cache,
@@ -49,17 +49,6 @@ type TemplateCompiler<T> = (
 type TemplateCache = ReturnType<typeof createCache> | null;
 type TemplateCaches = { cache: TemplateCache; streamCache: TemplateCache };
 type PrecompiledRender = (props: Record<string, unknown>, slots: Record<string, string>) => string;
-
-export interface RenderWithAssetsOptions {
-  /** Inject collected `<style>` and `<script>` tags before `</head>` when present. Default: `true`. */
-  inject?: boolean;
-}
-
-export interface RenderWithAssetsResult {
-  html: string;
-  styles: string[];
-  scripts: string[];
-}
 
 const EMPTY_SLOTS: Record<string, string> = {};
 
@@ -135,27 +124,6 @@ export class Sikka {
   /** Renders an entry Template with Props. */
   render(entry: string, props: Record<string, unknown> = {}): string {
     return this.renderSource(entry, props);
-  }
-
-  /**
-   * Renders an entry Template while collecting and deduplicating `<style>` and `<script>` tags.
-   * When `inject` is not `false` and the rendered HTML contains `</head>`, injects them before `</head>`.
-   */
-  renderWithAssets(
-    entry: string,
-    props: Record<string, unknown> = {},
-    options: RenderWithAssetsOptions = {}
-  ): RenderWithAssetsResult {
-    const { result, styles, scripts } = runWithAssetCollector(() => this.render(entry, props));
-    let html = result;
-    if (options.inject !== false && (styles.length > 0 || scripts.length > 0)) {
-      const headClose = html.indexOf('</head>');
-      if (headClose !== -1) {
-        html =
-          html.slice(0, headClose) + styles.join('') + scripts.join('') + html.slice(headClose);
-      }
-    }
-    return { html, styles, scripts };
   }
 
   private renderSource(entry: string, props: Record<string, unknown>): string {

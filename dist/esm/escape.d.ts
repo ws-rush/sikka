@@ -18,5 +18,8 @@ export declare class RawHtml {
 export declare function escapeHtml(value: unknown): string;
 /** Coerce an Expression value without HTML escaping. */
 export declare function stringifyHtml(value: unknown): string;
+export declare function isRawHtml(value: unknown): value is {
+    value: string;
+};
 export {};
 //# sourceMappingURL=escape.d.ts.map

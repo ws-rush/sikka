@@ -1,4 +1,5 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
+import { mergeHtmlAttributes } from './html.js';
 
 /** The generated-runtime ABI version. */
 export const RUNTIME_ABI_VERSION = 3;
@@ -25,7 +26,7 @@ export interface RuntimeHelpers {
   filter: (value: unknown) => unknown;
   autoFilter: boolean;
   aggregateAssets: boolean;
-  collectAsset: (tag: 'script' | 'style', html: string) => boolean;
+  fragmentHtml: (raw: unknown, ...attrMaps: unknown[]) => string;
 }
 
 type ClassListArg =
@@ -67,39 +68,15 @@ export function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers {
     filter,
     autoFilter: options?.autoFilter === true,
     aggregateAssets: options?.aggregateAssets === true,
-    collectAsset,
+    fragmentHtml,
   };
 }
 
-interface AssetCollector {
-  styles: Set<string>;
-  scripts: Set<string>;
-}
-
-let activeCollector: AssetCollector | undefined;
-
-/** Runs a synchronous render callback while collecting deduplicated `<style>` and `<script>` tags. */
-export function runWithAssetCollector<T>(fn: () => T): {
-  result: T;
-  styles: string[];
-  scripts: string[];
-} {
-  const previous = activeCollector;
-  const collector: AssetCollector = { styles: new Set(), scripts: new Set() };
-  activeCollector = collector;
-  try {
-    const result = fn();
-    return { result, styles: [...collector.styles], scripts: [...collector.scripts] };
-  } finally {
-    activeCollector = previous;
-  }
-}
-
-/** Records an aggregated `<script>` or `<style>` tag when an asset collector is active. */
-export function collectAsset(tag: 'script' | 'style', html: string): boolean {
-  if (!activeCollector) return false;
-  (tag === 'style' ? activeCollector.styles : activeCollector.scripts).add(html);
-  return true;
+export function fragmentHtml(raw: unknown, ...attrMaps: unknown[]): string {
+  return mergeHtmlAttributes(raw, attrMaps, {
+    classList: (v) => classList(v as ClassListArg),
+    styleObject: (v) => styleObject(v as StyleObjectArg),
+  });
 }
 
 function identity(value: unknown): unknown {

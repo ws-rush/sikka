@@ -1,4 +1,5 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
+import { mergeHtmlAttributes } from './html.js';
 /** The generated-runtime ABI version. */
 export const RUNTIME_ABI_VERSION = 3;
 const RUNTIME_HELPERS = Symbol('sikka.runtime-helpers');
@@ -28,29 +29,14 @@ export function runtime(receiver) {
         filter,
         autoFilter: options?.autoFilter === true,
         aggregateAssets: options?.aggregateAssets === true,
-        collectAsset,
+        fragmentHtml,
     };
 }
-let activeCollector;
-/** Runs a synchronous render callback while collecting deduplicated `<style>` and `<script>` tags. */
-export function runWithAssetCollector(fn) {
-    const previous = activeCollector;
-    const collector = { styles: new Set(), scripts: new Set() };
-    activeCollector = collector;
-    try {
-        const result = fn();
-        return { result, styles: [...collector.styles], scripts: [...collector.scripts] };
-    }
-    finally {
-        activeCollector = previous;
-    }
-}
-/** Records an aggregated `<script>` or `<style>` tag when an asset collector is active. */
-export function collectAsset(tag, html) {
-    if (!activeCollector)
-        return false;
-    (tag === 'style' ? activeCollector.styles : activeCollector.scripts).add(html);
-    return true;
+export function fragmentHtml(raw, ...attrMaps) {
+    return mergeHtmlAttributes(raw, attrMaps, {
+        classList: (v) => classList(v),
+        styleObject: (v) => styleObject(v),
+    });
 }
 function identity(value) {
     return value;

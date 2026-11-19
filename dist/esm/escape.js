@@ -38,7 +38,7 @@ function stringifyValue(value) {
         return value.value;
     return String(value);
 }
-function isRawHtml(value) {
+export function isRawHtml(value) {
     return value instanceof RawHtml || isBrandedRawHtml(value);
 }
 function isBrandedRawHtml(value) {

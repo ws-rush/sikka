@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { stripTypeScriptTypes } from 'node:module';
@@ -136,23 +137,30 @@ describe('strict-CSP precompiled Ada sentinel', () => {
       '/ada.sikka.mjs': module,
       '/sikka/runtime.js': await runtimeModule('../src/runtime.ts'),
       '/sikka/escape.js': await runtimeModule('../src/escape.ts'),
+      '/sikka/html.js': await runtimeModule('../src/html.ts'),
     });
-    const browser = await chromium.launch();
     try {
-      const page = await browser.newPage();
-      await page.goto(host.url);
-      const report = (await page.evaluate(
-        () => (window as Window & { strictCspReport: Promise<Report> }).strictCspReport
-      )) as Report;
-      expect(report).toEqual({
-        type: REPORT_TYPE,
-        ok: true,
-        caseId: ada.id,
-        csp: CSP,
-        runtimeAbiVersion: RUNTIME_ABI_VERSION,
-      });
+      const executablePath =
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+        (existsSync(chromium.executablePath()) ? undefined : '/usr/bin/chromium');
+      const browser = await chromium.launch({ executablePath });
+      try {
+        const page = await browser.newPage();
+        await page.goto(host.url);
+        const report = (await page.evaluate(
+          () => (window as Window & { strictCspReport: Promise<Report> }).strictCspReport
+        )) as Report;
+        expect(report).toEqual({
+          type: REPORT_TYPE,
+          ok: true,
+          caseId: ada.id,
+          csp: CSP,
+          runtimeAbiVersion: RUNTIME_ABI_VERSION,
+        });
+      } finally {
+        await browser.close();
+      }
     } finally {
-      await browser.close();
       await host.close();
     }
   });

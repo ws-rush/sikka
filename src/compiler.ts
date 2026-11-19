@@ -5,7 +5,7 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 import { SikkaError } from './error.js';
 import { VOID_ELEMENTS } from './parser.js';
-import { collectAsset } from './runtime.js';
+import { fragmentHtml } from './runtime.js';
 import type {
   TemplateAST,
   TemplateNode,
@@ -194,7 +194,7 @@ type GeneratedSyncFunction = (
   classList: RuntimeHelpers['classListHelper'],
   styleObject: RuntimeHelpers['styleObjectHelper'],
   filter: RuntimeHelpers['filterHelper'],
-  collectAssetFn: (tag: 'script' | 'style', html: string) => boolean
+  fragmentHtmlFn: typeof fragmentHtml
 ) => string;
 
 function compileAST(ast: TemplateAST, options?: CompileOptions): CompileResult {
@@ -253,7 +253,7 @@ function createSyncFunction(source: string): GeneratedSyncFunction {
     '__classList',
     '__styleObject',
     '__filter',
-    '__collectAsset',
+    '__fragmentHtml',
     source
   ) as GeneratedSyncFunction;
 }
@@ -307,7 +307,7 @@ function executeSyncFunction(
       helpers.classListHelper,
       helpers.styleObjectHelper,
       helpers.filterHelper,
-      collectAsset
+      fragmentHtml
     );
   } catch (err: unknown) {
     if (debug) {
@@ -485,7 +485,10 @@ function validateChildDirectiveNode(node: ElementNode | import('./types.js').Slo
 }
 
 function validateElementDirectives(node: ElementNode): void {
-  if (!node.tag || node.tag === 'Fragment') partitionFragmentAttributes(node.attrs);
+  const directive = contentDirective(node.attrs);
+  if ((!node.tag || node.tag === 'Fragment') && directive !== 'set:html') {
+    partitionFragmentAttributes(node.attrs);
+  }
   validateContentDirectives(node.attrs, node.children.length > 0);
   validateChildDirectives(node.children);
 }
@@ -749,24 +752,15 @@ function emitAssetNode(
   options: CompileOptions | undefined,
   target: string
 ): string[] {
-  const assetVar = '__asset';
+  if (!options?.precompiled && options?.aggregateAssets) return [];
   const lines =
     attrs.every(isStaticAttribute) && !attrs.some((attr) => isClassAttribute(attr.name))
-      ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, assetVar)
-      : emitSpreadOpeningTag(tag, attrs, components, options, assetVar);
-  lines.push(`${assetVar} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
-  const emitInline = options?.precompiled
-    ? `if (!__aggregateAssets) ${target} += ${assetVar};`
-    : options?.aggregateAssets
-      ? ''
-      : `${target} += ${assetVar};`;
-  return [
-    `{ let ${assetVar} = "";`,
-    ...lines,
-    `if (!__collectAsset(${JSON.stringify(tag)}, ${assetVar})) {`,
-    ...(emitInline ? [`  ${emitInline}`] : []),
-    `} }`,
-  ];
+      ? emitStaticOpeningTag(tag, attrs as AttrNode[], options, target)
+      : emitSpreadOpeningTag(tag, attrs, components, options, target);
+  lines.push(`${target} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
+  return options?.precompiled
+    ? [`if (!__aggregateAssets) {`, ...lines.map((line) => `  ${line}`), `}`]
+    : lines;
 }
 
 function emitElement(
@@ -1072,8 +1066,72 @@ function emitFragment(
   options: CompileOptions | undefined,
   target: string
 ): string[] {
+  const grouped = partitionElementAttributes(node.attrs);
+  if (grouped.setHtml) {
+    const extraAttrs = grouped.standardAttrs.filter(
+      (attr) => 'type' in attr || attr.name !== 'slot'
+    );
+    if (extraAttrs.length > 0) {
+      return emitFragmentHtmlWithAttrs(grouped.setHtml, extraAttrs, components, options, target);
+    }
+  }
   const attributes = partitionFragmentAttributes(node.attrs);
   return emitFragmentContent(node, attributes, components, options, target);
+}
+
+function emitFragmentHtmlWithAttrs(
+  setHtml: AttrNode,
+  extraAttrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined,
+  target: string
+): string[] {
+  const htmlExpr =
+    typeof setHtml.value === 'string'
+      ? JSON.stringify(setHtml.value)
+      : setHtml.value === true
+        ? '""'
+        : transformExpression(setHtml.value, components, options);
+  const attrArgs = buildFragmentAttrArgs(extraAttrs, components, options);
+  return [`${target} += __fragmentHtml((${htmlExpr}), ${attrArgs.join(', ')});`];
+}
+
+function buildFragmentAttrArgs(
+  attrs: ElementAttribute[],
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string[] {
+  const args: string[] = [];
+  let entries: string[] = [];
+  const flushEntries = () => {
+    if (entries.length === 0) return;
+    args.push(`{ ${entries.join(', ')} }`);
+    entries = [];
+  };
+  for (const attr of attrs) {
+    if ('type' in attr) {
+      flushEntries();
+      args.push(`(${transformExpression(attr.expression, components, options)})`);
+    } else {
+      entries.push(formatFragmentAttrEntry(attr, components, options));
+    }
+  }
+  flushEntries();
+  return args;
+}
+
+function formatFragmentAttrEntry(
+  attr: AttrNode,
+  components: Record<string, RenderFunction>,
+  options: CompileOptions | undefined
+): string {
+  const key = JSON.stringify(attr.name);
+  if (typeof attr.value === 'string') return `${key}: ${JSON.stringify(attr.value)}`;
+  if (attr.value === true) return `${key}: true`;
+  const expr = transformExpression(attr.value, components, options);
+  if (attr.name === 'class:list') return `${key}: __classList(${expr})`;
+  if (attr.name === 'style') return `${key}: __styleObject(${expr})`;
+  return `${key}: (${expr})`;
 }
 
 function emitFragmentContent(
@@ -1795,7 +1853,7 @@ function createStreamingFunction(source: string): GeneratedStreamingFunction {
     '__classList',
     '__styleObject',
     '__filter',
-    '__collectAsset',
+    '__fragmentHtml',
     source
   );
 }
@@ -1816,7 +1874,7 @@ function createStreamingRenderFunction(
       helpers.classListHelper,
       helpers.styleObjectHelper,
       helpers.filterHelper,
-      collectAsset
+      fragmentHtml
     );
 }
 

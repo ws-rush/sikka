@@ -95,10 +95,10 @@ export default defineConfig({
 });
 ```
 
-## Asset aggregation and inline SVGs
+## Asset aggregation and raw HTML fragments
 
-- `sikka.renderWithAssets(entry, props, { inject = true })` collects and deduplicates `<style>` and `<script>` tags across the rendered component tree, injects them before `</head>` when present, and returns `{ html, styles, scripts }`.
-- `inlineSvg(svg, attrs)` strips XML declarations, merges `class` and `aria-*`/HTML attributes onto the root `<svg>` element, and returns trusted `RawHtml` usable directly inside `{...}`.
+- `extractAssets(html, { inject = true })` extracts and deduplicates `<style>` and `<script>` tags from rendered HTML, injects them before `</head>` when present, and returns `{ html, styles, scripts }`.
+- `<Fragment set:html={markup} class="..." aria-hidden />` strips leading XML declarations and merges attributes (`class`, `class:list`, `style`, spreads, HTML/ARIA attributes) onto the root element of `markup`.
 
 ## Escaping and trust
 

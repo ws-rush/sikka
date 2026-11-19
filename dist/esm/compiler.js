@@ -4,7 +4,7 @@
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
 import { SikkaError } from './error.js';
 import { VOID_ELEMENTS } from './parser.js';
-import { collectAsset } from './runtime.js';
+import { fragmentHtml } from './runtime.js';
 const STREAMING_TARGET = '__buf';
 const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
     'allowfullscreen',
@@ -151,7 +151,7 @@ function compileValidatedAST(ast, options, components) {
     };
 }
 function createSyncFunction(source) {
-    return new Function('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', '__collectAsset', source);
+    return new Function('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', '__fragmentHtml', source);
 }
 function createRenderFunction(syncFn, components, helpers, debug, template) {
     const renderFn = (async (props, slots) => renderFn.renderSync(props, slots));
@@ -169,7 +169,7 @@ function synchronousSlots(slots) {
 }
 function executeSyncFunction(syncFn, props, slots, components, helpers, debug, template) {
     try {
-        return syncFn(props, slots, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper, collectAsset);
+        return syncFn(props, slots, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper, fragmentHtml);
     }
     catch (err) {
         if (debug) {
@@ -306,8 +306,10 @@ function validateChildDirectiveNode(node) {
         validateChildDirectives(node.children);
 }
 function validateElementDirectives(node) {
-    if (!node.tag || node.tag === 'Fragment')
+    const directive = contentDirective(node.attrs);
+    if ((!node.tag || node.tag === 'Fragment') && directive !== 'set:html') {
         partitionFragmentAttributes(node.attrs);
+    }
     validateContentDirectives(node.attrs, node.children.length > 0);
     validateChildDirectives(node.children);
 }
@@ -459,23 +461,15 @@ function emitStaticSlot(node, components, options, target) {
     return lines;
 }
 function emitAssetNode(tag, content, attrs, components, options, target) {
-    const assetVar = '__asset';
+    if (!options?.precompiled && options?.aggregateAssets)
+        return [];
     const lines = attrs.every(isStaticAttribute) && !attrs.some((attr) => isClassAttribute(attr.name))
-        ? emitStaticOpeningTag(tag, attrs, options, assetVar)
-        : emitSpreadOpeningTag(tag, attrs, components, options, assetVar);
-    lines.push(`${assetVar} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
-    const emitInline = options?.precompiled
-        ? `if (!__aggregateAssets) ${target} += ${assetVar};`
-        : options?.aggregateAssets
-            ? ''
-            : `${target} += ${assetVar};`;
-    return [
-        `{ let ${assetVar} = "";`,
-        ...lines,
-        `if (!__collectAsset(${JSON.stringify(tag)}, ${assetVar})) {`,
-        ...(emitInline ? [`  ${emitInline}`] : []),
-        `} }`,
-    ];
+        ? emitStaticOpeningTag(tag, attrs, options, target)
+        : emitSpreadOpeningTag(tag, attrs, components, options, target);
+    lines.push(`${target} += ">" + ${JSON.stringify(content)} + ${JSON.stringify(`</${tag}>`)};`);
+    return options?.precompiled
+        ? [`if (!__aggregateAssets) {`, ...lines.map((line) => `  ${line}`), `}`]
+        : lines;
 }
 function emitElement(node, components, options, target = '__out') {
     if (!node.tag || node.tag === 'Fragment')
@@ -661,8 +655,58 @@ function emitNonVoidElement(node, attributes, lines, components, options, target
     return lines;
 }
 function emitFragment(node, components, options, target) {
+    const grouped = partitionElementAttributes(node.attrs);
+    if (grouped.setHtml) {
+        const extraAttrs = grouped.standardAttrs.filter((attr) => 'type' in attr || attr.name !== 'slot');
+        if (extraAttrs.length > 0) {
+            return emitFragmentHtmlWithAttrs(grouped.setHtml, extraAttrs, components, options, target);
+        }
+    }
     const attributes = partitionFragmentAttributes(node.attrs);
     return emitFragmentContent(node, attributes, components, options, target);
+}
+function emitFragmentHtmlWithAttrs(setHtml, extraAttrs, components, options, target) {
+    const htmlExpr = typeof setHtml.value === 'string'
+        ? JSON.stringify(setHtml.value)
+        : setHtml.value === true
+            ? '""'
+            : transformExpression(setHtml.value, components, options);
+    const attrArgs = buildFragmentAttrArgs(extraAttrs, components, options);
+    return [`${target} += __fragmentHtml((${htmlExpr}), ${attrArgs.join(', ')});`];
+}
+function buildFragmentAttrArgs(attrs, components, options) {
+    const args = [];
+    let entries = [];
+    const flushEntries = () => {
+        if (entries.length === 0)
+            return;
+        args.push(`{ ${entries.join(', ')} }`);
+        entries = [];
+    };
+    for (const attr of attrs) {
+        if ('type' in attr) {
+            flushEntries();
+            args.push(`(${transformExpression(attr.expression, components, options)})`);
+        }
+        else {
+            entries.push(formatFragmentAttrEntry(attr, components, options));
+        }
+    }
+    flushEntries();
+    return args;
+}
+function formatFragmentAttrEntry(attr, components, options) {
+    const key = JSON.stringify(attr.name);
+    if (typeof attr.value === 'string')
+        return `${key}: ${JSON.stringify(attr.value)}`;
+    if (attr.value === true)
+        return `${key}: true`;
+    const expr = transformExpression(attr.value, components, options);
+    if (attr.name === 'class:list')
+        return `${key}: __classList(${expr})`;
+    if (attr.name === 'style')
+        return `${key}: __styleObject(${expr})`;
+    return `${key}: (${expr})`;
 }
 function emitFragmentContent(node, attributes, components, options, target) {
     if (attributes.setHtml)
@@ -1118,11 +1162,11 @@ function compileStreamingASTUnsafe(ast, options) {
 }
 function createStreamingFunction(source) {
     const AsyncGenCtor = Object.getPrototypeOf(async function* () { }).constructor;
-    return new AsyncGenCtor('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', '__collectAsset', source);
+    return new AsyncGenCtor('props', 'slots', '__escape', '__RawHtml', '__components', '__classList', '__styleObject', '__filter', '__fragmentHtml', source);
 }
 function createStreamingRenderFunction(streamingFn, components, options) {
     const helpers = createRuntimeHelpers(options);
-    return (props, slots) => streamingFn(props, slots ?? {}, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper, collectAsset);
+    return (props, slots) => streamingFn(props, slots ?? {}, helpers.escapeHelper, RawHtml, components, helpers.classListHelper, helpers.styleObjectHelper, helpers.filterHelper, fragmentHtml);
 }
 /**
  * Build the function body for a streaming (async generator) template.

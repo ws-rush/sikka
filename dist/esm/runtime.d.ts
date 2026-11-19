@@ -22,7 +22,7 @@ export interface RuntimeHelpers {
     filter: (value: unknown) => unknown;
     autoFilter: boolean;
     aggregateAssets: boolean;
-    collectAsset: (tag: 'script' | 'style', html: string) => boolean;
+    fragmentHtml: (raw: unknown, ...attrMaps: unknown[]) => string;
 }
 type ClassListArg = string | Record<string, unknown> | ClassListArg[] | Set<ClassListArg> | null | undefined | boolean;
 type StyleObjectArg = string | Record<string, unknown> | null | undefined;
@@ -34,13 +34,6 @@ export declare function bindRuntime(receiver: object, helpers: RuntimeHelpers): 
  * supply rendering options without rebuilding the artifact.
  */
 export declare function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers;
-/** Runs a synchronous render callback while collecting deduplicated `<style>` and `<script>` tags. */
-export declare function runWithAssetCollector<T>(fn: () => T): {
-    result: T;
-    styles: string[];
-    scripts: string[];
-};
-/** Records an aggregated `<script>` or `<style>` tag when an asset collector is active. */
-export declare function collectAsset(tag: 'script' | 'style', html: string): boolean;
+export declare function fragmentHtml(raw: unknown, ...attrMaps: unknown[]): string;
 export {};
 //# sourceMappingURL=runtime.d.ts.map

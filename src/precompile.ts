@@ -85,7 +85,7 @@ export function emitModule(artifact: PrecompileArtifact, options: EmitModuleOpti
     ({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`
   );
   const helpers =
-    'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets, collectAsset: __collectAsset } = runtime(this);';
+    'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets, fragmentHtml: __fragmentHtml } = runtime(this);';
 
   return `import { runtime } from ${JSON.stringify(runtimeSpecifier)};
 ${imports}
