@@ -1,3 +1,7 @@
+## 0.4.1 (2026-11-19)
+
+- fix: preserve CSS custom property (`--*`) casing in `style` objects and handle comments, regex literals, and `<` comparisons inside `{...}` expressions ([e25e35f](https://github.com/ws-rush/sikka/commit/e25e35f), [#53](https://github.com/ws-rush/sikka/issues/53)) — reported by [@trackoor](https://github.com/trackoor) / [UCSB PLSE](https://ucsbplse.github.io/)
+
 ## 0.4.0 (2026-11-18)
 
 - feat: add sikka/vite plugin, renderWithAssets, and inlineSvg ([59ac0bc](https://github.com/ws-rush/sikka/commit/59ac0bc))
