@@ -130,7 +130,10 @@ function stringifiedStyleObject(arg: Record<string, unknown>): string {
   }
   return Object.entries(arg)
     .filter(([, value]) => value != null && typeof value !== 'boolean' && value !== '')
-    .map(([key, value]) => `${key.replace(/[A-Z]/g, toKebabCase)}:${value}`)
+    .map(
+      ([key, value]) =>
+        `${key.startsWith('--') ? key : key.replace(/[A-Z]/g, toKebabCase)}:${value}`
+    )
     .join(';');
 }
 

@@ -304,5 +304,25 @@ describe('Syntax: Dynamic Expressions', () => {
       );
       expect(html).toBe('<div><span>1</span><span>2</span></div>');
     });
+
+    it('ignores quotes and braces inside expression comments', () => {
+      expect(render("<div>{/* don't */}</div>")).toBe('<div></div>');
+      expect(render("<p>{1 // it's\n}</p>")).toBe('<p>1</p>');
+      expect(render('<p>{1 /* } */}</p>')).toBe('<p>1</p>');
+    });
+
+    it('ignores quotes, braces, and character classes inside regex literals while preserving division', () => {
+      expect(render("<p>{'x}'.replace(/\\}/g, '!')}</p>")).toBe('<p>x!</p>');
+      expect(render("<p>{'{a}'.replace(/[{}]/g, '!')}</p>")).toBe('<p>!a!</p>');
+      expect(render("<p>{/'/.test(\"'\") ? 'q' : 'n'}</p>")).toBe('<p>q</p>');
+      expect(render('<p>{12 / 3 / 2}</p>')).toBe('<p>2</p>');
+    });
+
+    it('treats < followed by a digit or after an identifier as comparison, not a tag', () => {
+      expect(render('---\nconst n = 5;\n---\n<p>{n<10 ? "small" : "big"}</p>')).toBe(
+        '<p>small</p>'
+      );
+      expect(render('<p>{[3,1].sort((a,b)=>a<b?-1:1).join()}</p>')).toBe('<p>1,3</p>');
+    });
   });
 });

@@ -60,9 +60,11 @@ describe('Syntax: Built-in Directives', () => {
       expect(html).toBe('<div style="background-color:blue"></div>');
     });
 
-    it('preserves CSS variables', () => {
-      const html = render('<div style={{ "--custom": "10px" }} />');
-      expect(html).toBe('<div style="--custom:10px"></div>');
+    it('preserves CSS variables including uppercase letters', () => {
+      const html = render(
+        '<div style={{ "--custom": "10px", "--myVar": "x", "--Brand-Color": "red" }} />'
+      );
+      expect(html).toBe('<div style="--custom:10px;--myVar:x;--Brand-Color:red"></div>');
     });
 
     it('renders numeric values without auto-px', () => {

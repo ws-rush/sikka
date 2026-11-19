@@ -33,6 +33,22 @@ function rejectedConstruct(message) {
         return 'Fragment';
     return undefined;
 }
+const OPERAND_KEYWORDS = new Set([
+    'return',
+    'yield',
+    'await',
+    'throw',
+    'case',
+    'typeof',
+    'void',
+    'delete',
+    'in',
+    'instanceof',
+    'new',
+    'of',
+    'else',
+    'do',
+]);
 function extractFrontmatter(source) {
     if (!source.startsWith('---'))
         return emptyFrontmatter();
@@ -277,7 +293,12 @@ class Parser {
     parseExpression() {
         const start = this.pos;
         this.advance(); // consume '{'
-        const state = { depth: 1, nodes: [], currentString: '' };
+        const state = {
+            depth: 1,
+            nodes: [],
+            currentString: '',
+            canStartOperand: true,
+        };
         while (this.hasUnclosedExpression(state)) {
             const result = this.parseExpressionPart(state);
             if (!result.ok)
@@ -295,9 +316,13 @@ class Parser {
         const stringResult = this.parseExpressionString(state);
         if (stringResult)
             return stringResult;
-        if (this.isExpressionElement())
+        if (this.parseExpressionComment(state))
+            return { ok: true };
+        if (this.parseExpressionRegex(state))
+            return { ok: true };
+        if (this.isExpressionElement(state))
             return this.parseExpressionElement(state);
-        state.currentString += this.advance();
+        this.consumeExpressionToken(state);
         return { ok: true };
     }
     parseExpressionBrace(state) {
@@ -305,12 +330,14 @@ class Parser {
         if (ch === '{') {
             state.depth++;
             state.currentString += this.advance();
+            state.canStartOperand = true;
             return { ok: true };
         }
         if (ch !== '}')
             return undefined;
         state.depth--;
         this.consumeExpressionClosingBrace(state);
+        state.canStartOperand = false;
         return { ok: true };
     }
     consumeExpressionClosingBrace(state) {
@@ -326,13 +353,88 @@ class Parser {
         if (!result.ok)
             return result;
         state.currentString += result.value;
+        state.canStartOperand = false;
         return { ok: true };
+    }
+    parseExpressionComment(state) {
+        if (this.at('//')) {
+            while (!this.eof() && this.peek() !== '\n') {
+                state.currentString += this.advance();
+            }
+            return true;
+        }
+        if (!this.at('/*'))
+            return false;
+        const end = this.src.indexOf('*/', this.pos + 2);
+        const sliceEnd = end === -1 ? this.src.length : end + 2;
+        state.currentString += this.src.slice(this.pos, sliceEnd);
+        this.pos = sliceEnd;
+        return true;
+    }
+    parseExpressionRegex(state) {
+        if (!state.canStartOperand || this.peek() !== '/')
+            return false;
+        state.currentString += this.advance(); // consume opening '/'
+        this.consumeRegexBody(state);
+        while (!this.eof() && /[a-zA-Z]/.test(this.peek())) {
+            state.currentString += this.advance();
+        }
+        state.canStartOperand = false;
+        return true;
+    }
+    consumeRegexBody(state) {
+        let inClass = false;
+        while (!this.eof() && this.peek() !== '\n' && this.peek() !== '\r') {
+            const ch = this.peek();
+            if (ch === '\\') {
+                state.currentString += this.advance(2);
+                continue;
+            }
+            state.currentString += this.advance();
+            if (ch === '[')
+                inClass = true;
+            else if (ch === ']')
+                inClass = false;
+            else if (ch === '/' && !inClass)
+                return;
+        }
+    }
+    consumeExpressionToken(state) {
+        const ch = this.peek();
+        if (/\s/.test(ch)) {
+            state.currentString += this.advance();
+            return;
+        }
+        if (/[a-zA-Z_$]/.test(ch)) {
+            const afterDot = state.currentString.endsWith('.');
+            let ident = '';
+            while (!this.eof() && /[a-zA-Z0-9_$]/.test(this.peek())) {
+                ident += this.advance();
+            }
+            state.currentString += ident;
+            state.canStartOperand = !afterDot && OPERAND_KEYWORDS.has(ident);
+            return;
+        }
+        if (/[0-9]/.test(ch)) {
+            while (!this.eof() && /[0-9a-zA-Z_$]/.test(this.peek())) {
+                state.currentString += this.advance();
+            }
+            state.canStartOperand = false;
+            return;
+        }
+        if ((ch === '+' || ch === '-') && this.peek(1) === ch) {
+            state.currentString += this.advance(2);
+            state.canStartOperand = false;
+            return;
+        }
+        state.currentString += this.advance();
+        state.canStartOperand = ch !== ')' && ch !== ']';
     }
     isStringQuote(value) {
         return value === '"' || value === "'" || value === '`';
     }
-    isExpressionElement() {
-        return this.peek() === '<' && /[\w!/>]/.test(this.peek(1));
+    isExpressionElement(state) {
+        return state.canStartOperand && this.peek() === '<' && /[a-zA-Z!/>]/.test(this.peek(1));
     }
     parseExpressionElement(state) {
         this.flushExpressionString(state);
@@ -343,6 +445,7 @@ class Parser {
             state.nodes.push(result.node);
         else
             state.currentString += this.advance();
+        state.canStartOperand = true;
         return { ok: true };
     }
     flushExpressionString(state) {

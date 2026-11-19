@@ -71,7 +71,25 @@ type ExpressionState = {
   depth: number;
   nodes: (string | TemplateNode)[];
   currentString: string;
+  canStartOperand: boolean;
 };
+
+const OPERAND_KEYWORDS = new Set([
+  'return',
+  'yield',
+  'await',
+  'throw',
+  'case',
+  'typeof',
+  'void',
+  'delete',
+  'in',
+  'instanceof',
+  'new',
+  'of',
+  'else',
+  'do',
+]);
 
 type ExpressionPartResult = { ok: true } | { ok: false; error: ParseError };
 type AttributeParseResult =
@@ -363,7 +381,12 @@ class Parser {
   private parseExpression(): { ok: true; node: ExpressionNode } | { ok: false; error: ParseError } {
     const start = this.pos;
     this.advance(); // consume '{'
-    const state: ExpressionState = { depth: 1, nodes: [], currentString: '' };
+    const state: ExpressionState = {
+      depth: 1,
+      nodes: [],
+      currentString: '',
+      canStartOperand: true,
+    };
 
     while (this.hasUnclosedExpression(state)) {
       const result = this.parseExpressionPart(state);
@@ -383,8 +406,11 @@ class Parser {
     const stringResult = this.parseExpressionString(state);
     if (stringResult) return stringResult;
 
-    if (this.isExpressionElement()) return this.parseExpressionElement(state);
-    state.currentString += this.advance();
+    if (this.parseExpressionComment(state)) return { ok: true };
+    if (this.parseExpressionRegex(state)) return { ok: true };
+
+    if (this.isExpressionElement(state)) return this.parseExpressionElement(state);
+    this.consumeExpressionToken(state);
     return { ok: true };
   }
 
@@ -393,12 +419,14 @@ class Parser {
     if (ch === '{') {
       state.depth++;
       state.currentString += this.advance();
+      state.canStartOperand = true;
       return { ok: true };
     }
     if (ch !== '}') return undefined;
 
     state.depth--;
     this.consumeExpressionClosingBrace(state);
+    state.canStartOperand = false;
     return { ok: true };
   }
 
@@ -414,15 +442,91 @@ class Parser {
     const result = this.parseStringLiteral(quote);
     if (!result.ok) return result;
     state.currentString += result.value;
+    state.canStartOperand = false;
     return { ok: true };
+  }
+
+  private parseExpressionComment(state: ExpressionState): boolean {
+    if (this.at('//')) {
+      while (!this.eof() && this.peek() !== '\n') {
+        state.currentString += this.advance();
+      }
+      return true;
+    }
+    if (!this.at('/*')) return false;
+
+    const end = this.src.indexOf('*/', this.pos + 2);
+    const sliceEnd = end === -1 ? this.src.length : end + 2;
+    state.currentString += this.src.slice(this.pos, sliceEnd);
+    this.pos = sliceEnd;
+    return true;
+  }
+
+  private parseExpressionRegex(state: ExpressionState): boolean {
+    if (!state.canStartOperand || this.peek() !== '/') return false;
+
+    state.currentString += this.advance(); // consume opening '/'
+    this.consumeRegexBody(state);
+    while (!this.eof() && /[a-zA-Z]/.test(this.peek())) {
+      state.currentString += this.advance();
+    }
+    state.canStartOperand = false;
+    return true;
+  }
+
+  private consumeRegexBody(state: ExpressionState): void {
+    let inClass = false;
+    while (!this.eof() && this.peek() !== '\n' && this.peek() !== '\r') {
+      const ch = this.peek();
+      if (ch === '\\') {
+        state.currentString += this.advance(2);
+        continue;
+      }
+      state.currentString += this.advance();
+      if (ch === '[') inClass = true;
+      else if (ch === ']') inClass = false;
+      else if (ch === '/' && !inClass) return;
+    }
+  }
+
+  private consumeExpressionToken(state: ExpressionState): void {
+    const ch = this.peek();
+    if (/\s/.test(ch)) {
+      state.currentString += this.advance();
+      return;
+    }
+    if (/[a-zA-Z_$]/.test(ch)) {
+      const afterDot = state.currentString.endsWith('.');
+      let ident = '';
+      while (!this.eof() && /[a-zA-Z0-9_$]/.test(this.peek())) {
+        ident += this.advance();
+      }
+      state.currentString += ident;
+      state.canStartOperand = !afterDot && OPERAND_KEYWORDS.has(ident);
+      return;
+    }
+    if (/[0-9]/.test(ch)) {
+      while (!this.eof() && /[0-9a-zA-Z_$]/.test(this.peek())) {
+        state.currentString += this.advance();
+      }
+      state.canStartOperand = false;
+      return;
+    }
+    if ((ch === '+' || ch === '-') && this.peek(1) === ch) {
+      state.currentString += this.advance(2);
+      state.canStartOperand = false;
+      return;
+    }
+    state.currentString += this.advance();
+    state.canStartOperand = ch !== ')' && ch !== ']';
   }
 
   private isStringQuote(value: string): boolean {
     return value === '"' || value === "'" || value === '`';
   }
 
-  private isExpressionElement(): boolean {
-    return this.peek() === '<' && /[\w!/>]/.test(this.peek(1));
+  private isExpressionElement(state: ExpressionState): boolean {
+    return state.canStartOperand && this.peek() === '<' && /[a-zA-Z!/>]/.test(this.peek(1));
   }
 
   private parseExpressionElement(state: ExpressionState): ExpressionPartResult {
@@ -431,6 +535,7 @@ class Parser {
     if (!result.ok) return result;
     if (result.node) state.nodes.push(result.node);
     else state.currentString += this.advance();
+    state.canStartOperand = true;
     return { ok: true };
   }
 

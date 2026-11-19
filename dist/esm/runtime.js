@@ -76,7 +76,7 @@ function styleObject(value) {
         return String(value.toString());
     return Object.entries(value)
         .filter(([, item]) => item != null && typeof item !== 'boolean' && item !== '')
-        .map(([name, item]) => `${name.replace(/[A-Z]/g, toKebabCase)}:${item}`)
+        .map(([name, item]) => `${name.startsWith('--') ? name : name.replace(/[A-Z]/g, toKebabCase)}:${item}`)
         .join(';');
 }
 function toKebabCase(match) {
