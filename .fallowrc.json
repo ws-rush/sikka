@@ -3,6 +3,7 @@
   "entry": ["src/**/*.ts"],
   "ignorePatterns": ["examples/**", "test/**", "bench/**", "scripts/**", "editors/**"],
   "ignoreDependencies": [
+    "@stryker-mutator/core",
     "chalk",
     "enquirer",
     "eta",

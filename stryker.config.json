@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "nub --test test/api.test.ts test/features.test.ts test/health-risk.test.ts test/precompile.test.ts test/property.test.ts test/syntax-*.test.ts"
+  },
+  "timeoutMS": 10000,
+  "mutate": ["src/**/*.ts", "!src/types.ts"],
+  "coverageAnalysis": "off",
+  "reporters": ["clear-text", "progress", "json"],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "tsconfigFile": "tsconfig.stryker-skip.json",
+  "concurrency": 8
+}

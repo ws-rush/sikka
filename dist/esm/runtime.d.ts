@@ -35,5 +35,7 @@ export declare function bindRuntime(receiver: object, helpers: RuntimeHelpers): 
  */
 export declare function runtime(receiver: RuntimeReceiver | undefined): RuntimeHelpers;
 export declare function fragmentHtml(raw: unknown, ...attrMaps: unknown[]): string;
+export declare function classList(value: ClassListArg): string;
+export declare function styleObject(value: StyleObjectArg): string;
 export {};
 //# sourceMappingURL=runtime.d.ts.map

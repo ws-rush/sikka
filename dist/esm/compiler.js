@@ -2,9 +2,9 @@
  * Compiler
  */
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
-import { SikkaError } from './error.js';
+import { rejectedConstruct, SikkaError } from './error.js';
 import { VOID_ELEMENTS } from './parser.js';
-import { fragmentHtml } from './runtime.js';
+import { classList, fragmentHtml, styleObject } from './runtime.js';
 const STREAMING_TARGET = '__buf';
 const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
     'allowfullscreen',
@@ -36,8 +36,8 @@ const NATIVE_BOOLEAN_ATTRIBUTES = new Set([
 function createRuntimeHelpers(options) {
     return {
         escapeHelper: expressionEscapeHelper(options),
-        classListHelper,
-        styleObjectHelper,
+        classListHelper: classList,
+        styleObjectHelper: styleObject,
         filterHelper: options?.autoFilter
             ? options.filterFunction || ((value) => value)
             : (value) => value,
@@ -45,40 +45,6 @@ function createRuntimeHelpers(options) {
 }
 function expressionEscapeHelper(options) {
     return options?.autoEscape === false ? stringifyHtml : escapeHtml;
-}
-function classListHelper(arg) {
-    if (typeof arg === 'string')
-        return arg;
-    if (arg instanceof Set || Array.isArray(arg))
-        return Array.from(arg, classListHelper).filter(Boolean).join(' ');
-    return classListObject(arg);
-}
-function classListObject(arg) {
-    if (!arg || typeof arg !== 'object')
-        return '';
-    return Object.entries(arg)
-        .filter(([_, value]) => value)
-        .map(([key]) => key)
-        .join(' ');
-}
-function styleObjectHelper(arg) {
-    if (typeof arg === 'string')
-        return arg;
-    if (!arg || typeof arg !== 'object')
-        return '';
-    return stringifiedStyleObject(arg);
-}
-function stringifiedStyleObject(arg) {
-    if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
-        return String(arg.toString());
-    }
-    return Object.entries(arg)
-        .filter(([, value]) => value != null && typeof value !== 'boolean' && value !== '')
-        .map(([key, value]) => `${key.startsWith('--') ? key : key.replace(/[A-Z]/g, toKebabCase)}:${value}`)
-        .join(';');
-}
-function toKebabCase(match) {
-    return '-' + match.toLowerCase();
 }
 export const compile = compileSync;
 /** Returns a diagnostic when regular rendering cannot execute Frontmatter await. */
@@ -131,13 +97,6 @@ function compileFailure(error) {
         error: { message, category: 'Compile', cause: error, construct: rejectedConstruct(message) },
     };
 }
-function rejectedConstruct(message) {
-    if (message.startsWith('InvalidDirective:'))
-        return 'directive';
-    if (message.startsWith('InvalidFragment:'))
-        return 'Fragment';
-    return undefined;
-}
 function compileASTUnsafe(ast, options) {
     validateDirectives(ast);
     return compileValidatedAST(ast, options, options?.components ?? {});
@@ -187,7 +146,12 @@ const HOISTED_BOOLEAN_ATTRS = `const __booleanAttrs = new Set([${[...NATIVE_BOOL
     .join(', ')}]);`;
 const HOISTED_RAW_HTML_KEY = 'const __rawHtmlKey = Symbol.for("sikka.raw-html");';
 function buildFunctionBody(ast, components, options, target, completion) {
-    const bodyLines = mergeLines(ast.body.flatMap((node) => emitNode(node, components, options, target)), target);
+    const varName = options?.varName || 'Sikka';
+    const inlineProps = canInlineProps(ast, varName);
+    const rawBodyLines = mergeLines(ast.body.flatMap((node) => emitNode(node, components, options, target)), target);
+    const bodyLines = inlineProps
+        ? rawBodyLines.map((line) => inlinePropsAccess(line, varName))
+        : rawBodyLines;
     const direct = target === STREAMING_TARGET || bodyLines.length !== 1
         ? undefined
         : outputExpression(bodyLines[0], `${target} += `);
@@ -195,18 +159,30 @@ function buildFunctionBody(ast, components, options, target, completion) {
         ...(direct ? [] : [`let ${target} = "";`]),
         ...(bodyLines.some((line) => line.includes('__booleanAttrs')) ? [HOISTED_BOOLEAN_ATTRS] : []),
         ...(bodyLines.some((line) => line.includes('__rawHtmlKey')) ? [HOISTED_RAW_HTML_KEY] : []),
-        ...buildFunctionPreamble(ast, options),
+        ...buildFunctionPreamble(ast, varName, inlineProps),
         ...(direct ? [`return ${direct};`] : [...bodyLines, completion]),
     ].join('\n');
 }
-function buildFunctionPreamble(ast, options) {
-    const varName = options?.varName || 'Sikka';
+function buildFunctionPreamble(ast, varName, inlineProps) {
+    const fm = inlineProps
+        ? inlinePropsAccess(ast.frontmatter.source, varName)
+        : ast.frontmatter.source;
     return [
-        ...buildSikkaPreamble(ast, varName),
+        ...(inlineProps ? [] : buildSikkaPreamble(ast, varName)),
         '',
         ...buildComponentPreamble(ast.imports),
-        ...buildFrontmatterPreamble(ast.frontmatter.source),
+        ...buildFrontmatterPreamble(fm),
     ];
+}
+function canInlineProps(ast, varName) {
+    return (usesSikkaGlobal(ast, varName) &&
+        usesOnlySikkaProps(ast, varName) &&
+        !/\bprops\b/.test(ast.frontmatter.source));
+}
+function inlinePropsAccess(line, varName) {
+    const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(['"\`])(?:\\\\.|(?!\\1)[^\\\\])*\\1|(?<![.$\\w])${escaped}\\.props\\b`, 'g');
+    return line.replace(re, (m) => (m[0] === '"' || m[0] === "'" || m[0] === '`' ? m : 'props'));
 }
 function buildSikkaPreamble(ast, varName) {
     if (!usesSikkaGlobal(ast, varName))
@@ -265,7 +241,7 @@ function outputExpression(line, prefix) {
     if (!trimmed.startsWith(prefix))
         return undefined;
     const expression = trimmed.slice(prefix.length);
-    return expression.endsWith(';') ? expression.slice(0, -1) : expression;
+    return expression.slice(0, -1);
 }
 function mergeAdjacentOutputExpressions(bodyLines, index, prefix, expression) {
     let merged = expression;
@@ -307,7 +283,7 @@ function validateChildDirectiveNode(node) {
 }
 function validateElementDirectives(node) {
     const directive = contentDirective(node.attrs);
-    if ((!node.tag || node.tag === 'Fragment') && directive !== 'set:html') {
+    if (node.tag === 'Fragment' && directive !== 'set:html') {
         partitionFragmentAttributes(node.attrs);
     }
     validateContentDirectives(node.attrs, node.children.length > 0);
@@ -394,12 +370,21 @@ function renderableMapExpression(expr) {
 }
 function emitRenderableMap(map, components, options, target) {
     const fallback = `${target} += ${applyExpressionOptions(`__array.map(${map.callback}${rawHtmlExpressionFromNode(map.node, components, options)}${map.suffix}`, options)};`;
+    const singleParam = /^\s*\(?([$A-Z_a-z][$\w]*)\)?\s*=>\s*$/.exec(map.callback)?.[1];
+    const bodyLines = emitNode(map.node, components, options, target).map((line) => '      ' + line);
+    const loopLines = singleParam
+        ? [
+            `    for (let __i = 0, __len = __array.length; __i < __len; __i++) {`,
+            `      if (!(__i in __array)) continue;`,
+            `      const ${singleParam} = __array[__i];`,
+            ...bodyLines,
+            `    }`,
+        ]
+        : [`    __array.forEach(${map.callback}{`, ...bodyLines, `    });`];
     return [
         `{ const __array = (${map.receiver});`,
         `  if (!__autoFilter && Array.isArray(__array) && Object.getPrototypeOf(__array) === Array.prototype && __array.map === Array.prototype.map) {`,
-        `    __array.forEach(${map.callback}{`,
-        ...emitNode(map.node, components, options, target).map((line) => '      ' + line),
-        `    });`,
+        ...loopLines,
         `  } else {`,
         `    ${fallback}`,
         `  }`,
@@ -560,7 +545,7 @@ function emitDirectAttribute(tag, attr, components, options, target) {
     const source = transformExpression(attr.value, components, options);
     const name = JSON.stringify(` ${attr.name}`);
     const bare = `${target} += ${name};`;
-    const value = `${target} += ${name} + '="' + __escape(String(__v)) + '"';`;
+    const value = `${target} += ${name} + '="' + (typeof __v === 'number' ? __v : __escape(String(__v))) + '"';`;
     if (isNativeBooleanAttribute(tag, attr.name))
         return [`{ const __v = (${source});`, `  if (__v === "" || __v) ${bare}`, `}`];
     return [
@@ -580,7 +565,7 @@ function emitDirectClass(attr, components, options, target) {
     const source = transformExpression(attr.value, components, options);
     const value = attr.name === 'class:list' ? `__classList(${source})` : source;
     return [
-        `${target} += ((__class) => __class ? ' class="' + __escape(String(__class)) + '"' : "")(${value});`,
+        `{ const __class = (${value}); if (__class) ${target} += ' class="' + __escape(String(__class)) + '"'; }`,
     ];
 }
 function emitDirectStyle(attr, components, options, target) {

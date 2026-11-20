@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
-import { Sikka } from '../src/index.js';
+import { Sikka, SikkaError } from '../src/index.js';
 import {
   compile,
   emitModule,
@@ -339,5 +339,57 @@ import type { Data } from "./data.ts";
     expect(() => emitModule({ ...plain, abiVersion: 99 as never })).toThrow(
       /Unsupported precompile artifact ABI 99.*expected 3/
     );
+  });
+
+  it('covers precompile error diagnostics, diamond graphs, and multi-import emission', () => {
+    try {
+      compile([], { resolver: () => ({ id: 'x', source: '' }) });
+      throw new Error('expected throw');
+    } catch (err) {
+      const sErr = err as SikkaError;
+      expect(sErr.category).toBe('Resolve');
+      expect(sErr.message.includes('GraphError')).toBe(true);
+    }
+
+    // Diamond dependency: A -> B, A -> C, C -> B (verifies visiting.pop() doesn't false-cycle).
+    const diamond = compile('A.sikka', {
+      resolver(req) {
+        if (req === 'A.sikka')
+          return {
+            id: 'A.sikka',
+            source: '---\nimport B from "./B.sikka";\nimport C from "./C.sikka";\n---\n<B/><C/>',
+          };
+        if (req === './B.sikka') return { id: 'B.sikka', source: '<b>b</b>' };
+        if (req === './C.sikka')
+          return { id: 'C.sikka', source: '---\nimport B from "./B.sikka";\n---\n<B/>' };
+        throw new Error('unknown');
+      },
+    });
+    expect(diamond.length).toBe(3);
+    const emittedA = emitModule(diamond[2]!, { componentSpecifier: (c) => `./${c.id}.js` });
+    expect(emittedA.includes('import { render as ')).toBe(true);
+    expect(emittedA.includes(';\nimport { render as ')).toBe(true);
+
+    // Cycle starting after root: A -> B -> C -> B
+    try {
+      compile('A.sikka', {
+        resolver(req) {
+          if (req === 'A.sikka')
+            return { id: 'A.sikka', source: '---\nimport B from "./B.sikka";\n---\n<B/>' };
+          if (req === './B.sikka')
+            return { id: 'B.sikka', source: '---\nimport C from "./C.sikka";\n---\n<C/>' };
+          return { id: 'C.sikka', source: '---\nimport B from "./B.sikka";\n---\n<B/>' };
+        },
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      const sErr = err as SikkaError;
+      expect(sErr.category).toBe('Resolve');
+      expect(sErr.request).toBe('./B.sikka');
+      expect(sErr.importer).toBe('C.sikka');
+      expect(sErr.template).toBe('B.sikka');
+      expect(sErr.message.includes('B.sikka → C.sikka → B.sikka')).toBe(true);
+      expect(sErr.message.includes('A.sikka →')).toBe(false);
+    }
   });
 });

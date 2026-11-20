@@ -9,6 +9,7 @@
  *   3. Recursive-descent parse of the template body
  */
 
+import { rejectedConstruct } from './error.js';
 import type {
   ParseResult,
   ParseError,
@@ -51,12 +52,6 @@ function positionAt(source: string, offset: number): Position {
 function makeError(message: string, source: string, offset: number): ParseError {
   const { line, column } = positionAt(source, offset);
   return { message, category: 'Parse', line, column, construct: rejectedConstruct(message) };
-}
-
-function rejectedConstruct(message: string): string | undefined {
-  if (message.startsWith('InvalidDirective:')) return 'directive';
-  if (message.startsWith('InvalidFragment:')) return 'Fragment';
-  return undefined;
 }
 
 // ─── Frontmatter extraction ───────────────────────────────────────────────────
@@ -152,7 +147,7 @@ function hasAwait(source: string): boolean {
 
 function collectImports(fmSource: string): ComponentImport[] {
   const imports: ComponentImport[] = [];
-  const re = /^\s*import(?:\s+([\s\S]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
+  const re = /^\s*import(?:\s+([^;'"]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
   let match: RegExpExecArray | null;
   while ((match = re.exec(fmSource)) !== null) {
     collectImportClause(match[1]?.trim() ?? '', match[2], imports);
@@ -915,7 +910,7 @@ class Parser {
     tag: string,
     attrs: (AttrNode | SpreadAttrNode)[]
   ): { ok: true; node: ElementNode } | { ok: false; error: ParseError } {
-    if (tag === 'Fragment' || tag === '') {
+    if (tag === 'Fragment') {
       return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
     }
     const closeIdx = this.findRawClosingTag(tag);
@@ -1032,15 +1027,8 @@ class Parser {
   private consumeMatchingClosingTag(
     tag: string
   ): { ok: true; isClosing: boolean } | { ok: false; error: ParseError } {
-    if (tag === '') return this.consumeFragmentClosingTag();
     if (!this.isMatchingClosingTag(tag)) return { ok: true, isClosing: false };
     return this.consumeNamedClosingTag(tag);
-  }
-
-  private consumeFragmentClosingTag(): { ok: true; isClosing: boolean } {
-    if (!this.at('</>')) return { ok: true, isClosing: false };
-    this.pos += 3;
-    return { ok: true, isClosing: true };
   }
 
   private isMatchingClosingTag(tag: string): boolean {
@@ -1116,7 +1104,7 @@ class Parser {
 
     const expression = result.node;
     expression.source = expression.source.slice(3).trim();
-    if (expression.nodes && typeof expression.nodes[0] === 'string') {
+    if (typeof expression.nodes?.[0] === 'string') {
       expression.nodes[0] = expression.nodes[0].slice(3).trim();
     }
     return { ok: true, attr: { type: 'spread', expression } };

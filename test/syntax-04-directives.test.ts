@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
-import { render } from './helpers.js';
+import { collectHtml, render } from './helpers.js';
+import {
+  compile as compileTemplate,
+  compileStreaming as compileStreamingTemplate,
+} from '../src/compiler.js';
+import type { RenderFunction } from '../src/index.js';
+import { parse } from '../src/parser.js';
 
 describe('Syntax: Built-in Directives', () => {
   describe('class:list', () => {
@@ -268,5 +274,183 @@ describe('Syntax: Built-in Directives', () => {
       const html = render('---\nconst txt = "<b>bold</b>";\n---\n<div set:text={txt} />');
       expect(html).toBe('<div>&lt;b&gt;bold&lt;/b&gt;</div>');
     });
+  });
+
+  it('covers is:raw nesting, unclosed opening/closing tags, and fragment closing', () => {
+    const unclosedOpen = parse('<div id="a"');
+    expect(unclosedOpen.ok).toBe(false);
+    if (!unclosedOpen.ok) {
+      expect(unclosedOpen.error.message).toBe("Expected '>' or '/>' to close opening tag <div>");
+      expect(unclosedOpen.error.column).toBe(12);
+    }
+
+    const nestedRaw = parse('<div is:raw><div>inner</div><divx>not-same</divx></div>');
+    expect(nestedRaw.ok).toBe(true);
+    if (nestedRaw.ok) {
+      expect(nestedRaw.ast.body[0]).toEqual({
+        type: 'element',
+        tag: 'div',
+        attrs: [],
+        children: [{ type: 'raw', html: '<div>inner</div><divx>not-same</divx>' }],
+        selfClosing: false,
+      });
+    }
+
+    for (const badRaw of ['<div is:raw>unclosed', '<div is:raw><div']) {
+      const err = parse(badRaw);
+      expect(err.ok).toBe(false);
+      if (!err.ok) {
+        expect(err.error.message).toBe('Unclosed <div> tag with is:raw');
+      }
+    }
+
+    const spacedClose = parse('<div >ok</div >');
+    expect(spacedClose.ok).toBe(true);
+
+    const badClose = parse('<div>ok</div foo>');
+    expect(badClose.ok).toBe(false);
+    if (!badClose.ok) {
+      expect(badClose.error.message).toBe("Expected '>' to close </div>");
+    }
+
+    const frag = parse('<><span>hi</span></>');
+    expect(frag.ok).toBe(true);
+    if (frag.ok) {
+      expect(frag.ast.body[0].type).toBe('element');
+    }
+
+    const unclosedFrag = parse('<><span>hi</span>');
+    expect(unclosedFrag.ok).toBe(false);
+  });
+
+  it('covers compiler.ts dynamic/empty slots, asset class attrs, set:html/set:text, dynamic Tag, and component props', () => {
+    const slotAst = parse(
+      '<slot name={Sikka.props.n}><span>fb</span></slot><slot name={Sikka.props.m} /><slot />'
+    );
+    expect(slotAst.ok).toBe(true);
+    if (slotAst.ok) {
+      const c = compileTemplate(slotAst.ast);
+      expect(c.ok).toBe(true);
+      if (c.ok) {
+        expect(c.fn.renderSync({ n: 'default', m: 'none' }, { '': 'def' })).toBe('defdef');
+        expect(c.fn.renderSync({ n: 'missing', m: 'none' }, {})).toBe('<span>fb</span>');
+      }
+    }
+
+    const assetAst = parse(
+      '<script class="s">x()</script><style class:list={["a","b"]}>b{}</style>'
+    );
+    expect(assetAst.ok).toBe(true);
+    if (assetAst.ok) {
+      const c1 = compileTemplate(assetAst.ast, { aggregateAssets: false });
+      expect(c1.ok).toBe(true);
+      if (c1.ok) {
+        expect(c1.fn.renderSync({})).toBe(
+          '<script class="s">x()</script><style class="a b">b{}</style>'
+        );
+      }
+      const c2 = compileTemplate(assetAst.ast, { aggregateAssets: true });
+      expect(c2.ok).toBe(true);
+      if (c2.ok) {
+        expect(c2.fn.renderSync({})).toBe('');
+      }
+    }
+
+    const dirAst = parse(
+      '<div set:html="<b>raw</b>" /><Fragment set:html /><div set:text="<b>esc</b>" /><Fragment set:text /><div set:text={"<x>"} />'
+    );
+    expect(dirAst.ok).toBe(true);
+    if (dirAst.ok) {
+      const c = compileTemplate(dirAst.ast);
+      expect(c.ok).toBe(true);
+      if (c.ok) {
+        expect(c.fn.renderSync({})).toBe(
+          '<div><b>raw</b></div><div>&lt;b&gt;esc&lt;/b&gt;</div><div>&lt;x&gt;</div>'
+        );
+      }
+    }
+
+    const dynTagAst = parse('---\nconst Tag = Sikka.props.Tag;\n---\n<Tag>ok</Tag>');
+    expect(dynTagAst.ok).toBe(true);
+    if (dynTagAst.ok) {
+      const c = compileTemplate(dynTagAst.ast);
+      expect(c.ok).toBe(true);
+      if (c.ok) {
+        expect(c.fn.renderSync({ Tag: 'br' })).toBe('<br />');
+        expect(c.fn.renderSync({ Tag: '!DOCTYPE html' })).toBe('<!DOCTYPE html>');
+        expect(c.fn.renderSync({ Tag: 'section' })).toBe('<section>ok</section>');
+      }
+    }
+
+    const compAst = parse(
+      '---\nimport Card from "./Card.sikka";\nconst extra = { n: 2 };\n---\n<Card {...extra} flag title="hi" />'
+    );
+    expect(compAst.ok).toBe(true);
+    if (compAst.ok) {
+      const cardFn = ((props: Record<string, unknown>) =>
+        `${props.n}:${props.flag}:${props.title}`) as unknown as RenderFunction;
+      cardFn.render = (props) => Promise.resolve(cardFn.renderSync(props));
+      cardFn.renderSync = (props) => `${props.n}:${props.flag}:${props.title}`;
+      const c = compileTemplate(compAst.ast, { components: { Card: cardFn } });
+      expect(c.ok).toBe(true);
+      if (c.ok) {
+        expect(c.fn.renderSync({})).toBe('2:true:hi');
+      }
+    }
+  });
+
+  it('covers compiler.ts boolean slot attr, non-streaming component in stream, missing renderSync, UnknownTag, and style filter', async () => {
+    const slotBoolAst = parse(
+      '---\nimport Card from "./Card.sikka";\n---\n<Card><span slot>def</span></Card><UnknownTag>ok</UnknownTag>'
+    );
+    expect(slotBoolAst.ok).toBe(true);
+    if (slotBoolAst.ok) {
+      const card = (async (_p: Record<string, unknown>, slots: Record<string, string>) =>
+        `[${slots['']}]`) as unknown as RenderFunction;
+      card.render = (p, s) => card(p, s);
+      card.renderSync = (_p, s) => `[${s['']}]`;
+
+      const c = compileTemplate(slotBoolAst.ast, { components: { Card: card } });
+      expect(c.ok).toBe(true);
+      if (c.ok) {
+        expect(c.fn.renderSync({})).toBe('[<span>def</span>]<UnknownTag>ok</UnknownTag>');
+      }
+
+      const streamRes = compileStreamingTemplate(slotBoolAst.ast, {
+        components: { Card: card },
+        streamComponents: false,
+      });
+      expect(streamRes.ok).toBe(true);
+      if (streamRes.ok) {
+        expect(await collectHtml(streamRes.fn({}))).toBe(
+          '[<span>def</span>]<UnknownTag>ok</UnknownTag>'
+        );
+      }
+
+      const noSync = ((_p: Record<string, unknown>) => 'x') as unknown as RenderFunction;
+      noSync.render = () => Promise.resolve('x');
+      const cNoSync = compileTemplate(slotBoolAst.ast, { components: { Card: noSync } });
+      expect(cNoSync.ok).toBe(true);
+      if (cNoSync.ok) {
+        expect(() => cNoSync.fn.renderSync({})).toThrow(/does not support synchronous rendering/);
+      }
+    }
+
+    const styleAst = parse('<div style=";color:red;;" style=";;" />');
+    expect(styleAst.ok).toBe(true);
+    if (styleAst.ok) {
+      const c = compileTemplate(styleAst.ast);
+      expect(c.ok).toBe(true);
+      if (c.ok) {
+        expect(c.fn.renderSync({})).toBe('<div style="color:red"></div>');
+      }
+    }
+
+    const badImportAst = parse('---\nimport { x } from "./helper.js";\n---\n<p/>');
+    expect(badImportAst.ok).toBe(true);
+    if (badImportAst.ok) {
+      const badCompile = compileTemplate(badImportAst.ast, { templateId: 'bad-imp.sikka' });
+      expect(badCompile.ok).toBe(false);
+    }
   });
 });

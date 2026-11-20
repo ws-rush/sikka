@@ -9,6 +9,8 @@
     "dist/**",
     "node_modules/**",
     "coverage/**",
+    "reports/**",
+    ".stryker-tmp/**",
     "benchmark/**",
     "editors/tree-sitter-sikka/src/**",
     "**/lock.yaml",

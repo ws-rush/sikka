@@ -8,6 +8,7 @@
  *   2. Collect `import` statements from frontmatter
  *   3. Recursive-descent parse of the template body
  */
+import { rejectedConstruct } from './error.js';
 function positionAt(source, offset) {
     let line = 1;
     let column = 1;
@@ -25,13 +26,6 @@ function positionAt(source, offset) {
 function makeError(message, source, offset) {
     const { line, column } = positionAt(source, offset);
     return { message, category: 'Parse', line, column, construct: rejectedConstruct(message) };
-}
-function rejectedConstruct(message) {
-    if (message.startsWith('InvalidDirective:'))
-        return 'directive';
-    if (message.startsWith('InvalidFragment:'))
-        return 'Fragment';
-    return undefined;
 }
 const OPERAND_KEYWORDS = new Set([
     'return',
@@ -91,7 +85,7 @@ function hasAwait(source) {
 // ─── Import collection ────────────────────────────────────────────────────────
 function collectImports(fmSource) {
     const imports = [];
-    const re = /^\s*import(?:\s+([\s\S]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
+    const re = /^\s*import(?:\s+([^;'"]*?)\s+from)?\s+['"]([^'"]+)['"]/gm;
     let match;
     while ((match = re.exec(fmSource)) !== null) {
         collectImportClause(match[1]?.trim() ?? '', match[2], imports);
@@ -719,7 +713,7 @@ class Parser {
         };
     }
     parseRawElement(tag, attrs) {
-        if (tag === 'Fragment' || tag === '') {
+        if (tag === 'Fragment') {
             return { ok: false, error: this.error('InvalidFragment: is:raw is not supported') };
         }
         const closeIdx = this.findRawClosingTag(tag);
@@ -806,17 +800,9 @@ class Parser {
         };
     }
     consumeMatchingClosingTag(tag) {
-        if (tag === '')
-            return this.consumeFragmentClosingTag();
         if (!this.isMatchingClosingTag(tag))
             return { ok: true, isClosing: false };
         return this.consumeNamedClosingTag(tag);
-    }
-    consumeFragmentClosingTag() {
-        if (!this.at('</>'))
-            return { ok: true, isClosing: false };
-        this.pos += 3;
-        return { ok: true, isClosing: true };
     }
     isMatchingClosingTag(tag) {
         const closeStart = `</${tag}`;
@@ -876,7 +862,7 @@ class Parser {
             return result;
         const expression = result.node;
         expression.source = expression.source.slice(3).trim();
-        if (expression.nodes && typeof expression.nodes[0] === 'string') {
+        if (typeof expression.nodes?.[0] === 'string') {
             expression.nodes[0] = expression.nodes[0].slice(3).trim();
         }
         return { ok: true, attr: { type: 'spread', expression } };

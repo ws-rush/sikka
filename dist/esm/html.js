@@ -43,7 +43,7 @@ export function mergeHtmlAttributes(raw, attrMaps, helpers) {
     if (!match)
         return cleaned;
     const tag = match[1];
-    const rawAttrs = match[2] ?? '';
+    const rawAttrs = match[2];
     const selfClosing = rawAttrs.trimEnd().endsWith('/');
     const attrSource = selfClosing ? rawAttrs.trimEnd().slice(0, -1) : rawAttrs;
     const merged = parseAttributes(attrSource);
@@ -69,8 +69,6 @@ function parseAttributes(source) {
     const map = new Map();
     for (const match of source.matchAll(ATTR_RE)) {
         const name = match[1];
-        if (!name)
-            continue;
         const value = match[2] ?? match[3] ?? match[4];
         map.set(name, value === undefined ? true : value);
     }

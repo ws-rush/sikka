@@ -8,4 +8,6 @@ export declare class SikkaError extends Error implements SikkaDiagnostic {
     readonly construct?: string;
     constructor(message: string, diagnostic: Omit<SikkaDiagnostic, 'message'>);
 }
+/** Classifies a parser/compiler diagnostic message by rejected construct, if any. */
+export declare function rejectedConstruct(message: string): string | undefined;
 //# sourceMappingURL=error.d.ts.map

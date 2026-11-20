@@ -41,22 +41,22 @@ export function fragmentHtml(raw, ...attrMaps) {
 function identity(value) {
     return value;
 }
-function classList(value) {
+export function classList(value) {
     if (typeof value === 'string')
         return value;
     if (value instanceof Set || Array.isArray(value))
         return Array.from(value, classList).filter(Boolean).join(' ');
-    if (!value || typeof value !== 'object')
+    if (!value)
         return '';
     return Object.entries(value)
         .filter(([, enabled]) => enabled)
         .map(([name]) => name)
         .join(' ');
 }
-function styleObject(value) {
+export function styleObject(value) {
     if (typeof value === 'string')
         return value;
-    if (!value || typeof value !== 'object')
+    if (!value)
         return '';
     if (typeof value.toString === 'function' && value.toString !== Object.prototype.toString)
         return String(value.toString());
