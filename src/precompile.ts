@@ -84,21 +84,44 @@ export function emitModule(artifact: PrecompileArtifact, options: EmitModuleOpti
   const streamingComponents = components.map(
     ({ localName, stream }) => `${JSON.stringify(localName)}: ${stream}`
   );
-  const helpers =
-    'const { escape: __escape, expression: __expression, RawHtml: __RawHtml, classList: __classList, styleObject: __styleObject, filter: __filter, autoFilter: __autoFilter, aggregateAssets: __aggregateAssets, fragmentHtml: __fragmentHtml } = runtime(this);';
+  const renderPreamble = functionPreamble(artifact.renderString, regularComponents);
+  const streamPreamble = functionPreamble(artifact.streamString, streamingComponents);
+  const runtimeImport =
+    renderPreamble.includes('runtime(this)') || streamPreamble.includes('runtime(this)')
+      ? `import { runtime } from ${JSON.stringify(runtimeSpecifier)};\n`
+      : '';
 
-  return `import { runtime } from ${JSON.stringify(runtimeSpecifier)};
-${imports}
+  return `${runtimeImport}${imports}
 export function render(props, slots = {}) {
-  ${helpers}
-  const __components = { ${regularComponents.join(', ')} };
-${artifact.renderString}
+${renderPreamble}${artifact.renderString}
 }
 export async function* stream(props, slots = {}) {
-  ${helpers}
-  const __components = { ${streamingComponents.join(', ')} };
-${artifact.streamString}
+${streamPreamble}${artifact.streamString}
 }`;
+}
+
+const RUNTIME_HELPER_BINDINGS: readonly [string, string][] = [
+  ['escape', '__escape'],
+  ['expression', '__expression'],
+  ['RawHtml', '__RawHtml'],
+  ['classList', '__classList'],
+  ['styleObject', '__styleObject'],
+  ['filter', '__filter'],
+  ['autoFilter', '__autoFilter'],
+  ['aggregateAssets', '__aggregateAssets'],
+  ['fragmentHtml', '__fragmentHtml'],
+];
+
+function functionPreamble(body: string, componentEntries: string[]): string {
+  const lines: string[] = [];
+  const used = RUNTIME_HELPER_BINDINGS.filter(([, local]) => body.includes(local));
+  if (used.length > 0) {
+    lines.push(`  const { ${used.map(([k, v]) => `${k}: ${v}`).join(', ')} } = runtime(this);`);
+  }
+  if (body.includes('__components')) {
+    lines.push(`  const __components = { ${componentEntries.join(', ')} };`);
+  }
+  return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
 
 /**

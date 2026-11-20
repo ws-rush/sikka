@@ -83,20 +83,20 @@ function identity(value: unknown): unknown {
   return value;
 }
 
-function classList(value: ClassListArg): string {
+export function classList(value: ClassListArg): string {
   if (typeof value === 'string') return value;
   if (value instanceof Set || Array.isArray(value))
     return Array.from(value, classList).filter(Boolean).join(' ');
-  if (!value || typeof value !== 'object') return '';
+  if (!value) return '';
   return Object.entries(value)
     .filter(([, enabled]) => enabled)
     .map(([name]) => name)
     .join(' ');
 }
 
-function styleObject(value: StyleObjectArg): string {
+export function styleObject(value: StyleObjectArg): string {
   if (typeof value === 'string') return value;
-  if (!value || typeof value !== 'object') return '';
+  if (!value) return '';
   if (typeof value.toString === 'function' && value.toString !== Object.prototype.toString)
     return String(value.toString());
   return Object.entries(value)

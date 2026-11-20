@@ -3,9 +3,9 @@
  */
 
 import { escapeHtml, RawHtml, stringifyHtml } from './escape.js';
-import { SikkaError } from './error.js';
+import { rejectedConstruct, SikkaError } from './error.js';
 import { VOID_ELEMENTS } from './parser.js';
-import { fragmentHtml } from './runtime.js';
+import { classList, fragmentHtml, styleObject } from './runtime.js';
 import type {
   TemplateAST,
   TemplateNode,
@@ -91,8 +91,8 @@ interface RuntimeHelpers {
 function createRuntimeHelpers(options?: CompileOptions): RuntimeHelpers {
   return {
     escapeHelper: expressionEscapeHelper(options),
-    classListHelper,
-    styleObjectHelper,
+    classListHelper: classList,
+    styleObjectHelper: styleObject,
     filterHelper: options?.autoFilter
       ? options.filterFunction || ((value: unknown) => value)
       : (value: unknown) => value,
@@ -101,44 +101,6 @@ function createRuntimeHelpers(options?: CompileOptions): RuntimeHelpers {
 
 function expressionEscapeHelper(options?: CompileOptions): typeof escapeHtml {
   return options?.autoEscape === false ? stringifyHtml : escapeHtml;
-}
-
-function classListHelper(arg: ClassListArg): string {
-  if (typeof arg === 'string') return arg;
-  if (arg instanceof Set || Array.isArray(arg))
-    return Array.from(arg, classListHelper).filter(Boolean).join(' ');
-  return classListObject(arg);
-}
-
-function classListObject(arg: ClassListArg): string {
-  if (!arg || typeof arg !== 'object') return '';
-  return Object.entries(arg)
-    .filter(([_, value]) => value)
-    .map(([key]) => key)
-    .join(' ');
-}
-
-function styleObjectHelper(arg: StyleObjectArg): string {
-  if (typeof arg === 'string') return arg;
-  if (!arg || typeof arg !== 'object') return '';
-  return stringifiedStyleObject(arg);
-}
-
-function stringifiedStyleObject(arg: Record<string, unknown>): string {
-  if (typeof arg.toString === 'function' && arg.toString !== Object.prototype.toString) {
-    return String(arg.toString());
-  }
-  return Object.entries(arg)
-    .filter(([, value]) => value != null && typeof value !== 'boolean' && value !== '')
-    .map(
-      ([key, value]) =>
-        `${key.startsWith('--') ? key : key.replace(/[A-Z]/g, toKebabCase)}:${value}`
-    )
-    .join(';');
-}
-
-function toKebabCase(match: string): string {
-  return '-' + match.toLowerCase();
 }
 
 export const compile = compileSync;
@@ -211,12 +173,6 @@ function compileFailure(error: unknown): { ok: false; error: CompileError } {
     ok: false,
     error: { message, category: 'Compile', cause: error, construct: rejectedConstruct(message) },
   };
-}
-
-function rejectedConstruct(message: string): string | undefined {
-  if (message.startsWith('InvalidDirective:')) return 'directive';
-  if (message.startsWith('InvalidFragment:')) return 'Fragment';
-  return undefined;
 }
 
 function compileASTUnsafe(ast: TemplateAST, options?: CompileOptions): CompileResult {
@@ -333,10 +289,15 @@ function buildFunctionBody(
   target: string,
   completion: string
 ): string {
-  const bodyLines = mergeLines(
+  const varName = options?.varName || 'Sikka';
+  const inlineProps = canInlineProps(ast, varName);
+  const rawBodyLines = mergeLines(
     ast.body.flatMap((node) => emitNode(node, components, options, target)),
     target
   );
+  const bodyLines = inlineProps
+    ? rawBodyLines.map((line) => inlinePropsAccess(line, varName))
+    : rawBodyLines;
   const direct =
     target === STREAMING_TARGET || bodyLines.length !== 1
       ? undefined
@@ -345,19 +306,38 @@ function buildFunctionBody(
     ...(direct ? [] : [`let ${target} = "";`]),
     ...(bodyLines.some((line) => line.includes('__booleanAttrs')) ? [HOISTED_BOOLEAN_ATTRS] : []),
     ...(bodyLines.some((line) => line.includes('__rawHtmlKey')) ? [HOISTED_RAW_HTML_KEY] : []),
-    ...buildFunctionPreamble(ast, options),
+    ...buildFunctionPreamble(ast, varName, inlineProps),
     ...(direct ? [`return ${direct};`] : [...bodyLines, completion]),
   ].join('\n');
 }
 
-function buildFunctionPreamble(ast: TemplateAST, options?: CompileOptions): string[] {
-  const varName = options?.varName || 'Sikka';
+function buildFunctionPreamble(ast: TemplateAST, varName: string, inlineProps: boolean): string[] {
+  const fm = inlineProps
+    ? inlinePropsAccess(ast.frontmatter.source, varName)
+    : ast.frontmatter.source;
   return [
-    ...buildSikkaPreamble(ast, varName),
+    ...(inlineProps ? [] : buildSikkaPreamble(ast, varName)),
     '',
     ...buildComponentPreamble(ast.imports),
-    ...buildFrontmatterPreamble(ast.frontmatter.source),
+    ...buildFrontmatterPreamble(fm),
   ];
+}
+
+function canInlineProps(ast: TemplateAST, varName: string): boolean {
+  return (
+    usesSikkaGlobal(ast, varName) &&
+    usesOnlySikkaProps(ast, varName) &&
+    !/\bprops\b/.test(ast.frontmatter.source)
+  );
+}
+
+function inlinePropsAccess(line: string, varName: string): string {
+  const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(
+    `(['"\`])(?:\\\\.|(?!\\1)[^\\\\])*\\1|(?<![.$\\w])${escaped}\\.props\\b`,
+    'g'
+  );
+  return line.replace(re, (m) => (m[0] === '"' || m[0] === "'" || m[0] === '`' ? m : 'props'));
 }
 
 function buildSikkaPreamble(ast: TemplateAST, varName: string): string[] {
@@ -427,7 +407,7 @@ function outputExpression(line: string, prefix: string): string | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith(prefix)) return undefined;
   const expression = trimmed.slice(prefix.length);
-  return expression.endsWith(';') ? expression.slice(0, -1) : expression;
+  return expression.slice(0, -1);
 }
 
 function mergeAdjacentOutputExpressions(
@@ -486,7 +466,7 @@ function validateChildDirectiveNode(node: ElementNode | import('./types.js').Slo
 
 function validateElementDirectives(node: ElementNode): void {
   const directive = contentDirective(node.attrs);
-  if ((!node.tag || node.tag === 'Fragment') && directive !== 'set:html') {
+  if (node.tag === 'Fragment' && directive !== 'set:html') {
     partitionFragmentAttributes(node.attrs);
   }
   validateContentDirectives(node.attrs, node.children.length > 0);
@@ -652,12 +632,21 @@ function emitRenderableMap(
     `__array.map(${map.callback}${rawHtmlExpressionFromNode(map.node, components, options)}${map.suffix}`,
     options
   )};`;
+  const singleParam = /^\s*\(?([$A-Z_a-z][$\w]*)\)?\s*=>\s*$/.exec(map.callback)?.[1];
+  const bodyLines = emitNode(map.node, components, options, target).map((line) => '      ' + line);
+  const loopLines = singleParam
+    ? [
+        `    for (let __i = 0, __len = __array.length; __i < __len; __i++) {`,
+        `      if (!(__i in __array)) continue;`,
+        `      const ${singleParam} = __array[__i];`,
+        ...bodyLines,
+        `    }`,
+      ]
+    : [`    __array.forEach(${map.callback}{`, ...bodyLines, `    });`];
   return [
     `{ const __array = (${map.receiver});`,
     `  if (!__autoFilter && Array.isArray(__array) && Object.getPrototypeOf(__array) === Array.prototype && __array.map === Array.prototype.map) {`,
-    `    __array.forEach(${map.callback}{`,
-    ...emitNode(map.node, components, options, target).map((line) => '      ' + line),
-    `    });`,
+    ...loopLines,
     `  } else {`,
     `    ${fallback}`,
     `  }`,
@@ -926,7 +915,7 @@ function emitDirectAttribute(
   const source = transformExpression(attr.value, components, options);
   const name = JSON.stringify(` ${attr.name}`);
   const bare = `${target} += ${name};`;
-  const value = `${target} += ${name} + '="' + __escape(String(__v)) + '"';`;
+  const value = `${target} += ${name} + '="' + (typeof __v === 'number' ? __v : __escape(String(__v))) + '"';`;
   if (isNativeBooleanAttribute(tag, attr.name))
     return [`{ const __v = (${source});`, `  if (__v === "" || __v) ${bare}`, `}`];
   return [
@@ -951,7 +940,7 @@ function emitDirectClass(
   const source = transformExpression(attr.value, components, options);
   const value = attr.name === 'class:list' ? `__classList(${source})` : source;
   return [
-    `${target} += ((__class) => __class ? ' class="' + __escape(String(__class)) + '"' : "")(${value});`,
+    `{ const __class = (${value}); if (__class) ${target} += ' class="' + __escape(String(__class)) + '"'; }`,
   ];
 }
 

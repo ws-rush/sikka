@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { expect } from './assert.js';
 import { extractAssets, Sikka, SikkaError } from '../src/index.js';
+import { RawHtml } from '../src/escape.js';
 import { compile, emitModule } from '../src/precompile.js';
-import { sikka as sikkaVite } from '../src/vite.js';
+import { mergeHtmlAttributes } from '../src/html.js';
+import { compileViteModule, sikka as sikkaVite } from '../src/vite.js';
 
 describe('Fragment set:html with attributes', () => {
   it('strips XML declarations, merges classes, and updates attributes safely on any root element', () => {
@@ -167,5 +169,138 @@ describe('sikka/vite', () => {
   it('throws SikkaError on invalid template syntax', () => {
     const plugin = sikkaVite();
     assert.throws(() => plugin.transform('<div>{unclosed', '/app/src/bad.sikka'), SikkaError);
+  });
+
+  it('covers extractAssets without head or with inject: false and mergeHtmlAttributes edge cases', () => {
+    const noHead = extractAssets('<style>a{}</style><p>x</p><script>1</script>');
+    expect(noHead.html).toBe('<p>x</p>');
+    expect(noHead.styles).toEqual(['<style>a{}</style>']);
+    expect(noHead.scripts).toEqual(['<script>1</script>']);
+
+    const noInject = extractAssets('<head></head><style>a{}</style>', { inject: false });
+    expect(noInject.html).toBe('<head></head>');
+
+    const emptyAssets = extractAssets('<head></head><p>hi</p>');
+    expect(emptyAssets.html).toBe('<head></head><p>hi</p>');
+
+    expect(
+      mergeHtmlAttributes('plain text', [{ id: 'x' }], {
+        classList: () => '',
+        styleObject: () => '',
+      })
+    ).toBe('plain text');
+    expect(
+      mergeHtmlAttributes(new RawHtml('<span>ok</span>'), [], {
+        classList: () => '',
+        styleObject: () => '',
+      })
+    ).toBe('<span>ok</span>');
+    expect(mergeHtmlAttributes(null, [], { classList: () => '', styleObject: () => '' })).toBe('');
+    expect(
+      mergeHtmlAttributes(
+        '<div a=1 b="2" disabled>hi</div>',
+        [null, { b: false, c: '3&4', d: true }],
+        {
+          classList: () => '',
+          styleObject: () => '',
+        }
+      )
+    ).toBe('<div a="1" disabled c="3&amp;4" d>hi</div>');
+    expect(() =>
+      mergeHtmlAttributes('<div/>', [{ 'set:html': 'x' }], {
+        classList: () => '',
+        styleObject: () => '',
+      })
+    ).toThrow(/InvalidDirective/);
+    expect(() =>
+      mergeHtmlAttributes('<div/>', [{ 'x:y': 'x' }], {
+        classList: () => '',
+        styleObject: () => '',
+      })
+    ).toThrow(/InvalidDirective/);
+  });
+
+  it('covers vite plugin name, parse errors, and compile errors', () => {
+    const plugin = sikkaVite();
+    expect(plugin.name).toBe('sikka');
+
+    try {
+      compileViteModule('<div>', 'broken.sikka');
+      throw new Error('expected throw');
+    } catch (err) {
+      const sErr = err as SikkaError;
+      expect(sErr.category).toBe('Parse');
+      expect(sErr.template).toBe('broken.sikka');
+      expect(sErr.message.includes('Unclosed tag')).toBe(true);
+    }
+
+    try {
+      compileViteModule('<Fragment class="x"/>', 'bad-frag.sikka');
+      throw new Error('expected throw');
+    } catch (err) {
+      const sErr = err as SikkaError;
+      expect(sErr.category).toBe('Compile');
+      expect(sErr.template).toBe('bad-frag.sikka');
+      expect(sErr.message.includes('Fragment')).toBe(true);
+    }
+  });
+
+  it('covers html.ts extractAssets and mergeHtmlAttributes edge cases', () => {
+    const emptyAssets = extractAssets('<head></head><p>hi</p>');
+    expect(emptyAssets).toEqual({ html: '<head></head><p>hi</p>', styles: [], scripts: [] });
+
+    const styleOnly = extractAssets('<style data-a=">" data-b=\'>\'>body{}</style><head></head>');
+    expect(styleOnly.styles).toEqual(['<style data-a=">" data-b=\'>\'>body{}</style>']);
+    expect(styleOnly.scripts).toEqual([]);
+    expect(styleOnly.html).toBe('<head><style data-a=">" data-b=\'>\'>body{}</style></head>');
+
+    const scriptOnly = extractAssets('<script data-a=">" data-b=\'>\'>x()</script><head></head>');
+    expect(scriptOnly.styles).toEqual([]);
+    expect(scriptOnly.scripts).toEqual(['<script data-a=">" data-b=\'>\'>x()</script>']);
+    expect(scriptOnly.html).toBe('<head><script data-a=">" data-b=\'>\'>x()</script></head>');
+
+    const helpers = {
+      classList: (v: unknown) => (Array.isArray(v) ? v.filter(Boolean).join(' ') : String(v ?? '')),
+      styleObject: (v: unknown) =>
+        v && typeof v === 'object'
+          ? Object.entries(v as Record<string, unknown>)
+              .map(([k, val]) => `${k}:${val}`)
+              .join(';')
+          : '',
+    };
+
+    expect(
+      mergeHtmlAttributes(
+        '  <?xml version="1.0"?><?xml-stylesheet?><div id="a">hi</div>',
+        [],
+        helpers
+      )
+    ).toBe('<div id="a">hi</div>');
+    expect(mergeHtmlAttributes(123, [{ id: 'x' }], helpers)).toBe('123');
+    expect(
+      mergeHtmlAttributes('<div class></div>', [{ class: ' b ' }, null, 'ignored'], helpers)
+    ).toBe('<div class="b"></div>');
+    expect(mergeHtmlAttributes('<div></div>', [{ style: ' color:red ' }], helpers)).toBe(
+      '<div style="color:red"></div>'
+    );
+    expect(mergeHtmlAttributes('<div style=" "></div>', [{ style: 'color:red' }], helpers)).toBe(
+      '<div style="color:red"></div>'
+    );
+    expect(
+      mergeHtmlAttributes('<div style="color:red;"></div>', [{ style: ' margin:0 ' }], helpers)
+    ).toBe('<div style="color:red; margin:0"></div>');
+    expect(mergeHtmlAttributes('<div></div>', [{ className: 'cn' }], helpers)).toBe(
+      '<div class="cn"></div>'
+    );
+    expect(
+      mergeHtmlAttributes('<img src="a" alt=\'b\' data-n=1 disabled / >', [{ alt: 'c' }], helpers)
+    ).toBe('<img src="a" alt="c" data-n="1" disabled />');
+
+    expect(() => mergeHtmlAttributes('<div></div>', [{ 'set:html': 'x' }], helpers)).toThrow(
+      /spread set:html is not supported/
+    );
+    expect(() => mergeHtmlAttributes('<div></div>', [{ 'set:text': 'x' }], helpers)).toThrow(
+      /spread set:text is not supported/
+    );
   });
 });

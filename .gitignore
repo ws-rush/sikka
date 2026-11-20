@@ -7,6 +7,8 @@ PLAN.md
 
 coverage/
 .ci/
+.stryker-tmp/
+reports/
 
 bench/.generated/
 *.vsix
