@@ -1,3 +1,9 @@
+## 0.5.0 (2026-11-20)
+
+- test: add Stryker mutation testing and harden coverage across compiler, precompile, and runtime ([61e19b1](https://github.com/ws-rush/sikka/commit/61e19b1))
+- fix(ci): inline html.js into strict-CSP sikka-runtime bundle ([1f100e4](https://github.com/ws-rush/sikka/commit/1f100e4))
+- refactor: replace renderWithAssets with extractAssets ([2b86d23](https://github.com/ws-rush/sikka/commit/2b86d23))
+
 ## 0.4.1 (2026-11-19)
 
 - fix: preserve CSS custom property (`--*`) casing in `style` objects and handle comments, regex literals, and `<` comparisons inside `{...}` expressions ([e25e35f](https://github.com/ws-rush/sikka/commit/e25e35f), [#53](https://github.com/ws-rush/sikka/issues/53)) — reported by [@trackoor](https://github.com/trackoor) / [UCSB PLSE](https://ucsbplse.github.io/)

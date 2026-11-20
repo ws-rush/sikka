@@ -1,6 +1,6 @@
 {
   "name": "sikka",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "A zero-dependency Template engine.",
   "keywords": [
     "astro",
